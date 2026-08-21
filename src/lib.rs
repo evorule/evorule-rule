@@ -10,6 +10,7 @@
 //!
 //! 许可：AGPL-3.0-or-later（双授权模式 = AGPL + 商业，合规底线，不可白标掩盖）
 
+pub mod auth;
 pub mod bundle;
 pub mod llm_client;
 pub mod model;
@@ -17,10 +18,15 @@ pub mod resolve;
 pub mod store;
 pub mod validate;
 
+pub use auth::{
+    ACCESS_TOKEN_TTL_SECS, AuthError, AuthService, AuthTokens, DEFAULT_PBKDF2_ITERATIONS,
+    REFRESH_TOKEN_TTL_SECS,
+};
 pub use bundle::{
     BundleEntry, BundleError, BundleExporter, BundleImporter, BundleTests, BundleTrimmer,
     DatasetBundle, ImportResult, TestVerdict, ViewRef, BUNDLE_SCHEMA_VERSION,
 };
+pub use model::auth::{Action, AuthAudit, Role, Tenant, TokenClaims, User, can};
 pub use model::dataset::RuleDataset;
 pub use model::entry::RuleEntry;
 pub use model::lifecycle::LifecycleStatus;

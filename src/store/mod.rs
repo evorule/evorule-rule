@@ -9,6 +9,7 @@ use rusqlite::{Connection, params};
 use thiserror::Error;
 
 use crate::bundle::{BundleError, BundleExporter, BundleTests, DatasetBundle};
+use crate::model::auth::{AuthAudit, Role, Tenant, User};
 use crate::model::dataset::{RuleDataset, Visibility};
 use crate::model::entry::RuleEntry;
 use crate::model::lifecycle::{Lifecycle, LifecycleStatus, StateChange};
@@ -51,6 +52,15 @@ pub enum StoreError {
 
     #[error("LLM 操作审计记录 `{0}` 已存在（request_id 唯一）")]
     AuditExists(String),
+
+    #[error("租户 `{0}` 不存在")]
+    TenantNotFound(String),
+
+    #[error("用户 `{0}` 已存在（tenant 内用户名唯一）")]
+    UsernameTaken(String),
+
+    #[error("角色 `{0}` 非法")]
+    InvalidRole(String),
 }
 
 /// 规则存储
@@ -130,6 +140,38 @@ impl RuleStore {
             );
             CREATE INDEX IF NOT EXISTS idx_audit_op_time
                 ON llm_op_audit(operation, created_at);
+
+            -- 43 号：认证与用户身份（正交 A，MVP 单租户实例）
+            CREATE TABLE IF NOT EXISTS tenants (
+                tenant_id    TEXT PRIMARY KEY,
+                name         TEXT NOT NULL,
+                instance_id  TEXT NOT NULL,                 -- 39 号：真实实例身份，进溯源
+                created_at   TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS users (
+                user_id       TEXT PRIMARY KEY,
+                tenant_id     TEXT NOT NULL,
+                username      TEXT NOT NULL,
+                password_hash TEXT NOT NULL,                -- PBKDF2-HMAC-SHA256（MVP）
+                salt          TEXT NOT NULL,
+                role          TEXT NOT NULL,                -- viewer/rule_engineer/approver/admin
+                disabled      INTEGER NOT NULL DEFAULT 0,
+                created_at    TEXT NOT NULL,
+                updated_at    TEXT NOT NULL,
+                UNIQUE (tenant_id, username),
+                FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id)
+            );
+            CREATE TABLE IF NOT EXISTS auth_audits (
+                audit_id   TEXT PRIMARY KEY,
+                action     TEXT NOT NULL,                   -- register/login/refresh/logout/disable_user
+                user_id    TEXT,
+                tenant_id  TEXT NOT NULL,
+                outcome    TEXT NOT NULL,                   -- success | failure
+                detail     TEXT,
+                created_at TEXT NOT NULL                    -- ISO-8601 UTC
+            );
+            CREATE INDEX IF NOT EXISTS idx_auth_audit_time
+                ON auth_audits(tenant_id, created_at);
             "#,
         )?;
         // 轻量迁移：若旧库 entries 表缺 35 号新增的 consumed_inputs 列，则补齐
@@ -777,6 +819,128 @@ impl RuleStore {
         let entries = self.list_entries(dataset_id, None)?;
         Ok(BundleExporter::export(&ds, &entries, tests, by, at, instance_id))
     }
+
+    // ------------------------------------------------------------------
+    // 认证与用户（43 号 正交 A，MVP 单租户实例）
+    // ------------------------------------------------------------------
+
+    /// 确保实例默认租户存在（MVP 单租户：不存在则创建，存在则返回）
+    pub fn ensure_default_tenant(
+        &self,
+        tenant_id: &str,
+        name: &str,
+        instance_id: &str,
+        created_at: &str,
+    ) -> Result<Tenant, StoreError> {
+        self.conn.execute(
+            "INSERT OR IGNORE INTO tenants (tenant_id, name, instance_id, created_at)
+             VALUES (?1, ?2, ?3, ?4)",
+            params![tenant_id, name, instance_id, created_at],
+        )?;
+        let tenant = self
+            .get_tenant(tenant_id)?
+            .ok_or_else(|| StoreError::TenantNotFound(tenant_id.into()))?;
+        Ok(tenant)
+    }
+
+    pub fn get_tenant(&self, tenant_id: &str) -> Result<Option<Tenant>, StoreError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT tenant_id, name, instance_id, created_at FROM tenants WHERE tenant_id = ?1",
+        )?;
+        let mut rows = stmt.query_map(params![tenant_id], row_to_tenant)?;
+        match rows.next() {
+            Some(Ok(t)) => Ok(Some(t)),
+            Some(Err(e)) => Err(e.into()),
+            None => Ok(None),
+        }
+    }
+
+    pub fn create_user(&self, user: &User) -> Result<(), StoreError> {
+        self.conn.execute(
+            "INSERT INTO users
+               (user_id, tenant_id, username, password_hash, salt, role, disabled, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            params![
+                user.user_id,
+                user.tenant_id,
+                user.username,
+                user.password_hash,
+                user.salt,
+                user.role.as_str(),
+                user.disabled as i64,
+                user.created_at,
+                user.updated_at,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_user_by_username(
+        &self,
+        tenant_id: &str,
+        username: &str,
+    ) -> Result<Option<User>, StoreError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT user_id, tenant_id, username, password_hash, salt, role, disabled, created_at, updated_at
+             FROM users WHERE tenant_id = ?1 AND username = ?2",
+        )?;
+        let mut rows = stmt.query_map(params![tenant_id, username], row_to_user)?;
+        match rows.next() {
+            Some(Ok(u)) => Ok(Some(u)),
+            Some(Err(e)) => Err(e.into()),
+            None => Ok(None),
+        }
+    }
+
+    pub fn get_user(&self, user_id: &str) -> Result<Option<User>, StoreError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT user_id, tenant_id, username, password_hash, salt, role, disabled, created_at, updated_at
+             FROM users WHERE user_id = ?1",
+        )?;
+        let mut rows = stmt.query_map(params![user_id], row_to_user)?;
+        match rows.next() {
+            Some(Ok(u)) => Ok(Some(u)),
+            Some(Err(e)) => Err(e.into()),
+            None => Ok(None),
+        }
+    }
+
+    /// 禁用/启用用户（管理员操作；禁用的用户登录/刷新被拒）
+    pub fn set_user_disabled(&self, user_id: &str, disabled: bool, at: &str) -> Result<(), StoreError> {
+        self.conn.execute(
+            "UPDATE users SET disabled = ?1, updated_at = ?2 WHERE user_id = ?3",
+            params![disabled as i64, at, user_id],
+        )?;
+        Ok(())
+    }
+
+    /// 认证审计（only-append，43 号 §6）
+    pub fn record_auth_audit(&self, audit: &AuthAudit) -> Result<(), StoreError> {
+        self.conn.execute(
+            "INSERT INTO auth_audits (audit_id, action, user_id, tenant_id, outcome, detail, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![
+                audit.audit_id,
+                audit.action,
+                audit.user_id,
+                audit.tenant_id,
+                audit.outcome,
+                audit.detail,
+                audit.created_at,
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// 列出认证审计（倒序 + limit）
+    pub fn list_auth_audits(&self, tenant_id: &str, limit: usize) -> Result<Vec<AuthAudit>, StoreError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT audit_id, action, user_id, tenant_id, outcome, detail, created_at
+             FROM auth_audits WHERE tenant_id = ?1 ORDER BY created_at DESC LIMIT ?2",
+        )?;
+        let rows = stmt.query_map(params![tenant_id, limit as i64], row_to_auth_audit)?;
+        rows.collect::<Result<_, _>>().map_err(Into::into)
+    }
 }
 
 /// 变更线中文标签（审计 cause 用）
@@ -798,6 +962,52 @@ fn row_to_audit(r: &rusqlite::Row) -> rusqlite::Result<LlmOpAudit> {
         result_ref: r.get(5)?,
         error: r.get(6)?,
         created_at: r.get(7)?,
+    })
+}
+
+/// `tenants` 行 → `Tenant`
+fn row_to_tenant(r: &rusqlite::Row) -> rusqlite::Result<Tenant> {
+    Ok(Tenant {
+        tenant_id: r.get(0)?,
+        name: r.get(1)?,
+        instance_id: r.get(2)?,
+        created_at: r.get(3)?,
+    })
+}
+
+/// `users` 行 → `User`
+fn row_to_user(r: &rusqlite::Row) -> rusqlite::Result<User> {
+    let role_str: String = r.get(5)?;
+    let role = Role::parse(&role_str).ok_or_else(|| {
+        rusqlite::Error::FromSqlConversionFailure(
+            5,
+            rusqlite::types::Type::Text,
+            Box::new(StoreError::InvalidRole(role_str.clone())),
+        )
+    })?;
+    Ok(User {
+        user_id: r.get(0)?,
+        tenant_id: r.get(1)?,
+        username: r.get(2)?,
+        password_hash: r.get(3)?,
+        salt: r.get(4)?,
+        role,
+        disabled: r.get::<_, i64>(6)? != 0,
+        created_at: r.get(7)?,
+        updated_at: r.get(8)?,
+    })
+}
+
+/// `auth_audits` 行 → `AuthAudit`
+fn row_to_auth_audit(r: &rusqlite::Row) -> rusqlite::Result<AuthAudit> {
+    Ok(AuthAudit {
+        audit_id: r.get(0)?,
+        action: r.get(1)?,
+        user_id: r.get(2)?,
+        tenant_id: r.get(3)?,
+        outcome: r.get(4)?,
+        detail: r.get(5)?,
+        created_at: r.get(6)?,
     })
 }
 

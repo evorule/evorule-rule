@@ -7,6 +7,7 @@
 //! 数据集级挂载：生命周期（④）、版本语义（③）、数据依赖声明（⑤）、可见性（⑧）。
 //! 条目级：rule_body（evorule 原生 JSON，零转译）+ provenance + governance + dependencies。
 
+pub mod auth;
 pub mod dataset;
 pub mod dependency;
 pub mod entry;
@@ -15,6 +16,8 @@ pub mod lifecycle;
 pub mod llm_audit;
 pub mod provenance;
 pub mod version;
+
+pub use auth::{Action, AuthAudit, Role, Tenant, TokenClaims, User, can};
 
 pub use dataset::{Meta, RuleDataset, Visibility};
 pub use dependency::{DataDependencies, InputDecl, IoContract, ServiceDecl, SourceBinding};

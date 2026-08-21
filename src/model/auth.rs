@@ -1,0 +1,134 @@
+//! 认证与用户身份数据模型（43 号 正交 A）
+//!
+//! MVP 定案（43 号 §11，2026-08-22）：
+//! - 单租户实例：每实例一个 `Tenant`，数据 SQL 层 tenant_id 隔离（多租户切换后置）；
+//! - 四角色递进：查看者 ⊆ 规则工程师 ⊆ 审批者 ⊆ 管理员；
+//! - 发布者 = 复用审批者 + 二次确认（不设独立发布者角色）；
+//! - token：access 15min / refresh 30d，HS256 单密钥（生产级换 RS256，45 号批次 1）。
+
+use serde::{Deserialize, Serialize};
+
+/// 组织租户（MVP 单租户实例：每实例一个）
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Tenant {
+    pub tenant_id: String,
+    pub name: String,
+    /// 实例真实身份（39 号 §2，白标不掩盖来源，进溯源）
+    pub instance_id: String,
+    pub created_at: String,
+}
+
+/// 组织内角色（四角色递进，43 号 §4 / 38 号 §4）
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Role {
+    /// 查看者：检索/查看/拉取（限可见数据集）
+    Viewer = 1,
+    /// 规则工程师：创建 Draft、编辑、跑沙箱、提 Candidate
+    RuleEngineer = 2,
+    /// 审批者：Candidate→Active、发布（+二次确认）
+    Approver = 3,
+    /// 管理员：租户配置、服务注册、密钥管理、成员管理
+    Admin = 4,
+}
+
+impl Role {
+    /// 从字符串解析（兼容反序列化之外的显式解析）
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "viewer" => Some(Role::Viewer),
+            "rule_engineer" => Some(Role::RuleEngineer),
+            "approver" => Some(Role::Approver),
+            "admin" => Some(Role::Admin),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Role::Viewer => "viewer",
+            Role::RuleEngineer => "rule_engineer",
+            Role::Approver => "approver",
+            Role::Admin => "admin",
+        }
+    }
+}
+
+/// 动作集（43 号 §4 动作 → 角色映射，38 号 §5）
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Action {
+    /// 检索 / 查看
+    View,
+    /// 创建 Draft / 数据集
+    Create,
+    /// 编辑条目
+    Edit,
+    /// 跑沙箱（test）
+    Test,
+    /// 审批（Candidate→Active）
+    Approve,
+    /// 发布（public，独立发布审批，复用审批者+二次确认）
+    Publish,
+    /// 管理（租户配置/成员/密钥/服务注册）
+    Admin,
+}
+
+impl Action {
+    /// 该动作所需的最低角色等级（递进模型，43 号 §4）
+    pub fn required_rank(&self) -> u8 {
+        match self {
+            Action::View => Role::Viewer as u8,
+            Action::Create | Action::Edit | Action::Test => Role::RuleEngineer as u8,
+            Action::Approve | Action::Publish => Role::Approver as u8,
+            Action::Admin => Role::Admin as u8,
+        }
+    }
+}
+
+/// 角色是否允许该动作（递进判断）
+pub fn can(role: Role, action: Action) -> bool {
+    (role as u8) >= action.required_rank()
+}
+
+/// 用户（43 号 §2）
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct User {
+    pub user_id: String,
+    pub tenant_id: String,
+    pub username: String,
+    /// PBKDF2-HMAC-SHA256 哈希（MVP；生产级 45 号换 Argon2id）
+    pub password_hash: String,
+    /// 随机盐（hex）
+    pub salt: String,
+    pub role: Role,
+    pub disabled: bool,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// 认证审计记录（43 号 §6，only-append，与 34 号共用时间线语义）
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AuthAudit {
+    pub audit_id: String,
+    /// 动作：register / login / refresh / logout / disable_user ...
+    pub action: String,
+    pub user_id: Option<String>,
+    pub tenant_id: String,
+    /// success | failure
+    pub outcome: String,
+    pub detail: Option<String>,
+    pub created_at: String,
+}
+
+/// JWT 声明（43 号 §7，HS256，MVP）
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TokenClaims {
+    pub sub: String,
+    pub tenant_id: String,
+    pub role: String,
+    #[serde(rename = "type")]
+    pub token_type: String,
+    pub iat: i64,
+    pub exp: i64,
+}
