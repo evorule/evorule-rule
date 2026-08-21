@@ -11,6 +11,7 @@
 //! 许可：AGPL-3.0-or-later（双授权模式 = AGPL + 商业，合规底线，不可白标掩盖）
 
 pub mod bundle;
+pub mod llm_client;
 pub mod model;
 pub mod resolve;
 pub mod store;
@@ -24,6 +25,7 @@ pub use model::dataset::RuleDataset;
 pub use model::entry::RuleEntry;
 pub use model::lifecycle::LifecycleStatus;
 pub use model::provenance::Provenance;
+pub use llm_client::{LlmClient, LlmOpResponse, LlmOpRequest, LlmClientError, Operation};
 pub use resolve::{EffectiveRange, ResolveError, VersionResolver};
 pub use store::{RuleStore, StoreError};
 pub use validate::{ValidationError, Validator};
