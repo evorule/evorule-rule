@@ -21,7 +21,7 @@ pub use dependency::{DataDependencies, InputDecl, IoContract, ServiceDecl, Sourc
 pub use entry::RuleEntry;
 pub use governance::{Governance, LifecycleTimestamps, LlmGenerated};
 pub use lifecycle::{Lifecycle, LifecycleStatus, StateChange};
-pub use llm_audit::LlmOpAudit;
+pub use llm_audit::{LlmAuditFilter, LlmAuditStats, LlmOpAudit, OperationStat};
 pub use provenance::Provenance;
 pub use version::{
     BumpKind, LawRef, Version, VersionError, VersionSelection, VersionSelectionMode, Versioning,

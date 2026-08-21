@@ -12,7 +12,7 @@ use crate::bundle::{BundleError, BundleExporter, BundleTests, DatasetBundle};
 use crate::model::dataset::{RuleDataset, Visibility};
 use crate::model::entry::RuleEntry;
 use crate::model::lifecycle::{Lifecycle, LifecycleStatus, StateChange};
-use crate::model::llm_audit::LlmOpAudit;
+use crate::model::llm_audit::{LlmAuditFilter, LlmAuditStats, LlmOpAudit, OperationStat};
 use crate::model::version::{BumpKind, VersionError};
 use crate::validate::{ValidationError, Validator};
 
@@ -524,14 +524,101 @@ impl RuleStore {
         rows.next().transpose().map_err(Into::into)
     }
 
-    /// 列出审计记录（按时间倒序，limit 上限）
+    /// 列出审计记录（按时间倒序，limit 上限）——`list_llm_audits_filtered` 的便捷封装
     pub fn list_llm_audits(&self, limit: usize) -> Result<Vec<LlmOpAudit>, StoreError> {
-        let mut stmt = self.conn.prepare(
+        self.list_llm_audits_filtered(&LlmAuditFilter {
+            operation: None,
+            status: None,
+            limit,
+        })
+    }
+
+    /// 按过滤条件列出审计记录（对外展示接口，37 号 §8）
+    ///
+    /// 可按操作/状态过滤，按时间倒序，`limit` 上限；空过滤条件 = 全量倒序。
+    pub fn list_llm_audits_filtered(
+        &self,
+        filter: &LlmAuditFilter,
+    ) -> Result<Vec<LlmOpAudit>, StoreError> {
+        let mut sql = String::from(
             "SELECT request_id, operation, model, status, duration_ms, result_ref, error, created_at
-             FROM llm_op_audit ORDER BY created_at DESC LIMIT ?1",
-        )?;
-        let rows = stmt.query_map(params![limit as i64], row_to_audit)?;
+             FROM llm_op_audit WHERE 1=1",
+        );
+        let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+        if let Some(op) = &filter.operation {
+            sql.push_str(" AND operation = ?");
+            params.push(Box::new(op.clone()));
+        }
+        if let Some(status) = &filter.status {
+            sql.push_str(" AND status = ?");
+            params.push(Box::new(status.clone()));
+        }
+        sql.push_str(" ORDER BY created_at DESC LIMIT ?");
+        params.push(Box::new(filter.limit as i64));
+
+        let mut stmt = self.conn.prepare(&sql)?;
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> =
+            params.iter().map(|b| b.as_ref()).collect();
+        let rows = stmt.query_map(param_refs.as_slice(), row_to_audit)?;
         rows.collect::<Result<_, _>>().map_err(Into::into)
+    }
+
+    /// 审计统计摘要（对外展示接口，37 号 §8）
+    ///
+    /// 总条数 / 成功 / 失败 / 平均耗时，并按操作维度聚合（供报表与"LLM 每步可审计"展示）。
+    pub fn llm_audit_stats(&self) -> Result<LlmAuditStats, StoreError> {
+        let (total, completed, failed, avg) = self.conn.query_row(
+            "SELECT COUNT(*),
+                    COALESCE(SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END), 0),
+                    COALESCE(AVG(duration_ms), 0)
+             FROM llm_op_audit",
+            [],
+            |r| {
+                Ok((
+                    r.get::<_, i64>(0)?,
+                    r.get::<_, i64>(1)?,
+                    r.get::<_, i64>(2)?,
+                    r.get::<_, f64>(3)?,
+                ))
+            },
+        )?;
+
+        let mut stmt = self.conn.prepare(
+            "SELECT operation, COUNT(*),
+                    COALESCE(SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END), 0),
+                    COALESCE(AVG(duration_ms), 0)
+             FROM llm_op_audit GROUP BY operation",
+        )?;
+        let rows = stmt.query_map([], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, i64>(1)?,
+                r.get::<_, i64>(2)?,
+                r.get::<_, f64>(3)?,
+            ))
+        })?;
+        let mut by_operation = std::collections::BTreeMap::new();
+        for row in rows {
+            let (op, count, completed_op, avg_op) = row?;
+            by_operation.insert(
+                op,
+                OperationStat {
+                    count: count as u64,
+                    completed: completed_op as u64,
+                    failed: count as u64 - completed_op as u64,
+                    avg_duration_ms: avg_op as u64,
+                },
+            );
+        }
+
+        Ok(LlmAuditStats {
+            total: total as u64,
+            completed: completed as u64,
+            failed: failed as u64,
+            avg_duration_ms: avg as u64,
+            by_operation,
+        })
     }
 
     /// 更新草稿条目内容（frozen 拒绝原地修改，§9-2 快照模式）
@@ -1154,5 +1241,153 @@ mod tests {
         let limited = store.list_llm_audits(2).unwrap();
         assert_eq!(limited.len(), 2);
         assert_eq!(limited[0].request_id, "req-4");
+    }
+
+    #[test]
+    fn test_llm_audit_filter_by_operation_and_status() {
+        let store = RuleStore::in_memory().unwrap();
+        for i in 0..3 {
+            store
+                .record_llm_audit(&LlmOpAudit {
+                    request_id: format!("d-{}", i),
+                    operation: "draft_rule".into(),
+                    model: None,
+                    status: "completed".into(),
+                    duration_ms: i * 10,
+                    result_ref: None,
+                    error: None,
+                    created_at: format!("2026-08-22T10:00:0{}Z", i),
+                })
+                .unwrap();
+        }
+        store
+            .record_llm_audit(&LlmOpAudit {
+                request_id: "g-1".into(),
+                operation: "gen_tests".into(),
+                model: None,
+                status: "failed".into(),
+                duration_ms: 5,
+                result_ref: None,
+                error: Some("boom".into()),
+                created_at: "2026-08-22T10:00:09Z".into(),
+            })
+            .unwrap();
+
+        // 按 operation 过滤
+        let drafts = store
+            .list_llm_audits_filtered(&LlmAuditFilter {
+                operation: Some("draft_rule".into()),
+                status: None,
+                limit: 100,
+            })
+            .unwrap();
+        assert_eq!(drafts.len(), 3);
+        assert!(drafts.iter().all(|a| a.operation == "draft_rule"));
+
+        // 按 status 过滤
+        let failed = store
+            .list_llm_audits_filtered(&LlmAuditFilter {
+                operation: None,
+                status: Some("failed".into()),
+                limit: 100,
+            })
+            .unwrap();
+        assert_eq!(failed.len(), 1);
+        assert_eq!(failed[0].request_id, "g-1");
+
+        // 组合过滤（无匹配）
+        let none = store
+            .list_llm_audits_filtered(&LlmAuditFilter {
+                operation: Some("gen_tests".into()),
+                status: Some("completed".into()),
+                limit: 100,
+            })
+            .unwrap();
+        assert!(none.is_empty());
+
+        // limit 生效
+        let one = store
+            .list_llm_audits_filtered(&LlmAuditFilter {
+                operation: Some("draft_rule".into()),
+                status: None,
+                limit: 1,
+            })
+            .unwrap();
+        assert_eq!(one.len(), 1);
+    }
+
+    #[test]
+    fn test_llm_audit_stats_aggregation() {
+        let store = RuleStore::in_memory().unwrap();
+        // draft_rule: 3 成功（耗时 10/20/30）+ 1 失败（50）
+        for (id, ms) in [("d1", 10), ("d2", 20), ("d3", 30)] {
+            store
+                .record_llm_audit(&LlmOpAudit {
+                    request_id: id.into(),
+                    operation: "draft_rule".into(),
+                    model: None,
+                    status: "completed".into(),
+                    duration_ms: ms,
+                    result_ref: None,
+                    error: None,
+                    created_at: "2026-08-22T10:00:00Z".into(),
+                })
+                .unwrap();
+        }
+        store
+            .record_llm_audit(&LlmOpAudit {
+                request_id: "d4".into(),
+                operation: "draft_rule".into(),
+                model: None,
+                status: "failed".into(),
+                duration_ms: 50,
+                result_ref: None,
+                error: Some("boom".into()),
+                created_at: "2026-08-22T10:00:00Z".into(),
+            })
+            .unwrap();
+        // gen_tests: 1 成功（耗时 100）
+        store
+            .record_llm_audit(&LlmOpAudit {
+                request_id: "g1".into(),
+                operation: "gen_tests".into(),
+                model: None,
+                status: "completed".into(),
+                duration_ms: 100,
+                result_ref: None,
+                error: None,
+                created_at: "2026-08-22T10:00:00Z".into(),
+            })
+            .unwrap();
+
+        let stats = store.llm_audit_stats().unwrap();
+        assert_eq!(stats.total, 5);
+        assert_eq!(stats.completed, 4);
+        assert_eq!(stats.failed, 1);
+        // 平均耗时 = (10+20+30+50+100)/5 = 210/5 = 42
+        assert_eq!(stats.avg_duration_ms, 42);
+
+        let draft = stats.by_operation.get("draft_rule").unwrap();
+        assert_eq!(draft.count, 4);
+        assert_eq!(draft.completed, 3);
+        assert_eq!(draft.failed, 1);
+        // draft 平均 = (10+20+30+50)/4 = 110/4 = 27.5 → 27
+        assert_eq!(draft.avg_duration_ms, 27);
+        let gen = stats.by_operation.get("gen_tests").unwrap();
+        assert_eq!(gen.count, 1);
+        assert_eq!(gen.completed, 1);
+        assert_eq!(gen.failed, 0);
+        assert_eq!(gen.avg_duration_ms, 100);
+    }
+
+    #[test]
+    fn test_llm_audit_stats_empty() {
+        let store = RuleStore::in_memory().unwrap();
+        let stats = store.llm_audit_stats().unwrap();
+        assert_eq!(stats.total, 0);
+        assert_eq!(stats.completed, 0);
+        assert_eq!(stats.failed, 0);
+        assert_eq!(stats.avg_duration_ms, 0);
+        assert!(stats.by_operation.is_empty());
     }
 }

@@ -24,7 +24,7 @@ pub use bundle::{
 pub use model::dataset::RuleDataset;
 pub use model::entry::RuleEntry;
 pub use model::lifecycle::LifecycleStatus;
-pub use model::llm_audit::LlmOpAudit;
+pub use model::llm_audit::{LlmAuditFilter, LlmAuditStats, LlmOpAudit, OperationStat};
 pub use model::provenance::Provenance;
 pub use llm_client::{LlmClient, LlmOpResponse, LlmOpRequest, LlmClientError, Operation};
 pub use resolve::{EffectiveRange, ResolveError, VersionResolver};

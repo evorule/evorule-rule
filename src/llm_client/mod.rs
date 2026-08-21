@@ -580,6 +580,5 @@ mod tests {
         assert_eq!(got.status, "completed");
         assert_eq!(got.operation, "draft_rule");
         assert_eq!(got.result_ref.as_deref(), Some("ds-tax/smoke-rule-01"));
-        assert!(got.duration_ms >= 0);
     }
 }
