@@ -531,4 +531,55 @@ mod tests {
         assert_eq!(got.operation, "draft_rule");
         assert_eq!(got.result_ref.as_deref(), Some("entry-1"));
     }
+
+    /// 真实 HTTP 冒烟（方案 B）：连本地 evo-agent serve（mock LLM 模式）验证跨仓契约。
+    ///
+    /// 前置：`evo-agent serve` 已启动且设置了 `EVO_AGENT_LLM_MOCK_CONTENT`。
+    /// 运行：`cargo test -- --ignored test_live_`（默认跳过，避免 CI 无 serve 环境失败）。
+    /// base_url 可用 `EVO_AGENT_TEST_BASE_URL` 覆盖（默认 127.0.0.1:8082）。
+    fn live_base_url() -> String {
+        std::env::var("EVO_AGENT_TEST_BASE_URL").unwrap_or_else(|_| "http://127.0.0.1:8082".into())
+    }
+
+    #[test]
+    #[ignore = "需要本地 evo-agent serve（mock 模式）"]
+    fn test_call_live_http() {
+        let client = LlmClient::new(&live_base_url());
+        let req = LlmOpRequest {
+            model: Some("deepseek-v4".into()),
+            request_id: Some("smoke-1".into()),
+            params: json!({"law_text": "x", "domain": "tax"}),
+        };
+        let resp = client.call(Operation::DraftRule, &req).unwrap();
+        assert_eq!(resp.status, "completed");
+        assert_eq!(resp.operation, "draft_rule");
+        assert!(resp.result.get("rule").is_some(), "draft_rule 应产出 rule");
+        assert_eq!(
+            resp.llm_generated.get("model").and_then(|m| m.as_str()),
+            Some("deepseek-v4")
+        );
+        assert!(resp.errors.is_none());
+    }
+
+    #[test]
+    #[ignore = "需要本地 evo-agent serve（mock 模式）"]
+    fn test_call_audited_live_records_audit() {
+        let client = LlmClient::new(&live_base_url());
+        let store = RuleStore::in_memory().unwrap();
+        let req = LlmOpRequest {
+            model: Some("deepseek-v4".into()),
+            request_id: Some("smoke-audit-1".into()),
+            params: json!({"law_text": "x", "domain": "tax"}),
+        };
+        let resp = client
+            .call_audited(&store, Operation::DraftRule, &req, Some("ds-tax/smoke-rule-01"))
+            .unwrap();
+        assert_eq!(resp.status, "completed");
+        // 审计已落库（completed + result_ref 溯源到条目）
+        let got = store.get_llm_audit("smoke-audit-1").unwrap().unwrap();
+        assert_eq!(got.status, "completed");
+        assert_eq!(got.operation, "draft_rule");
+        assert_eq!(got.result_ref.as_deref(), Some("ds-tax/smoke-rule-01"));
+        assert!(got.duration_ms >= 0);
+    }
 }
