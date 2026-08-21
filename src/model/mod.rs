@@ -20,7 +20,10 @@ pub mod version;
 pub use auth::{Action, ApiKey, AuthAudit, Role, Tenant, TokenClaims, User, can};
 
 pub use dataset::{Meta, RuleDataset, Visibility};
-pub use dependency::{DataDependencies, InputDecl, IoContract, ServiceDecl, SourceBinding};
+pub use dependency::{
+    DataDependencies, InputDecl, IoContract, ServiceDecl, ServiceTemplate, ServiceTemplateRecord,
+    SourceBinding,
+};
 pub use entry::RuleEntry;
 pub use governance::{Governance, LifecycleTimestamps, LlmGenerated};
 pub use lifecycle::{Lifecycle, LifecycleStatus, StateChange};

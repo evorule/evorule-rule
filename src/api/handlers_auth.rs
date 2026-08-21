@@ -151,6 +151,18 @@ pub async fn audits(
     Ok(Json(audits))
 }
 
+/// 生命周期审计列表（44 号 §11 `GET /audits/lifecycle`，admin；34 号 state_history 扁平输出）
+pub async fn lifecycle_audits(
+    State(state): State<AppState>,
+    Extension(ctx): Extension<AuthContext>,
+) -> Result<Json<Vec<serde_json::Value>>, ApiError> {
+    if ctx.role != Role::Admin {
+        return Err(ApiError::forbidden("仅管理员可查看生命周期审计"));
+    }
+    let audits = state.store.list_lifecycle_audits(&ctx.tenant_id)?;
+    Ok(Json(audits))
+}
+
 /// 时间辅助（供其他 handler 复用统一时区语义）
 pub fn now_iso() -> String {
     iso_from_unix(unix_now())

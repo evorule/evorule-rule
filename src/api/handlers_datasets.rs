@@ -14,6 +14,7 @@ use crate::model::dataset::{Meta, RuleDataset, Visibility};
 use crate::model::entry::RuleEntry;
 use crate::model::lifecycle::LifecycleStatus;
 use crate::model::provenance::Provenance;
+use crate::model::version::{BumpKind, Versioning};
 
 // ----------------------------------------------------------------------
 // 数据集
@@ -150,6 +151,224 @@ pub async fn publish(
     state
         .store
         .publish_dataset(&id, &ctx.user_id, &at, &state.instance_id)?;
+    let ds = state
+        .store
+        .get_dataset(&id)?
+        .ok_or_else(|| ApiError::not_found("数据集不存在"))?;
+    Ok(Json(ds))
+}
+
+// ----------------------------------------------------------------------
+// 数据集元数据 / 版本 / 撤销发布（44 号 §4 补全）
+// ----------------------------------------------------------------------
+
+#[derive(Deserialize)]
+pub struct PatchDatasetReq {
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub domain: Option<Vec<String>>,
+    #[serde(default)]
+    pub tags: Option<Vec<String>>,
+    #[serde(default)]
+    pub visibility: Option<Visibility>,
+}
+
+/// PATCH /datasets/{id} —— 更新元数据（域/描述/标签/可见性；版本链/生命周期/依赖由专用端点管理）
+pub async fn update_dataset_meta(
+    State(state): State<AppState>,
+    Extension(ctx): Extension<AuthContext>,
+    Path(id): Path<String>,
+    Json(req): Json<PatchDatasetReq>,
+) -> Result<Json<RuleDataset>, ApiError> {
+    if !can(ctx.role, Action::Edit) {
+        return Err(ApiError::forbidden("需要规则工程师及以上角色"));
+    }
+    let mut ds = state
+        .store
+        .get_dataset(&id)?
+        .ok_or_else(|| ApiError::not_found("数据集不存在"))?;
+    if ds.tenant_id != ctx.tenant_id {
+        return Err(ApiError::not_found("数据集不存在"));
+    }
+    if let Some(n) = req.name {
+        ds.name = n;
+    }
+    if let Some(d) = req.description {
+        ds.description = Some(d);
+    }
+    if let Some(d) = req.domain {
+        ds.domain = d;
+    }
+    if let Some(t) = req.tags {
+        ds.tags = t;
+    }
+    if let Some(v) = req.visibility {
+        ds.visibility = v;
+    }
+    let at = iso_from_unix(unix_now());
+    ds.meta.updated_at = Some(at);
+    ds.meta.updated_by = Some(ctx.user_id.clone());
+    state.store.update_dataset(&ds)?;
+    Ok(Json(ds))
+}
+
+/// DELETE /datasets/{id} —— 删除数据集（仅 Draft/Rejected，admin）
+pub async fn delete_dataset_meta(
+    State(state): State<AppState>,
+    Extension(ctx): Extension<AuthContext>,
+    Path(id): Path<String>,
+) -> Result<StatusCode, ApiError> {
+    if ctx.role != Role::Admin {
+        return Err(ApiError::forbidden("删除数据集需管理员角色"));
+    }
+    state.store.delete_dataset(&id)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// GET /datasets/{id}/versions —— 版本链（33 号）
+pub async fn list_versions(
+    State(state): State<AppState>,
+    Extension(ctx): Extension<AuthContext>,
+    Path(id): Path<String>,
+) -> Result<Json<Versioning>, ApiError> {
+    if !can(ctx.role, Action::View) {
+        return Err(ApiError::forbidden("无查看权限"));
+    }
+    let ds = state
+        .store
+        .get_dataset(&id)?
+        .ok_or_else(|| ApiError::not_found("数据集不存在"))?;
+    if ds.tenant_id != ctx.tenant_id {
+        return Err(ApiError::not_found("数据集不存在"));
+    }
+    Ok(Json(state.store.list_dataset_versions(&id)?))
+}
+
+/// GET /datasets/{id}/versions/{ver} —— 版本详情（MVP 仅当前版本有内容快照，诚实标注）
+pub async fn get_version(
+    State(state): State<AppState>,
+    Extension(ctx): Extension<AuthContext>,
+    Path((id, ver)): Path<(String, String)>,
+) -> Result<Json<Value>, ApiError> {
+    if !can(ctx.role, Action::View) {
+        return Err(ApiError::forbidden("无查看权限"));
+    }
+    let ds = state
+        .store
+        .get_dataset(&id)?
+        .ok_or_else(|| ApiError::not_found("数据集不存在"))?;
+    if ds.tenant_id != ctx.tenant_id {
+        return Err(ApiError::not_found("数据集不存在"));
+    }
+    if !ds.versioning.chain.iter().any(|v| v == &ver) {
+        return Err(ApiError::not_found(format!("版本 `{ver}` 不在版本链中")));
+    }
+    let content_available = ds.versioning.current == ver;
+    Ok(Json(serde_json::json!({
+        "dataset_id": id,
+        "version": ver,
+        "current": ds.versioning.current,
+        "chain": ds.versioning.chain,
+        "content_available": content_available,
+        "note": if content_available {
+            "当前版本，条目内容见 GET /datasets/{id}/entries"
+        } else {
+            "MVP 仅存当前版本条目内容；历史版本内容待批次 1 快照落库"
+        }
+    })))
+}
+
+#[derive(Deserialize)]
+pub struct NewVersionReq {
+    /// major（法规条款级升版）| patch（内部小改）
+    pub kind: String,
+}
+
+/// POST /datasets/{id}/versions —— 创建新版本（决策点③ 两级变更线）
+pub async fn create_version(
+    State(state): State<AppState>,
+    Extension(ctx): Extension<AuthContext>,
+    Path(id): Path<String>,
+    Json(req): Json<NewVersionReq>,
+) -> Result<Json<Value>, ApiError> {
+    if !can(ctx.role, Action::Edit) {
+        return Err(ApiError::forbidden("需要规则工程师及以上角色"));
+    }
+    let kind = match req.kind.as_str() {
+        "major" => BumpKind::Major,
+        "patch" => BumpKind::Patch,
+        other => return Err(ApiError::bad_request(format!("非法变更线: {other}（major|patch）"))),
+    };
+    let new_version = state.store.create_dataset_version(
+        &id,
+        kind,
+        &ctx.user_id,
+        &iso_from_unix(unix_now()),
+    )?;
+    let v = state.store.list_dataset_versions(&id)?;
+    Ok(Json(serde_json::json!({
+        "dataset_id": id,
+        "new_version": new_version,
+        "current": v.current,
+        "chain": v.chain,
+    })))
+}
+
+/// POST /datasets/{id}/versions/{ver}/patch —— 对指定版本创建 Patch（内部小改，33 号）
+///
+/// MVP 仅当前版本可补丁（历史版本内容未落库），非当前版本 → 显式拒绝不伪造。
+pub async fn create_patch(
+    State(state): State<AppState>,
+    Extension(ctx): Extension<AuthContext>,
+    Path((id, ver)): Path<(String, String)>,
+) -> Result<Json<Value>, ApiError> {
+    if !can(ctx.role, Action::Edit) {
+        return Err(ApiError::forbidden("需要规则工程师及以上角色"));
+    }
+    let ds = state
+        .store
+        .get_dataset(&id)?
+        .ok_or_else(|| ApiError::not_found("数据集不存在"))?;
+    if ds.tenant_id != ctx.tenant_id {
+        return Err(ApiError::not_found("数据集不存在"));
+    }
+    if ds.versioning.current != ver {
+        return Err(ApiError::bad_request(format!(
+            "仅当前版本 `{}` 可创建 Patch（历史版本内容 MVP 未落库）；请求版本 `{ver}`",
+            ds.versioning.current
+        )));
+    }
+    let new_version = state.store.create_dataset_version(
+        &id,
+        BumpKind::Patch,
+        &ctx.user_id,
+        &iso_from_unix(unix_now()),
+    )?;
+    let v = state.store.list_dataset_versions(&id)?;
+    Ok(Json(serde_json::json!({
+        "dataset_id": id,
+        "base_version": ver,
+        "new_version": new_version,
+        "current": v.current,
+        "chain": v.chain,
+    })))
+}
+
+/// POST /datasets/{id}/unpublish —— 撤销发布（Published → Active，admin）
+pub async fn unpublish(
+    State(state): State<AppState>,
+    Extension(ctx): Extension<AuthContext>,
+    Path(id): Path<String>,
+) -> Result<Json<RuleDataset>, ApiError> {
+    if ctx.role != Role::Admin {
+        return Err(ApiError::forbidden("撤销发布需管理员角色"));
+    }
+    state
+        .store
+        .unpublish_dataset(&id, &ctx.user_id, &iso_from_unix(unix_now()))?;
     let ds = state
         .store
         .get_dataset(&id)?

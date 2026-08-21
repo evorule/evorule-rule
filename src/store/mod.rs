@@ -5,16 +5,18 @@
 //! - 索引：domain/tags（检索）、entry_id+version（版本链查询）、tenant_id+visibility（多租户，⑧）；
 //! - 约束：唯一性、不可变性（frozen 拒绝原地修改）、符号三方一致（导入/提交时校验，显式报错）。
 
-use rusqlite::{Connection, params};
+use rusqlite::{params, Connection, OptionalExtension};
 use thiserror::Error;
 
-use crate::bundle::{BundleError, BundleExporter, BundleTests, DatasetBundle};
+use crate::bundle::{BundleError, BundleExporter, BundleImporter, BundleTests, DatasetBundle, ImportResult};
 use crate::model::auth::{ApiKey, AuthAudit, Role, Tenant, User};
-use crate::model::dataset::{RuleDataset, Visibility};
+use crate::model::dataset::{Meta, RuleDataset, Visibility};
+use crate::model::dependency::{DataDependencies, ServiceTemplateRecord};
 use crate::model::entry::RuleEntry;
+use crate::model::governance::Governance;
 use crate::model::lifecycle::{Lifecycle, LifecycleStatus, StateChange};
 use crate::model::llm_audit::{LlmAuditFilter, LlmAuditStats, LlmOpAudit, OperationStat};
-use crate::model::version::{BumpKind, VersionError};
+use crate::model::version::{BumpKind, VersionError, Versioning};
 use crate::validate::{ValidationError, Validator};
 
 /// 存储错误
@@ -47,6 +49,21 @@ pub enum StoreError {
     #[error("条目 `{dataset}/{entry}` 已冻结（Active/Published），不可原地修改")]
     EntryFrozen { dataset: String, entry: String },
 
+    #[error("条目 `{dataset}/{entry}` 不存在")]
+    EntryNotFound { dataset: String, entry: String },
+
+    #[error("服务模板 `{0}` 不存在")]
+    TemplateNotFound(String),
+
+    #[error("数据集 `{dataset}` 当前状态 `{status:?}` 不可删除（仅 Draft/Rejected）")]
+    DatasetNotDeletable { dataset: String, status: LifecycleStatus },
+
+    #[error("条目 `{dataset}/{entry}` 当前状态 `{status:?}` 不可删除（仅 Draft）")]
+    EntryNotDeletable { dataset: String, entry: String, status: Option<LifecycleStatus> },
+
+    #[error("版本 diff 区间非法: from=`{from}` to=`{to}`（需均存在于版本链且 from 先于 to）")]
+    InvalidDiffRange { from: String, to: String },
+
     #[error("非法状态迁移: {from:?} → {to:?}")]
     IllegalTransition { from: Option<LifecycleStatus>, to: LifecycleStatus },
 
@@ -68,6 +85,21 @@ pub struct RuleStore {
     /// rusqlite `Connection` 为 Send 但非 Sync，axum 跨线程共享需 `Mutex` 包裹
     conn: std::sync::Mutex<Connection>,
 }
+
+/// service_templates 行原始列（rusqlite 闭包只读原始列，JSON 反序列化移到闭包外）
+type ServiceTemplateRow = (
+    String,        // template_id
+    String,        // tenant_id
+    String,        // service_name
+    String,        // kind
+    String,        // io_contract (JSON)
+    String,        // endpoint_template
+    Option<String>, // method
+    String,        // headers_template (JSON)
+    String,        // placeholder_notes (JSON)
+    String,        // created_at
+    String,        // created_by
+);
 
 impl RuleStore {
     /// 打开（或创建）数据库文件
@@ -191,6 +223,41 @@ impl RuleStore {
                 FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id)
             );
             CREATE INDEX IF NOT EXISTS idx_api_keys_tenant ON api_keys(tenant_id, revoked_at);
+
+            -- 44 号 §5：条目级状态迁移审计（only-append，`GET /entries/{id}/history`）
+            CREATE TABLE IF NOT EXISTS entry_state_history (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                dataset_id TEXT NOT NULL,
+                entry_id   TEXT NOT NULL,
+                version    INTEGER NOT NULL,
+                from_state TEXT,
+                to_state   TEXT NOT NULL,
+                at         TEXT NOT NULL,
+                by         TEXT NOT NULL,
+                cause      TEXT NOT NULL,
+                FOREIGN KEY (dataset_id, entry_id, version)
+                    REFERENCES entries(dataset_id, entry_id, version)
+            );
+            CREATE INDEX IF NOT EXISTS idx_esh_entry
+                ON entry_state_history(dataset_id, entry_id, version);
+
+            -- 44 号 §7：无凭据服务模板注册（35 号 §5）
+            CREATE TABLE IF NOT EXISTS service_templates (
+                template_id       TEXT PRIMARY KEY,
+                tenant_id         TEXT NOT NULL,
+                service_name      TEXT NOT NULL,
+                kind              TEXT NOT NULL,           -- pull | push
+                io_contract       TEXT NOT NULL,           -- JSON
+                endpoint_template TEXT NOT NULL,
+                method            TEXT,
+                headers_template  TEXT NOT NULL DEFAULT '{}',
+                placeholder_notes TEXT NOT NULL DEFAULT '{}',
+                created_at        TEXT NOT NULL,
+                created_by        TEXT NOT NULL,
+                FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_templates_tenant
+                ON service_templates(tenant_id, service_name);
             "#,
         )?;
         // 轻量迁移：若旧库 entries 表缺 35 号新增的 consumed_inputs 列，则补齐
@@ -303,6 +370,91 @@ impl RuleStore {
                 .transpose()?,
             meta: serde_json::from_str(&meta)?,
         }))
+    }
+
+    /// 整行更新数据集（PATCH：取→改→落库；版本链/生命周期由专用方法管理，不在此改）
+    pub fn update_dataset(&self, ds: &RuleDataset) -> Result<(), StoreError> {
+        let conn = self.conn.lock().unwrap();
+        let n = conn.execute(
+            "UPDATE datasets SET name=?1, description=?2, domain=?3, tags=?4, visibility=?5,
+                    lifecycle=?6, versioning=?7, law_ref=?8, version_selection=?9,
+                    data_dependencies=?10, meta=?11
+             WHERE dataset_id=?12",
+            params![
+                ds.name,
+                ds.description,
+                serde_json::to_string(&ds.domain)?,
+                serde_json::to_string(&ds.tags)?,
+                serde_json::to_string(&ds.visibility)?,
+                serde_json::to_string(&ds.lifecycle)?,
+                serde_json::to_string(&ds.versioning)?,
+                // Option 列：None 写 NULL，避免把 "null" 字符串存进 TEXT 列（读回时无法反序列化）
+                ds.law_ref.as_ref().map(serde_json::to_string).transpose()?,
+                ds.version_selection
+                    .as_ref()
+                    .map(serde_json::to_string)
+                    .transpose()?,
+                ds.data_dependencies
+                    .as_ref()
+                    .map(serde_json::to_string)
+                    .transpose()?,
+                serde_json::to_string(&ds.meta)?,
+                ds.dataset_id,
+            ],
+        )?;
+        if n == 0 {
+            return Err(StoreError::DatasetNotFound(ds.dataset_id.clone()));
+        }
+        Ok(())
+    }
+
+    /// 删除数据集（44 号 §4：仅 Draft/Rejected 态，admin 权限由 handler 把关）
+    pub fn delete_dataset(&self, dataset_id: &str) -> Result<(), StoreError> {
+        let ds = self
+            .get_dataset(dataset_id)?
+            .ok_or_else(|| StoreError::DatasetNotFound(dataset_id.into()))?;
+        let status = ds.lifecycle.status;
+        if !matches!(status, LifecycleStatus::Draft | LifecycleStatus::Rejected) {
+            return Err(StoreError::DatasetNotDeletable {
+                dataset: dataset_id.into(),
+                status,
+            });
+        }
+        let conn = self.conn.lock().unwrap();
+        // 外键依赖顺序：entry_state_history → entries → datasets
+        conn.execute(
+            "DELETE FROM entry_state_history WHERE dataset_id=?1",
+            params![dataset_id],
+        )?;
+        conn.execute("DELETE FROM entries WHERE dataset_id=?1", params![dataset_id])?;
+        conn.execute("DELETE FROM datasets WHERE dataset_id=?1", params![dataset_id])?;
+        Ok(())
+    }
+
+    /// 数据集版本链（44 号 §4 `GET /datasets/{id}/versions`）
+    pub fn list_dataset_versions(&self, dataset_id: &str) -> Result<Versioning, StoreError> {
+        Ok(self
+            .get_dataset(dataset_id)?
+            .ok_or_else(|| StoreError::DatasetNotFound(dataset_id.into()))?
+            .versioning)
+    }
+
+    /// 全部数据集（搜索/审计用；不含租户过滤，由调用方按双条件筛）
+    fn list_all_datasets(&self) -> Result<Vec<RuleDataset>, StoreError> {
+        let ids: Vec<String> = {
+            let conn = self.conn.lock().unwrap();
+            let ids = conn
+                .prepare("SELECT dataset_id FROM datasets ORDER BY dataset_id")?
+                .query_map([], |r| r.get::<_, String>(0))?
+                .collect::<Result<_, _>>()?;
+            ids
+        };
+        ids.into_iter()
+            .map(|id| {
+                self.get_dataset(&id)?
+                    .ok_or_else(|| StoreError::DatasetNotFound(id.clone()))
+            })
+            .collect()
     }
 
     /// 按租户列出数据集
@@ -829,6 +981,42 @@ impl RuleStore {
         Ok(())
     }
 
+    /// 撤销发布（44 号 §4 `POST /datasets/{id}/unpublish`，admin 权限由 handler 把关）：
+    /// `Published → Active`，state_history 留痕（34 号 §2；撤销同样走审计）。
+    pub fn unpublish_dataset(&self, dataset_id: &str, by: &str, at: &str) -> Result<(), StoreError> {
+        let Some(mut ds) = self.get_dataset(dataset_id)? else {
+            return Err(StoreError::DatasetNotFound(dataset_id.into()));
+        };
+        let prev = ds.lifecycle.status;
+        if prev != LifecycleStatus::Published {
+            return Err(StoreError::IllegalTransition {
+                from: Some(prev),
+                to: LifecycleStatus::Active,
+            });
+        }
+        ds.lifecycle.status = LifecycleStatus::Active;
+        ds.lifecycle.state_history.push(StateChange {
+            from: format!("{:?}", prev),
+            to: format!("{:?}", LifecycleStatus::Active),
+            at: at.into(),
+            by: by.into(),
+            cause: "撤销发布（独立审批记录在案）".into(),
+            published_as: None,
+        });
+        ds.meta.updated_at = Some(at.into());
+        ds.meta.updated_by = Some(by.into());
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "UPDATE datasets SET lifecycle=?1, meta=?2 WHERE dataset_id=?3",
+            params![
+                serde_json::to_string(&ds.lifecycle)?,
+                serde_json::to_string(&ds.meta)?,
+                dataset_id,
+            ],
+        )?;
+        Ok(())
+    }
+
     /// 对外可拉取判定（34 号 §3 双条件）：`visibility=public` AND `status=Published`。
     /// 防"内部激活即被外部拉到"；不存在返回 false。
     pub fn is_publicly_pullable(&self, dataset_id: &str) -> Result<bool, StoreError> {
@@ -857,6 +1045,613 @@ impl RuleStore {
             .ok_or_else(|| StoreError::DatasetNotFound(dataset_id.into()))?;
         let entries = self.list_entries(dataset_id, None)?;
         Ok(BundleExporter::export(&ds, &entries, tests, by, at, instance_id))
+    }
+
+    // ------------------------------------------------------------------
+    // 条目级状态机与审计（44 号 §5）
+    // ------------------------------------------------------------------
+
+    /// 删除条目（44 号 §5：仅 Draft 态，engineer 权限由 handler 把关）
+    pub fn delete_entry(&self, dataset_id: &str, entry_id: &str) -> Result<(), StoreError> {
+        let Some(entry) = self.get_latest_entry(dataset_id, entry_id)? else {
+            return Err(StoreError::EntryNotFound {
+                dataset: dataset_id.into(),
+                entry: entry_id.into(),
+            });
+        };
+        if entry.status.unwrap_or(LifecycleStatus::Active) != LifecycleStatus::Draft {
+            return Err(StoreError::EntryNotDeletable {
+                dataset: dataset_id.into(),
+                entry: entry_id.into(),
+                status: entry.status,
+            });
+        }
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "DELETE FROM entry_state_history WHERE dataset_id=?1 AND entry_id=?2",
+            params![dataset_id, entry_id],
+        )?;
+        conn.execute(
+            "DELETE FROM entries WHERE dataset_id=?1 AND entry_id=?2",
+            params![dataset_id, entry_id],
+        )?;
+        Ok(())
+    }
+
+    /// 条目级状态迁移（44 号 §5）：Draft→Candidate（闸门一）/ Candidate→Active（闸门二）/
+    /// Candidate|Draft→Rejected。只增不改 `entry_state_history`（审计即记忆）。
+    pub fn transition_entry_status(
+        &self,
+        dataset_id: &str,
+        entry_id: &str,
+        to: LifecycleStatus,
+        by: &str,
+        at: &str,
+        cause: &str,
+    ) -> Result<(), StoreError> {
+        let Some(mut entry) = self.get_latest_entry(dataset_id, entry_id)? else {
+            return Err(StoreError::EntryNotFound {
+                dataset: dataset_id.into(),
+                entry: entry_id.into(),
+            });
+        };
+        let from = entry.status.unwrap_or(LifecycleStatus::Active);
+        let valid = matches!(
+            (from, to),
+            (LifecycleStatus::Draft, LifecycleStatus::Candidate)
+                | (LifecycleStatus::Candidate, LifecycleStatus::Active)
+                | (LifecycleStatus::Candidate, LifecycleStatus::Rejected)
+                | (LifecycleStatus::Draft, LifecycleStatus::Rejected)
+        );
+        if !valid {
+            return Err(StoreError::IllegalTransition {
+                from: Some(from),
+                to,
+            });
+        }
+        entry.status = Some(to);
+        // 治理时间戳（31 号 §4 lifecycle_timestamps）
+        let mut gov = entry.governance.clone().unwrap_or_default();
+        let mut ts = gov.lifecycle_timestamps.clone().unwrap_or_default();
+        match to {
+            LifecycleStatus::Candidate => ts.candidate_at = Some(at.into()),
+            LifecycleStatus::Active => ts.active_at = Some(at.into()),
+            _ => {}
+        }
+        gov.lifecycle_timestamps = Some(ts);
+        entry.governance = Some(gov);
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "UPDATE entries SET status=?1, governance=?2
+             WHERE dataset_id=?3 AND entry_id=?4 AND version=?5",
+            params![
+                serde_json::to_string(&entry.status)?,
+                serde_json::to_string(&entry.governance)?,
+                dataset_id,
+                entry_id,
+                entry.version,
+            ],
+        )?;
+        conn.execute(
+            "INSERT INTO entry_state_history
+                (dataset_id, entry_id, version, from_state, to_state, at, by, cause)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![
+                dataset_id,
+                entry_id,
+                entry.version,
+                format!("{:?}", from),
+                format!("{:?}", to),
+                at,
+                by,
+                cause,
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// 条目状态迁移历史（44 号 §5 `GET /entries/{id}/history`，only-append 只读）
+    pub fn get_entry_state_history(
+        &self,
+        dataset_id: &str,
+        entry_id: &str,
+    ) -> Result<Vec<StateChange>, StoreError> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT from_state, to_state, at, by, cause FROM entry_state_history
+             WHERE dataset_id=?1 AND entry_id=?2 ORDER BY id",
+        )?;
+        let rows = stmt.query_map(params![dataset_id, entry_id], |r| {
+            Ok(StateChange {
+                from: r.get::<_, Option<String>>(0)?.unwrap_or_default(),
+                to: r.get(1)?,
+                at: r.get(2)?,
+                by: r.get(3)?,
+                cause: r.get(4)?,
+                published_as: None,
+            })
+        })?;
+        rows.collect::<Result<_, _>>().map_err(Into::into)
+    }
+
+    /// 租户内定位条目（44 号 §5 顶层 `/entries/{id}` 路由用；entry_id 仅数据集内唯一，
+    /// 故在租户各数据集最新版中查找首个匹配）
+    pub fn find_entry_in_tenant(
+        &self,
+        tenant_id: &str,
+        entry_id: &str,
+    ) -> Result<Option<(String, RuleEntry)>, StoreError> {
+        for ds in self.list_datasets(tenant_id)? {
+            if let Some(e) = self.get_latest_entry(&ds.dataset_id, entry_id)? {
+                return Ok(Some((ds.dataset_id, e)));
+            }
+        }
+        Ok(None)
+    }
+
+    // ------------------------------------------------------------------
+    // 数据依赖（44 号 §7 deps/；35 号 决策点⑤）
+    // ------------------------------------------------------------------
+
+    /// 更新数据集 data_dependencies（44 号 §7 `PUT /deps/datasets/{id}`）
+    pub fn update_dataset_deps(
+        &self,
+        dataset_id: &str,
+        deps: &DataDependencies,
+        by: &str,
+        at: &str,
+    ) -> Result<(), StoreError> {
+        let Some(mut ds) = self.get_dataset(dataset_id)? else {
+            return Err(StoreError::DatasetNotFound(dataset_id.into()));
+        };
+        ds.data_dependencies = Some(deps.clone());
+        ds.meta.updated_at = Some(at.into());
+        ds.meta.updated_by = Some(by.into());
+        self.update_dataset(&ds)
+    }
+
+    /// 注册无凭据服务模板（44 号 §7 `POST /deps/templates`，admin 权限由 handler 把关）
+    pub fn create_service_template(&self, t: &ServiceTemplateRecord) -> Result<(), StoreError> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO service_templates
+                (template_id, tenant_id, service_name, kind, io_contract, endpoint_template,
+                 method, headers_template, placeholder_notes, created_at, created_by)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            params![
+                t.template_id,
+                t.tenant_id,
+                t.service_name,
+                t.kind,
+                serde_json::to_string(&t.io_contract)?,
+                t.endpoint_template,
+                t.method,
+                serde_json::to_string(&t.headers_template)?,
+                serde_json::to_string(&t.placeholder_notes)?,
+                t.created_at,
+                t.created_by,
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// 模板详情（44 号 §7 `GET /deps/templates/{id}`）
+    pub fn get_service_template(
+        &self,
+        template_id: &str,
+    ) -> Result<Option<ServiceTemplateRecord>, StoreError> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT template_id, tenant_id, service_name, kind, io_contract, endpoint_template,
+                    method, headers_template, placeholder_notes, created_at, created_by
+             FROM service_templates WHERE template_id = ?1",
+        )?;
+        // 闭包只读原始列（rusqlite 错误域），JSON 反序列化移到闭包外（StoreError::Json）
+        let row = stmt
+            .query_row(params![template_id], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                    r.get::<_, String>(3)?,
+                    r.get::<_, String>(4)?,
+                    r.get::<_, String>(5)?,
+                    r.get::<_, Option<String>>(6)?,
+                    r.get::<_, String>(7)?,
+                    r.get::<_, String>(8)?,
+                    r.get::<_, String>(9)?,
+                    r.get::<_, String>(10)?,
+                ))
+            })
+            .optional()?;
+        let Some((
+            template_id,
+            tenant_id,
+            service_name,
+            kind,
+            io_contract,
+            endpoint_template,
+            method,
+            headers_template,
+            placeholder_notes,
+            created_at,
+            created_by,
+        )) = row
+        else {
+            return Ok(None);
+        };
+        Ok(Some(ServiceTemplateRecord {
+            template_id,
+            tenant_id,
+            service_name,
+            kind,
+            io_contract: serde_json::from_str(&io_contract)?,
+            endpoint_template,
+            method,
+            headers_template: serde_json::from_str(&headers_template)?,
+            placeholder_notes: serde_json::from_str(&placeholder_notes)?,
+            created_at,
+            created_by,
+        }))
+    }
+
+    /// 模板列表（44 号 §7 `GET /deps/templates`，租户作用域）
+    pub fn list_service_templates(
+        &self,
+        tenant_id: &str,
+    ) -> Result<Vec<ServiceTemplateRecord>, StoreError> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT template_id, tenant_id, service_name, kind, io_contract, endpoint_template,
+                    method, headers_template, placeholder_notes, created_at, created_by
+             FROM service_templates WHERE tenant_id = ?1 ORDER BY created_at DESC",
+        )?;
+        let rows = stmt.query_map(params![tenant_id], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+                r.get::<_, String>(3)?,
+                r.get::<_, String>(4)?,
+                r.get::<_, String>(5)?,
+                r.get::<_, Option<String>>(6)?,
+                r.get::<_, String>(7)?,
+                r.get::<_, String>(8)?,
+                r.get::<_, String>(9)?,
+                r.get::<_, String>(10)?,
+            ))
+        })?;
+        let raw: Vec<ServiceTemplateRow> = rows.collect::<Result<_, _>>()?;
+        raw.into_iter()
+            .map(
+                |(template_id, tenant_id, service_name, kind, io_contract, endpoint_template, method, headers_template, placeholder_notes, created_at, created_by)| {
+                    Ok(ServiceTemplateRecord {
+                        template_id,
+                        tenant_id,
+                        service_name,
+                        kind,
+                        io_contract: serde_json::from_str(&io_contract)?,
+                        endpoint_template,
+                        method,
+                        headers_template: serde_json::from_str(&headers_template)?,
+                        placeholder_notes: serde_json::from_str(&placeholder_notes)?,
+                        created_at,
+                        created_by,
+                    })
+                },
+            )
+            .collect()
+    }
+
+    // ------------------------------------------------------------------
+    // 检索（44 号 §9 search/）
+    // ------------------------------------------------------------------
+
+    /// 数据集检索（44 号 §9）：private 仅当前租户；public+Published 对所有人可见（双条件，38 号 §3）。
+    pub fn search_datasets(
+        &self,
+        tenant_id: &str,
+        domain: Option<&str>,
+        q: Option<&str>,
+        tags: &[String],
+        effective_from_after: Option<&str>,
+        visibility: Option<Visibility>,
+    ) -> Result<Vec<RuleDataset>, StoreError> {
+        let mut out: Vec<RuleDataset> = Vec::new();
+        let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+        // 1) 本租户全部可见
+        for ds in self.list_datasets(tenant_id)? {
+            if seen.insert(ds.dataset_id.clone()) {
+                out.push(ds);
+            }
+        }
+        // 2) public+Published 跨租户可检索（34 号 §3 双条件）
+        for ds in self.list_all_datasets()? {
+            if ds.visibility == Visibility::Public
+                && ds.lifecycle.status == LifecycleStatus::Published
+                && seen.insert(ds.dataset_id.clone())
+            {
+                out.push(ds);
+            }
+        }
+        let lower_q = q.map(|s| s.to_lowercase());
+        out.retain(|ds| {
+            if let Some(d) = domain {
+                if !ds.domain.iter().any(|x| x.eq_ignore_ascii_case(d)) {
+                    return false;
+                }
+            }
+            if let Some(lq) = &lower_q {
+                let hay = format!(
+                    "{} {} {}",
+                    ds.name,
+                    ds.description.as_deref().unwrap_or(""),
+                    ds.dataset_id
+                )
+                .to_lowercase();
+                if !hay.contains(lq) {
+                    return false;
+                }
+            }
+            if !tags.is_empty() && !tags.iter().any(|t| ds.tags.contains(t)) {
+                return false;
+            }
+            if let Some(after) = effective_from_after {
+                let eff = ds
+                    .law_ref
+                    .as_ref()
+                    .and_then(|l| l.effective_from.as_deref())
+                    .unwrap_or("");
+                if eff < after {
+                    return false;
+                }
+            }
+            if let Some(v) = visibility {
+                if ds.visibility != v {
+                    return false;
+                }
+            }
+            true
+        });
+        Ok(out)
+    }
+
+    /// 条目检索（44 号 §9）：租户作用域（数据端点一律以 tenant 为界，38 号）
+    pub fn search_entries(
+        &self,
+        tenant_id: &str,
+        dataset_id: Option<&str>,
+        domain: Option<&str>,
+        q: Option<&str>,
+        tags: &[String],
+        status: Option<LifecycleStatus>,
+    ) -> Result<Vec<RuleEntry>, StoreError> {
+        let mut out = Vec::new();
+        let lower_q = q.map(|s| s.to_lowercase());
+        for ds in self.list_datasets(tenant_id)? {
+            if let Some(did) = dataset_id {
+                if ds.dataset_id != did {
+                    continue;
+                }
+            }
+            for e in self.list_entries(&ds.dataset_id, None)? {
+                if let Some(d) = domain {
+                    if !e.domain.eq_ignore_ascii_case(d) {
+                        continue;
+                    }
+                }
+                if let Some(st) = status {
+                    if e.status != Some(st) {
+                        continue;
+                    }
+                }
+                if let Some(lq) = &lower_q {
+                    let hay = format!(
+                        "{} {} {} {}",
+                        e.entry_id,
+                        e.provenance.source,
+                        e.provenance.clause.as_deref().unwrap_or(""),
+                        e.rule_body
+                    )
+                    .to_lowercase();
+                    if !hay.contains(lq) {
+                        continue;
+                    }
+                }
+                if !tags.is_empty() && !tags.iter().any(|t| e.tags.contains(t)) {
+                    continue;
+                }
+                out.push(e);
+            }
+        }
+        Ok(out)
+    }
+
+    /// 版本 diff（44 号 §9 `GET /search/datasets/{id}/diff`，33 号内容哈希语义）。
+    ///
+    /// MVP 只存当前版本条目，无法重建历史版本内容 → 返回**结构级 diff**（版本链增量 + 当前条目清单），
+    /// 内容级 diff 待历史快照落库后补（批次 1）。诚实标注，不伪造。
+    pub fn version_diff(
+        &self,
+        dataset_id: &str,
+        from: &str,
+        to: &str,
+    ) -> Result<serde_json::Value, StoreError> {
+        let ds = self
+            .get_dataset(dataset_id)?
+            .ok_or_else(|| StoreError::DatasetNotFound(dataset_id.into()))?;
+        let chain = &ds.versioning.chain;
+        let fi = chain.iter().position(|v| v == from).ok_or_else(|| {
+            StoreError::InvalidDiffRange {
+                from: from.into(),
+                to: to.into(),
+            }
+        })?;
+        let ti = chain.iter().position(|v| v == to).ok_or_else(|| {
+            StoreError::InvalidDiffRange {
+                from: from.into(),
+                to: to.into(),
+            }
+        })?;
+        if ti <= fi {
+            return Err(StoreError::InvalidDiffRange {
+                from: from.into(),
+                to: to.into(),
+            });
+        }
+        let entries = self.list_entries(dataset_id, None)?;
+        let entry_ids: Vec<String> = entries.iter().map(|e| e.entry_id.clone()).collect();
+        Ok(serde_json::json!({
+            "dataset_id": dataset_id,
+            "from": from,
+            "to": to,
+            "added_versions": &chain[fi + 1..=ti],
+            "current_entry_count": entries.len(),
+            "current_entry_ids": entry_ids,
+            "note": "MVP 结构级 diff：仅版本链增量 + 当前条目清单；内容级 diff 待历史快照落库（批次 1）",
+        }))
+    }
+
+    /// 生命周期审计（44 号 §11 `GET /audits/lifecycle`）：租户内数据集 state_history 扁平输出
+    pub fn list_lifecycle_audits(&self, tenant_id: &str) -> Result<Vec<serde_json::Value>, StoreError> {
+        let mut out = Vec::new();
+        for ds in self.list_datasets(tenant_id)? {
+            for sc in &ds.lifecycle.state_history {
+                out.push(serde_json::json!({
+                    "dataset_id": ds.dataset_id,
+                    "from": sc.from,
+                    "to": sc.to,
+                    "at": sc.at,
+                    "by": sc.by,
+                    "cause": sc.cause,
+                    "published_as": sc.published_as,
+                }));
+            }
+        }
+        Ok(out)
+    }
+
+    // ------------------------------------------------------------------
+    // 快照包导入（44 号 §6 bundles/import；36 号 5 步校验链）
+    // ------------------------------------------------------------------
+
+    /// 导入快照包：`BundleImporter::validate`（schema→防篡改→符号三方一致→版本解析→闸门一）通过后落库。
+    ///
+    /// - 数据集：不存在则新建（tenant=导入方），已存在则覆盖其版本链/依赖/锚；
+    /// - 条目：BundleEntry → RuleEntry（治理版本=1，状态 Active），先清空旧条目再写入（可重试幂等）；
+    /// - 校验链任一失败 → 显式错误（35 号 §9 硬失败，不静默降级）。
+    pub fn import_bundle(
+        &self,
+        bundle: &DatasetBundle,
+        tenant_id: &str,
+        by: &str,
+        at: &str,
+        instance_id: &str,
+    ) -> Result<ImportResult, StoreError> {
+        let result = BundleImporter::validate(bundle)?;
+        let did = &bundle.dataset.dataset_id;
+        let existing = self.get_dataset(did)?;
+        let mut ds = match existing {
+            Some(mut e) => {
+                // 覆盖导入：更新版本链/锚/依赖/可见性，记录导入 cause
+                e.name = bundle.dataset.name.clone();
+                e.versioning = bundle.dataset.versioning.clone();
+                e.law_ref = bundle.dataset.law_ref.clone();
+                e.version_selection = bundle.dataset.version_selection.clone();
+                e.data_dependencies = bundle.data_dependencies.clone();
+                e.lifecycle.status = LifecycleStatus::Active;
+                e.lifecycle.state_history.push(StateChange {
+                    from: format!("{:?}", e.lifecycle.status),
+                    to: format!("{:?}", LifecycleStatus::Active),
+                    at: at.into(),
+                    by: by.into(),
+                    cause: format!("导入快照包 {}（instance_id={}）", bundle.bundle_id, instance_id),
+                    published_as: None,
+                });
+                e.meta.updated_at = Some(at.into());
+                e.meta.updated_by = Some(by.into());
+                // 清空旧条目（导入可重试幂等）
+                self.delete_dataset_entries(did)?;
+                e
+            }
+            None => RuleDataset {
+                dataset_id: did.clone(),
+                name: bundle.dataset.name.clone(),
+                description: Some(format!("由快照包 {} 导入", bundle.bundle_id)),
+                domain: bundle
+                    .entries
+                    .iter()
+                    .map(|e| e.domain.clone())
+                    .collect(),
+                tags: vec![],
+                tenant_id: tenant_id.into(),
+                visibility: Visibility::Private,
+                lifecycle: Lifecycle {
+                    status: LifecycleStatus::Active,
+                    state_history: vec![StateChange {
+                        from: format!("{:?}", LifecycleStatus::Draft),
+                        to: format!("{:?}", LifecycleStatus::Active),
+                        at: at.into(),
+                        by: by.into(),
+                        cause: format!("导入快照包 {}（instance_id={}）", bundle.bundle_id, instance_id),
+                        published_as: None,
+                    }],
+                },
+                versioning: bundle.dataset.versioning.clone(),
+                law_ref: bundle.dataset.law_ref.clone(),
+                version_selection: bundle.dataset.version_selection.clone(),
+                data_dependencies: bundle.data_dependencies.clone(),
+                meta: Meta {
+                    created_at: at.into(),
+                    created_by: by.into(),
+                    updated_at: None,
+                    updated_by: None,
+                },
+            },
+        };
+        self.update_dataset_or_create(&mut ds)?;
+        // 条目落库
+        for be in &bundle.entries {
+            let entry = RuleEntry {
+                entry_id: be.entry_id.clone(),
+                dataset_id: did.clone(),
+                version: 1,
+                status: Some(LifecycleStatus::Active),
+                provenance: be.provenance.clone(),
+                domain: be.domain.clone(),
+                tags: be.tags.clone(),
+                data_source_binding: be.dependencies.clone(),
+                consumed_inputs: vec![],
+                rule_body: be.rule_body.clone(),
+                governance: Some(Governance {
+                    author: Some(by.into()),
+                    updater: None,
+                    llm_generated: None,
+                    lifecycle_timestamps: None,
+                }),
+            };
+            self.add_entry(&entry)?;
+        }
+        Ok(result)
+    }
+
+    /// 导入辅助：数据集存在则整行更新，否则新建
+    fn update_dataset_or_create(&self, ds: &mut RuleDataset) -> Result<(), StoreError> {
+        match self.get_dataset(&ds.dataset_id)? {
+            Some(_) => self.update_dataset(ds),
+            None => self.create_dataset(ds),
+        }
+    }
+
+    /// 删除数据集全部条目（导入覆盖用；不动数据集本身）
+    fn delete_dataset_entries(&self, dataset_id: &str) -> Result<(), StoreError> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "DELETE FROM entry_state_history WHERE dataset_id=?1",
+            params![dataset_id],
+        )?;
+        conn.execute("DELETE FROM entries WHERE dataset_id=?1", params![dataset_id])?;
+        Ok(())
     }
 
     // ------------------------------------------------------------------
