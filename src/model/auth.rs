@@ -132,3 +132,20 @@ pub struct TokenClaims {
     pub iat: i64,
     pub exp: i64,
 }
+
+/// API Key（44 号 §14 定案：MVP 提供最小 scope 版，执行侧拉取快照包联动需要）
+///
+/// 仅存 `key_hash`（SHA-256），不存明文；`scope`：
+/// - `pull`（MVP 最小版）：只读拉取（本租户/public 数据集快照包，执行侧联动）；
+/// - 完整 scope/轮换/撤销告警 后置（44 号 §14-2）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ApiKey {
+    pub key_id: String,
+    pub tenant_id: String,
+    pub name: String,
+    /// pull | （后置扩展）
+    pub scope: String,
+    pub key_hash: String,
+    pub created_at: String,
+    pub revoked_at: Option<String>,
+}

@@ -10,6 +10,7 @@
 //!
 //! 许可：AGPL-3.0-or-later（双授权模式 = AGPL + 商业，合规底线，不可白标掩盖）
 
+pub mod api;
 pub mod auth;
 pub mod bundle;
 pub mod llm_client;
@@ -18,6 +19,7 @@ pub mod resolve;
 pub mod store;
 pub mod validate;
 
+pub use api::{AppState, ApiError, AuthContext, router};
 pub use auth::{
     ACCESS_TOKEN_TTL_SECS, AuthError, AuthService, AuthTokens, DEFAULT_PBKDF2_ITERATIONS,
     REFRESH_TOKEN_TTL_SECS,

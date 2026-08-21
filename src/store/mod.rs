@@ -9,7 +9,7 @@ use rusqlite::{Connection, params};
 use thiserror::Error;
 
 use crate::bundle::{BundleError, BundleExporter, BundleTests, DatasetBundle};
-use crate::model::auth::{AuthAudit, Role, Tenant, User};
+use crate::model::auth::{ApiKey, AuthAudit, Role, Tenant, User};
 use crate::model::dataset::{RuleDataset, Visibility};
 use crate::model::entry::RuleEntry;
 use crate::model::lifecycle::{Lifecycle, LifecycleStatus, StateChange};
@@ -65,14 +65,17 @@ pub enum StoreError {
 
 /// 规则存储
 pub struct RuleStore {
-    conn: Connection,
+    /// rusqlite `Connection` 为 Send 但非 Sync，axum 跨线程共享需 `Mutex` 包裹
+    conn: std::sync::Mutex<Connection>,
 }
 
 impl RuleStore {
     /// 打开（或创建）数据库文件
     pub fn open(path: &str) -> Result<Self, StoreError> {
         let conn = Connection::open(path)?;
-        let store = Self { conn };
+        let store = Self {
+            conn: std::sync::Mutex::new(conn),
+        };
         store.init_schema()?;
         Ok(store)
     }
@@ -80,13 +83,16 @@ impl RuleStore {
     /// 内存库（测试用）
     pub fn in_memory() -> Result<Self, StoreError> {
         let conn = Connection::open_in_memory()?;
-        let store = Self { conn };
+        let store = Self {
+            conn: std::sync::Mutex::new(conn),
+        };
         store.init_schema()?;
         Ok(store)
     }
 
     fn init_schema(&self) -> Result<(), StoreError> {
-        self.conn.execute_batch(
+        let conn = self.conn.lock().unwrap();
+        conn.execute_batch(
             r#"
             PRAGMA foreign_keys = ON;
 
@@ -172,11 +178,24 @@ impl RuleStore {
             );
             CREATE INDEX IF NOT EXISTS idx_auth_audit_time
                 ON auth_audits(tenant_id, created_at);
+
+            -- 44 号 §14：API Key（MVP 最小 scope 版，仅存哈希）
+            CREATE TABLE IF NOT EXISTS api_keys (
+                key_id     TEXT PRIMARY KEY,
+                tenant_id  TEXT NOT NULL,
+                name       TEXT NOT NULL,
+                scope      TEXT NOT NULL,                  -- pull（MVP）
+                key_hash   TEXT NOT NULL,                  -- SHA-256(token)
+                created_at TEXT NOT NULL,
+                revoked_at TEXT,
+                FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_api_keys_tenant ON api_keys(tenant_id, revoked_at);
             "#,
         )?;
         // 轻量迁移：若旧库 entries 表缺 35 号新增的 consumed_inputs 列，则补齐
         // （CREATE TABLE IF NOT EXISTS 不会为已存在表加列，需显式 ALTER）
-        let _ = self.conn.execute("ALTER TABLE entries ADD COLUMN consumed_inputs TEXT NOT NULL DEFAULT '[]'", []);
+        let _ = conn.execute("ALTER TABLE entries ADD COLUMN consumed_inputs TEXT NOT NULL DEFAULT '[]'", []);
         Ok(())
     }
 
@@ -186,7 +205,8 @@ impl RuleStore {
 
     /// 创建数据集
     pub fn create_dataset(&self, ds: &RuleDataset) -> Result<(), StoreError> {
-        self.conn.execute(
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
             "INSERT INTO datasets
                (dataset_id, tenant_id, name, description, domain, tags, visibility,
                 lifecycle, versioning, law_ref, version_selection, data_dependencies, meta)
@@ -218,7 +238,8 @@ impl RuleStore {
 
     /// 取数据集
     pub fn get_dataset(&self, dataset_id: &str) -> Result<Option<RuleDataset>, StoreError> {
-        let mut stmt = self.conn.prepare(
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
             "SELECT dataset_id, tenant_id, name, description, domain, tags, visibility,
                     lifecycle, versioning, law_ref, version_selection, data_dependencies, meta
              FROM datasets WHERE dataset_id = ?1",
@@ -286,11 +307,13 @@ impl RuleStore {
 
     /// 按租户列出数据集
     pub fn list_datasets(&self, tenant_id: &str) -> Result<Vec<RuleDataset>, StoreError> {
-        let ids: Vec<String> = self
-            .conn
-            .prepare("SELECT dataset_id FROM datasets WHERE tenant_id = ?1")?
-            .query_map(params![tenant_id], |r| r.get::<_, String>(0))?
-            .collect::<Result<_, _>>()?;
+        let ids: Vec<String> = {
+            let conn = self.conn.lock().unwrap();
+            let ids = conn.prepare("SELECT dataset_id FROM datasets WHERE tenant_id = ?1")?
+                .query_map(params![tenant_id], |r| r.get::<_, String>(0))?
+                .collect::<Result<_, _>>()?;
+            ids
+        };
         ids.iter()
             .map(|id| {
                 self.get_dataset(id)?
@@ -339,7 +362,8 @@ impl RuleStore {
         // 元数据更新时间
         ds.meta.updated_at = Some(at.into());
         ds.meta.updated_by = Some(by.into());
-        self.conn.execute(
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
             "UPDATE datasets SET versioning=?1, lifecycle=?2, meta=?3 WHERE dataset_id=?4",
             params![
                 serde_json::to_string(&ds.versioning)?,
@@ -366,7 +390,8 @@ impl RuleStore {
         // 3) LLM 边界
         Validator::validate_llm_boundary(entry)?;
         // 4) 唯一性（entry_id + version 已由主键保证，此处显式检查以便友好报错）
-        let exists: bool = self.conn.query_row(
+        let conn = self.conn.lock().unwrap();
+        let exists: bool = conn.query_row(
             "SELECT EXISTS(SELECT 1 FROM entries WHERE dataset_id=?1 AND entry_id=?2 AND version=?3)",
             params![entry.dataset_id, entry.entry_id, entry.version],
             |r| r.get(0),
@@ -379,7 +404,7 @@ impl RuleStore {
             });
         }
         // 5) 写入
-        self.conn.execute(
+        conn.execute(
             "INSERT INTO entries
                (dataset_id, entry_id, version, status, provenance, domain, tags,
                 data_source_binding, consumed_inputs, rule_body, governance, content_hash)
@@ -409,7 +434,8 @@ impl RuleStore {
         entry_id: &str,
         version: u32,
     ) -> Result<Option<RuleEntry>, StoreError> {
-        let mut stmt = self.conn.prepare(
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
             "SELECT entry_id, dataset_id, version, status, provenance, domain, tags,
                     data_source_binding, consumed_inputs, rule_body, governance
              FROM entries WHERE dataset_id=?1 AND entry_id=?2 AND version=?3",
@@ -472,6 +498,8 @@ impl RuleStore {
     ) -> Result<Option<RuleEntry>, StoreError> {
         let version: Option<u32> = self
             .conn
+            .lock()
+            .unwrap()
             .query_row(
                 "SELECT MAX(version) FROM entries WHERE dataset_id=?1 AND entry_id=?2",
                 params![dataset_id, entry_id],
@@ -494,13 +522,15 @@ impl RuleStore {
             Some(v) => v,
             None => {
                 // 未指定 → 每个 entry_id 取最新版本
-                let entry_ids: Vec<String> = self
-                    .conn
-                    .prepare(
+                let entry_ids: Vec<String> = {
+                    let conn = self.conn.lock().unwrap();
+                    let ids = conn.prepare(
                         "SELECT DISTINCT entry_id FROM entries WHERE dataset_id = ?1",
                     )?
                     .query_map(params![dataset_id], |r| r.get(0))?
                     .collect::<Result<_, _>>()?;
+                    ids
+                };
                 let mut out = Vec::new();
                 for id in entry_ids {
                     if let Some(e) = self.get_latest_entry(dataset_id, &id)? {
@@ -510,11 +540,13 @@ impl RuleStore {
                 return Ok(out);
             }
         };
-        let entry_ids: Vec<String> = self
-            .conn
-            .prepare("SELECT entry_id FROM entries WHERE dataset_id=?1 AND version=?2")?
-            .query_map(params![dataset_id, version], |r| r.get(0))?
-            .collect::<Result<_, _>>()?;
+        let entry_ids: Vec<String> = {
+            let conn = self.conn.lock().unwrap();
+            let ids = conn.prepare("SELECT entry_id FROM entries WHERE dataset_id=?1 AND version=?2")?
+                .query_map(params![dataset_id, version], |r| r.get(0))?
+                .collect::<Result<_, _>>()?;
+            ids
+        };
         entry_ids
             .iter()
             .map(|id| {
@@ -530,7 +562,8 @@ impl RuleStore {
 
     /// 记录一条 LLM 命名操作审计（request_id 唯一；同 id 重试 → 覆盖，幂等）。
     pub fn record_llm_audit(&self, audit: &LlmOpAudit) -> Result<(), StoreError> {
-        self.conn.execute(
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
             "INSERT INTO llm_op_audit
                (request_id, operation, model, status, duration_ms, result_ref, error, created_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
@@ -558,7 +591,8 @@ impl RuleStore {
 
     /// 按 request_id 取一条审计记录
     pub fn get_llm_audit(&self, request_id: &str) -> Result<Option<LlmOpAudit>, StoreError> {
-        let mut stmt = self.conn.prepare(
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
             "SELECT request_id, operation, model, status, duration_ms, result_ref, error, created_at
              FROM llm_op_audit WHERE request_id=?1",
         )?;
@@ -598,7 +632,8 @@ impl RuleStore {
         sql.push_str(" ORDER BY created_at DESC LIMIT ?");
         params.push(Box::new(filter.limit as i64));
 
-        let mut stmt = self.conn.prepare(&sql)?;
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(&sql)?;
         let param_refs: Vec<&dyn rusqlite::types::ToSql> =
             params.iter().map(|b| b.as_ref()).collect();
         let rows = stmt.query_map(param_refs.as_slice(), row_to_audit)?;
@@ -609,7 +644,8 @@ impl RuleStore {
     ///
     /// 总条数 / 成功 / 失败 / 平均耗时，并按操作维度聚合（供报表与"LLM 每步可审计"展示）。
     pub fn llm_audit_stats(&self) -> Result<LlmAuditStats, StoreError> {
-        let (total, completed, failed, avg) = self.conn.query_row(
+        let conn = self.conn.lock().unwrap();
+        let (total, completed, failed, avg) = conn.query_row(
             "SELECT COUNT(*),
                     COALESCE(SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END), 0),
                     COALESCE(SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END), 0),
@@ -626,7 +662,7 @@ impl RuleStore {
             },
         )?;
 
-        let mut stmt = self.conn.prepare(
+        let mut stmt = conn.prepare(
             "SELECT operation, COUNT(*),
                     COALESCE(SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END), 0),
                     COALESCE(AVG(duration_ms), 0)
@@ -677,7 +713,8 @@ impl RuleStore {
         // 校验通过后原地更新
         Validator::validate_symbol_consistency(&ds, entry)?;
         Validator::validate_llm_boundary(entry)?;
-        let n = self.conn.execute(
+        let conn = self.conn.lock().unwrap();
+        let n = conn.execute(
             "UPDATE entries SET status=?3, provenance=?4, domain=?5, tags=?6,
                     data_source_binding=?7, rule_body=?8, governance=?9, content_hash=?10
              WHERE dataset_id=?1 AND entry_id=?2 AND version=?11",
@@ -737,7 +774,8 @@ impl RuleStore {
             cause: cause.into(),
             published_as: None,
         });
-        self.conn.execute(
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
             "UPDATE datasets SET lifecycle=?1 WHERE dataset_id=?2",
             params![serde_json::to_string(&ds.lifecycle)?, dataset_id],
         )?;
@@ -783,7 +821,8 @@ impl RuleStore {
             cause: format!("独立发布审批通过，instance_id={}", instance_id),
             published_as: Some(published_as),
         });
-        self.conn.execute(
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
             "UPDATE datasets SET lifecycle=?1 WHERE dataset_id=?2",
             params![serde_json::to_string(&ds.lifecycle)?, dataset_id],
         )?;
@@ -832,7 +871,7 @@ impl RuleStore {
         instance_id: &str,
         created_at: &str,
     ) -> Result<Tenant, StoreError> {
-        self.conn.execute(
+        self.conn.lock().unwrap().execute(
             "INSERT OR IGNORE INTO tenants (tenant_id, name, instance_id, created_at)
              VALUES (?1, ?2, ?3, ?4)",
             params![tenant_id, name, instance_id, created_at],
@@ -844,7 +883,8 @@ impl RuleStore {
     }
 
     pub fn get_tenant(&self, tenant_id: &str) -> Result<Option<Tenant>, StoreError> {
-        let mut stmt = self.conn.prepare(
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
             "SELECT tenant_id, name, instance_id, created_at FROM tenants WHERE tenant_id = ?1",
         )?;
         let mut rows = stmt.query_map(params![tenant_id], row_to_tenant)?;
@@ -856,7 +896,8 @@ impl RuleStore {
     }
 
     pub fn create_user(&self, user: &User) -> Result<(), StoreError> {
-        self.conn.execute(
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
             "INSERT INTO users
                (user_id, tenant_id, username, password_hash, salt, role, disabled, created_at, updated_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
@@ -880,7 +921,8 @@ impl RuleStore {
         tenant_id: &str,
         username: &str,
     ) -> Result<Option<User>, StoreError> {
-        let mut stmt = self.conn.prepare(
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
             "SELECT user_id, tenant_id, username, password_hash, salt, role, disabled, created_at, updated_at
              FROM users WHERE tenant_id = ?1 AND username = ?2",
         )?;
@@ -893,7 +935,8 @@ impl RuleStore {
     }
 
     pub fn get_user(&self, user_id: &str) -> Result<Option<User>, StoreError> {
-        let mut stmt = self.conn.prepare(
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
             "SELECT user_id, tenant_id, username, password_hash, salt, role, disabled, created_at, updated_at
              FROM users WHERE user_id = ?1",
         )?;
@@ -907,7 +950,8 @@ impl RuleStore {
 
     /// 禁用/启用用户（管理员操作；禁用的用户登录/刷新被拒）
     pub fn set_user_disabled(&self, user_id: &str, disabled: bool, at: &str) -> Result<(), StoreError> {
-        self.conn.execute(
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
             "UPDATE users SET disabled = ?1, updated_at = ?2 WHERE user_id = ?3",
             params![disabled as i64, at, user_id],
         )?;
@@ -916,7 +960,8 @@ impl RuleStore {
 
     /// 认证审计（only-append，43 号 §6）
     pub fn record_auth_audit(&self, audit: &AuthAudit) -> Result<(), StoreError> {
-        self.conn.execute(
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
             "INSERT INTO auth_audits (audit_id, action, user_id, tenant_id, outcome, detail, created_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             params![
@@ -934,12 +979,70 @@ impl RuleStore {
 
     /// 列出认证审计（倒序 + limit）
     pub fn list_auth_audits(&self, tenant_id: &str, limit: usize) -> Result<Vec<AuthAudit>, StoreError> {
-        let mut stmt = self.conn.prepare(
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
             "SELECT audit_id, action, user_id, tenant_id, outcome, detail, created_at
              FROM auth_audits WHERE tenant_id = ?1 ORDER BY created_at DESC LIMIT ?2",
         )?;
         let rows = stmt.query_map(params![tenant_id, limit as i64], row_to_auth_audit)?;
         rows.collect::<Result<_, _>>().map_err(Into::into)
+    }
+
+    // ------------------------------------------------------------------
+    // API Key（44 号 §14，MVP 最小 scope 版）
+    // ------------------------------------------------------------------
+
+    pub fn create_api_key(&self, key: &ApiKey) -> Result<(), StoreError> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO api_keys (key_id, tenant_id, name, scope, key_hash, created_at, revoked_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![
+                key.key_id,
+                key.tenant_id,
+                key.name,
+                key.scope,
+                key.key_hash,
+                key.created_at,
+                key.revoked_at,
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// 按 key 哈希查（登录/鉴权用；revoked 也返回，由调用方判定）
+    pub fn get_api_key_by_hash(&self, key_hash: &str) -> Result<Option<ApiKey>, StoreError> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT key_id, tenant_id, name, scope, key_hash, created_at, revoked_at
+             FROM api_keys WHERE key_hash = ?1",
+        )?;
+        let mut rows = stmt.query_map(params![key_hash], row_to_api_key)?;
+        match rows.next() {
+            Some(Ok(k)) => Ok(Some(k)),
+            Some(Err(e)) => Err(e.into()),
+            None => Ok(None),
+        }
+    }
+
+    pub fn list_api_keys(&self, tenant_id: &str) -> Result<Vec<ApiKey>, StoreError> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT key_id, tenant_id, name, scope, key_hash, created_at, revoked_at
+             FROM api_keys WHERE tenant_id = ?1 ORDER BY created_at DESC",
+        )?;
+        let rows = stmt.query_map(params![tenant_id], row_to_api_key)?;
+        rows.collect::<Result<_, _>>().map_err(Into::into)
+    }
+
+    pub fn revoke_api_key(&self, tenant_id: &str, key_id: &str, at: &str) -> Result<bool, StoreError> {
+        let conn = self.conn.lock().unwrap();
+        let n = conn.execute(
+            "UPDATE api_keys SET revoked_at = ?3
+             WHERE tenant_id = ?1 AND key_id = ?2 AND revoked_at IS NULL",
+            params![tenant_id, key_id, at],
+        )?;
+        Ok(n > 0)
     }
 }
 
@@ -1008,6 +1111,19 @@ fn row_to_auth_audit(r: &rusqlite::Row) -> rusqlite::Result<AuthAudit> {
         outcome: r.get(4)?,
         detail: r.get(5)?,
         created_at: r.get(6)?,
+    })
+}
+
+/// `api_keys` 行 → `ApiKey`
+fn row_to_api_key(r: &rusqlite::Row) -> rusqlite::Result<ApiKey> {
+    Ok(ApiKey {
+        key_id: r.get(0)?,
+        tenant_id: r.get(1)?,
+        name: r.get(2)?,
+        scope: r.get(3)?,
+        key_hash: r.get(4)?,
+        created_at: r.get(5)?,
+        revoked_at: r.get(6)?,
     })
 }
 
@@ -1233,6 +1349,8 @@ mod tests {
         ds.visibility = Visibility::Public;
         store
             .conn
+            .lock()
+            .unwrap()
             .execute(
                 "UPDATE datasets SET visibility=?1 WHERE dataset_id=?2",
                 rusqlite::params![serde_json::to_string(&ds.visibility).unwrap(), "ds-tax-2024"],
@@ -1363,6 +1481,8 @@ mod tests {
         ds.versioning.chain.push("v9".into());
         store
             .conn
+            .lock()
+            .unwrap()
             .execute(
                 "UPDATE datasets SET versioning=?1 WHERE dataset_id=?2",
                 rusqlite::params![

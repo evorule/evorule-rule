@@ -17,7 +17,7 @@ pub mod llm_audit;
 pub mod provenance;
 pub mod version;
 
-pub use auth::{Action, AuthAudit, Role, Tenant, TokenClaims, User, can};
+pub use auth::{Action, ApiKey, AuthAudit, Role, Tenant, TokenClaims, User, can};
 
 pub use dataset::{Meta, RuleDataset, Visibility};
 pub use dependency::{DataDependencies, InputDecl, IoContract, ServiceDecl, SourceBinding};
