@@ -21,7 +21,9 @@ use thiserror::Error;
 use crate::model::entry::RuleEntry;
 use crate::model::governance::{Governance, LlmGenerated};
 use crate::model::lifecycle::LifecycleStatus;
+use crate::model::llm_audit::LlmOpAudit;
 use crate::model::provenance::Provenance;
+use crate::store::RuleStore;
 
 /// 命名操作标识（37 号 §3）
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -127,6 +129,45 @@ impl LlmClient {
             return Err(LlmClientError::Server(err.clone()));
         }
         Ok(resp)
+    }
+
+    /// 调用命名操作并落操作级审计（37 号 §8："LLM 每步可审计"）。
+    ///
+    /// - 无论成功/失败都记录一条 `LlmOpAudit`（含耗时、model、op、request_id）；
+    /// - `result_ref`：该 op 产出的条目引用（如 entry_id），审计可溯源到条目；
+    /// - 审计写入失败只告警，不掩盖主调用结果（审计是附带能力，非主链路）。
+    pub fn call_audited(
+        &self,
+        store: &RuleStore,
+        op: Operation,
+        req: &LlmOpRequest,
+        result_ref: Option<&str>,
+    ) -> Result<LlmOpResponse, LlmClientError> {
+        use std::time::Instant;
+        let start = Instant::now();
+        let outcome = self.call(op, req);
+        let duration_ms = start.elapsed().as_millis() as u64;
+        let created_at = utc_iso_now();
+
+        let record = |status: &str, error: Option<String>| {
+            store.record_llm_audit(&build_audit(
+                op, req, status, duration_ms, result_ref, error, &created_at,
+            ))
+        };
+
+        match &outcome {
+            Ok(_) => {
+                if let Err(e) = record("completed", None) {
+                    tracing::warn!(request_id = ?req.request_id, error = %e, "记录 LLM 操作审计失败");
+                }
+            }
+            Err(e) => {
+                if let Err(se) = record("failed", Some(e.to_string())) {
+                    tracing::warn!(request_id = ?req.request_id, error = %se, "记录 LLM 操作审计失败");
+                }
+            }
+        }
+        outcome
     }
 
     /// `draft_rule`：法规文本/需求 + 领域 → 候选规则 JSON（Draft，37 号 §5 强约束）
@@ -244,6 +285,65 @@ pub fn make_request_id() -> String {
     format!("evorule-rule-{}-{}", nanos, n)
 }
 
+/// 构造一条 `LlmOpAudit`（纯函数，供 `call_audited` 落库；request_id 缺省时自动生成）。
+pub fn build_audit(
+    op: Operation,
+    req: &LlmOpRequest,
+    status: &str,
+    duration_ms: u64,
+    result_ref: Option<&str>,
+    error: Option<String>,
+    created_at: &str,
+) -> LlmOpAudit {
+    LlmOpAudit {
+        request_id: req.request_id.clone().unwrap_or_else(make_request_id),
+        operation: op.as_str().to_string(),
+        model: req.model.clone(),
+        status: status.to_string(),
+        duration_ms,
+        result_ref: result_ref.map(ToOwned::to_owned),
+        error,
+        created_at: created_at.to_string(),
+    }
+}
+
+/// 生成 ISO-8601 UTC 时间戳（`YYYY-MM-DDTHH:MM:SSZ`），不引第三方时间库。
+pub fn utc_iso_now() -> String {
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    format_utc_secs(secs)
+}
+
+/// 纯函数：epoch 秒 → ISO-8601 UTC（可测）
+fn format_utc_secs(secs: i64) -> String {
+    let days = secs.div_euclid(86400);
+    let secs_of_day = secs.rem_euclid(86400);
+    let (y, m, d) = civil_from_days(days);
+    let h = secs_of_day / 3600;
+    let mi = (secs_of_day % 3600) / 60;
+    let s = secs_of_day % 60;
+    format!(
+        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
+        y, m, d, h, mi, s
+    )
+}
+
+/// 天数（自 1970-01-01 起）→ 公历 (年, 月, 日)（Howard Hinnant civil_from_days 算法）
+fn civil_from_days(z: i64) -> (i64, u32, u32) {
+    let z = z + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = z - era * 146_097; // [0, 146096]
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365; // [0, 399]
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100); // [0, 365]
+    let mp = (5 * doy + 2) / 153; // [0, 11]
+    let d = doy - (153 * mp + 2) / 5 + 1; // [1, 31]
+    let m = if mp < 10 { mp + 3 } else { mp - 9 }; // [1, 12]
+    (if m <= 2 { y + 1 } else { y }, m as u32, d as u32)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -345,5 +445,90 @@ mod tests {
         let a = make_request_id();
         let b = make_request_id();
         assert_ne!(a, b);
+    }
+
+    #[test]
+    fn test_format_utc_secs() {
+        assert_eq!(format_utc_secs(0), "1970-01-01T00:00:00Z");
+        // 2026-08-22T00:00:00Z
+        assert_eq!(format_utc_secs(1_787_356_800), "2026-08-22T00:00:00Z");
+        // 跨天 + 时分秒：2026-08-22T01:01:01Z
+        assert_eq!(format_utc_secs(1_787_356_800 + 3_661), "2026-08-22T01:01:01Z");
+        // 2038-01-19T03:14:07Z（i32::MAX，经典边界）
+        assert_eq!(format_utc_secs(2_147_483_647), "2038-01-19T03:14:07Z");
+    }
+
+    #[test]
+    fn test_build_audit_completed() {
+        let req = LlmOpRequest {
+            model: Some("deepseek-v4".into()),
+            request_id: Some("req-0001".into()),
+            params: json!({"law_text": "x", "domain": "tax"}),
+        };
+        let a = build_audit(
+            Operation::DraftRule,
+            &req,
+            "completed",
+            1234,
+            Some("ds-tax-2024/tax-001-rule-01"),
+            None,
+            "2026-08-22T10:00:00Z",
+        );
+        assert_eq!(a.request_id, "req-0001");
+        assert_eq!(a.operation, "draft_rule");
+        assert_eq!(a.status, "completed");
+        assert_eq!(a.duration_ms, 1234);
+        assert_eq!(a.result_ref.as_deref(), Some("ds-tax-2024/tax-001-rule-01"));
+        assert_eq!(a.error, None);
+        assert_eq!(a.created_at, "2026-08-22T10:00:00Z");
+    }
+
+    #[test]
+    fn test_build_audit_failed_auto_request_id() {
+        let req = LlmOpRequest {
+            model: None,
+            request_id: None, // 缺省 → 自动生成
+            params: json!({}),
+        };
+        let a = build_audit(
+            Operation::GenTests,
+            &req,
+            "failed",
+            50,
+            None,
+            Some("LLM 调用失败".into()),
+            "2026-08-22T10:00:00Z",
+        );
+        assert!(a.request_id.starts_with("evorule-rule-"));
+        assert_eq!(a.operation, "gen_tests");
+        assert_eq!(a.status, "failed");
+        assert_eq!(a.error.as_deref(), Some("LLM 调用失败"));
+    }
+
+    #[test]
+    fn test_call_audited_records_completed() {
+        // 用内存 store 直接验证：审计构造 + 落库链路（call 本身需真实 HTTP，此处只测审计侧）。
+        let store = RuleStore::in_memory().unwrap();
+        let req = LlmOpRequest {
+            model: Some("deepseek-v4".into()),
+            request_id: Some("req-audit-1".into()),
+            params: json!({"law_text": "x", "domain": "tax"}),
+        };
+        // 直接经 store 落库（等价于 call_audited 的 completed 分支行为）
+        store
+            .record_llm_audit(&build_audit(
+                Operation::DraftRule,
+                &req,
+                "completed",
+                10,
+                Some("entry-1"),
+                None,
+                "2026-08-22T10:00:00Z",
+            ))
+            .unwrap();
+        let got = store.get_llm_audit("req-audit-1").unwrap().unwrap();
+        assert_eq!(got.status, "completed");
+        assert_eq!(got.operation, "draft_rule");
+        assert_eq!(got.result_ref.as_deref(), Some("entry-1"));
     }
 }

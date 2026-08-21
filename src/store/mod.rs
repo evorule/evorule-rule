@@ -12,6 +12,7 @@ use crate::bundle::{BundleError, BundleExporter, BundleTests, DatasetBundle};
 use crate::model::dataset::{RuleDataset, Visibility};
 use crate::model::entry::RuleEntry;
 use crate::model::lifecycle::{Lifecycle, LifecycleStatus, StateChange};
+use crate::model::llm_audit::LlmOpAudit;
 use crate::model::version::{BumpKind, VersionError};
 use crate::validate::{ValidationError, Validator};
 
@@ -47,6 +48,9 @@ pub enum StoreError {
 
     #[error("非法状态迁移: {from:?} → {to:?}")]
     IllegalTransition { from: Option<LifecycleStatus>, to: LifecycleStatus },
+
+    #[error("LLM 操作审计记录 `{0}` 已存在（request_id 唯一）")]
+    AuditExists(String),
 }
 
 /// 规则存储
@@ -112,6 +116,20 @@ impl RuleStore {
             );
             CREATE INDEX IF NOT EXISTS idx_entries_domain ON entries(dataset_id, domain);
             CREATE INDEX IF NOT EXISTS idx_entries_hash ON entries(dataset_id, content_hash);
+
+            -- 37 号 §8：LLM 命名操作审计（"LLM 每步可审计"）
+            CREATE TABLE IF NOT EXISTS llm_op_audit (
+                request_id   TEXT PRIMARY KEY,
+                operation    TEXT NOT NULL,                 -- draft_rule / gen_tests / explain_rule
+                model        TEXT,
+                status       TEXT NOT NULL,                 -- completed | failed
+                duration_ms  INTEGER NOT NULL,
+                result_ref   TEXT,                          -- 产出条目引用（可选）
+                error        TEXT,
+                created_at   TEXT NOT NULL                  -- ISO-8601 UTC
+            );
+            CREATE INDEX IF NOT EXISTS idx_audit_op_time
+                ON llm_op_audit(operation, created_at);
             "#,
         )?;
         // 轻量迁移：若旧库 entries 表缺 35 号新增的 consumed_inputs 列，则补齐
@@ -464,6 +482,58 @@ impl RuleStore {
             .collect()
     }
 
+    // ------------------------------------------------------------------
+    // LLM 操作审计（37 号 §8："LLM 每步可审计"）
+    // ------------------------------------------------------------------
+
+    /// 记录一条 LLM 命名操作审计（request_id 唯一；同 id 重试 → 覆盖，幂等）。
+    pub fn record_llm_audit(&self, audit: &LlmOpAudit) -> Result<(), StoreError> {
+        self.conn.execute(
+            "INSERT INTO llm_op_audit
+               (request_id, operation, model, status, duration_ms, result_ref, error, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+             ON CONFLICT(request_id) DO UPDATE SET
+                operation=excluded.operation,
+                model=excluded.model,
+                status=excluded.status,
+                duration_ms=excluded.duration_ms,
+                result_ref=excluded.result_ref,
+                error=excluded.error,
+                created_at=excluded.created_at",
+            params![
+                audit.request_id,
+                audit.operation,
+                audit.model,
+                audit.status,
+                audit.duration_ms as i64,
+                audit.result_ref,
+                audit.error,
+                audit.created_at,
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// 按 request_id 取一条审计记录
+    pub fn get_llm_audit(&self, request_id: &str) -> Result<Option<LlmOpAudit>, StoreError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT request_id, operation, model, status, duration_ms, result_ref, error, created_at
+             FROM llm_op_audit WHERE request_id=?1",
+        )?;
+        let mut rows = stmt.query_map(params![request_id], row_to_audit)?;
+        rows.next().transpose().map_err(Into::into)
+    }
+
+    /// 列出审计记录（按时间倒序，limit 上限）
+    pub fn list_llm_audits(&self, limit: usize) -> Result<Vec<LlmOpAudit>, StoreError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT request_id, operation, model, status, duration_ms, result_ref, error, created_at
+             FROM llm_op_audit ORDER BY created_at DESC LIMIT ?1",
+        )?;
+        let rows = stmt.query_map(params![limit as i64], row_to_audit)?;
+        rows.collect::<Result<_, _>>().map_err(Into::into)
+    }
+
     /// 更新草稿条目内容（frozen 拒绝原地修改，§9-2 快照模式）
     pub fn update_draft_entry(&self, entry: &RuleEntry) -> Result<(), StoreError> {
         let ds = self
@@ -628,6 +698,20 @@ fn bump_kind_label(kind: BumpKind) -> &'static str {
         BumpKind::Major => "升版",
         BumpKind::Patch => "Patch",
     }
+}
+
+/// `llm_op_audit` 行 → `LlmOpAudit`
+fn row_to_audit(r: &rusqlite::Row) -> rusqlite::Result<LlmOpAudit> {
+    Ok(LlmOpAudit {
+        request_id: r.get(0)?,
+        operation: r.get(1)?,
+        model: r.get(2)?,
+        status: r.get(3)?,
+        duration_ms: r.get::<_, i64>(4)? as u64,
+        result_ref: r.get(5)?,
+        error: r.get(6)?,
+        created_at: r.get(7)?,
+    })
 }
 
 #[cfg(test)]
@@ -997,5 +1081,78 @@ mod tests {
             err,
             StoreError::Version(VersionError::ChainTailMismatch { .. })
         ));
+    }
+
+    #[test]
+    fn test_llm_audit_roundtrip() {
+        let store = RuleStore::in_memory().unwrap();
+        let a = LlmOpAudit {
+            request_id: "req-0001".into(),
+            operation: "draft_rule".into(),
+            model: Some("deepseek-v4".into()),
+            status: "completed".into(),
+            duration_ms: 1234,
+            result_ref: Some("ds-tax-2024/tax-001-rule-01".into()),
+            error: None,
+            created_at: "2026-08-22T10:00:00Z".into(),
+        };
+        store.record_llm_audit(&a).unwrap();
+        let got = store.get_llm_audit("req-0001").unwrap().unwrap();
+        assert_eq!(got, a);
+        assert_eq!(store.get_llm_audit("nope").unwrap(), None);
+    }
+
+    #[test]
+    fn test_llm_audit_upsert_idempotent() {
+        let store = RuleStore::in_memory().unwrap();
+        let a = LlmOpAudit {
+            request_id: "req-1".into(),
+            operation: "gen_tests".into(),
+            model: None,
+            status: "failed".into(),
+            duration_ms: 100,
+            result_ref: None,
+            error: Some("LLM 调用失败".into()),
+            created_at: "2026-08-22T10:00:00Z".into(),
+        };
+        store.record_llm_audit(&a).unwrap();
+        // 同 request_id 重试 → 覆盖更新（幂等），不产生第二行
+        let mut retry = a.clone();
+        retry.status = "completed".into();
+        retry.error = None;
+        retry.duration_ms = 200;
+        store.record_llm_audit(&retry).unwrap();
+        let got = store.get_llm_audit("req-1").unwrap().unwrap();
+        assert_eq!(got.status, "completed");
+        assert_eq!(got.duration_ms, 200);
+        assert_eq!(got.error, None);
+        assert_eq!(store.list_llm_audits(100).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn test_llm_audit_list_order_and_limit() {
+        let store = RuleStore::in_memory().unwrap();
+        for i in 0..5 {
+            store
+                .record_llm_audit(&LlmOpAudit {
+                    request_id: format!("req-{}", i),
+                    operation: "explain_rule".into(),
+                    model: None,
+                    status: "completed".into(),
+                    duration_ms: i,
+                    result_ref: None,
+                    error: None,
+                    // 时间戳递增，确保倒序可断言
+                    created_at: format!("2026-08-22T10:00:0{}Z", i),
+                })
+                .unwrap();
+        }
+        let all = store.list_llm_audits(100).unwrap();
+        assert_eq!(all.len(), 5);
+        assert_eq!(all[0].request_id, "req-4"); // 倒序：最新在前
+        assert_eq!(all[4].request_id, "req-0");
+        let limited = store.list_llm_audits(2).unwrap();
+        assert_eq!(limited.len(), 2);
+        assert_eq!(limited[0].request_id, "req-4");
     }
 }
