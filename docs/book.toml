@@ -1,0 +1,33 @@
+[book]
+title = "evorule-rule 文档"
+description = "evorule-rule 数据治理系统 — JSON 规则资产库(决策点 ①:数据模型与 Schema)"
+authors = ["EvoRule Project"]
+language = "zh"
+src = "."
+
+[build]
+build-dir = "book"
+create-missing = true
+
+[output.html]
+default-theme = "light"
+preferred-dark-theme = "navy"
+git-repository-url = "https://gitee.com/evorule/evorule-rule"
+edit-url-template = "https://gitee.com/evorule/evorule-rule/edit/main/docs/{path}"
+site-url = "/evorule-rule/"
+mathjax-support = false
+
+[output.html.fold]
+enable = true
+level = 1
+
+[output.html.search]
+enable = true
+limit-results = 20
+teaser-word-count = 30
+use-boolean-and = true
+boost-title = 2
+boost-hierarchy = 1
+boost-paragraph = 1
+expand = true
+heading-split-level = 3

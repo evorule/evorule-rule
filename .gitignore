@@ -26,3 +26,7 @@
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# mdBook build output(自动生成,不进版本)
+**/book/
+**/docs/book/
