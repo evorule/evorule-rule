@@ -222,7 +222,8 @@ impl PgStore {
         )
         .bind(&entry.dataset_id)
         .bind(&entry.entry_id)
-        .bind(entry.version as i64)
+        // PG `INTEGER` = INT4，按 i32 bind（与入读一致）
+        .bind(entry.version as i32)
         .bind(
             entry
                 .status
@@ -285,7 +286,8 @@ fn map_entry_row(
     let entry = crate::model::entry::RuleEntry {
         dataset_id: r.get("dataset_id"),
         entry_id: r.get("entry_id"),
-        version: r.get::<i64, _>("version") as u32,
+        // PG `INTEGER` = INT4（32 位），需按 i32 读取再转 u32（对齐 entries.version 类型）
+        version: r.get::<i32, _>("version") as u32,
         status: status.map(|s| decode_opt(Some(s))).transpose()?.flatten(),
         provenance: decode_opt(r.get("provenance"))?.unwrap(),
         domain: r.get("domain"),
