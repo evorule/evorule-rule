@@ -15,6 +15,7 @@ pub mod governance;
 pub mod lifecycle;
 pub mod llm_audit;
 pub mod provenance;
+pub mod secret;
 pub mod version;
 pub mod writeback;
 

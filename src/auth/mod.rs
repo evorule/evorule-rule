@@ -9,6 +9,8 @@
 //! - 注册/登录/刷新均落 auth_audits（43 号 §6，only-append）；
 //! - 禁用用户（disabled）拒绝登录与刷新。
 
+pub mod keyring;
+
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
 use rand::RngCore;
@@ -66,11 +68,13 @@ pub struct AuthTokens {
     pub refresh_expires_at: i64,
 }
 
-/// 认证服务（HS256 单密钥，MVP）
+/// 认证服务（HS256，MVP；支持 active+previous 双代验签，45 号 §3.3 K4）
 #[derive(Debug, Clone)]
 pub struct AuthService {
-    /// HS256 签名密钥（生产级 45 号换 RS256 非对称）
+    /// HS256 签名密钥（active，生产级 45 号换 RS256 非对称 + vault）
     secret: String,
+    /// 上一代签名密钥（轮换后 previous，供旧 token 验签 backward 兼容；无则 None）
+    previous_secret: Option<String>,
     /// PBKDF2 迭代次数
     pbkdf2_iterations: u32,
 }
@@ -83,6 +87,16 @@ impl AuthService {
     pub fn with_iterations(secret: &str, pbkdf2_iterations: u32) -> Self {
         Self {
             secret: secret.to_string(),
+            previous_secret: None,
+            pbkdf2_iterations,
+        }
+    }
+
+    /// 双代构造：active 用于签发/验签，previous 仅用于验签（轮换后旧 token 兼容）。45 号 §3.3 K4。
+    pub fn with_previous(secret: &str, previous: Option<String>, pbkdf2_iterations: u32) -> Self {
+        Self {
+            secret: secret.to_string(),
+            previous_secret: previous,
             pbkdf2_iterations,
         }
     }
@@ -156,14 +170,35 @@ impl AuthService {
         format!("{signing_input}.{}", b64url(sig))
     }
 
-    /// 校验：验签 + exp + token_type；返回 claims
+    /// 校验：验签 + exp + token_type；返回 claims。
+    /// 双代验签（45 号 §3.3 K4）：先试 active，失败且存在 previous 时兜底试 previous（轮换后旧 token 兼容）。
     pub fn verify_token(&self, token: &str, now: i64, expected_type: &str) -> Result<TokenClaims, AuthError> {
+        match self.verify_with_secret(token, now, expected_type, &self.secret) {
+            Ok(claims) => Ok(claims),
+            Err(e) => match &self.previous_secret {
+                Some(prev) => self
+                    .verify_with_secret(token, now, expected_type, prev)
+                    // 若 previous 也失败，返回**首验（active）的错误**（信息一致，不泄露用了哪把钥匙）
+                    .map_err(|_| e),
+                None => Err(e),
+            },
+        }
+    }
+
+    /// 用指定密钥校验单片 JWT（内部复用，供 active / previous 双代验签）
+    fn verify_with_secret(
+        &self,
+        token: &str,
+        now: i64,
+        expected_type: &str,
+        secret: &str,
+    ) -> Result<TokenClaims, AuthError> {
         let parts: Vec<&str> = token.split('.').collect();
         if parts.len() != 3 {
             return Err(AuthError::InvalidToken);
         }
         let signing_input = format!("{}.{}", parts[0], parts[1]);
-        let expected_sig = hmac_sha256(self.secret.as_bytes(), signing_input.as_bytes());
+        let expected_sig = hmac_sha256(secret.as_bytes(), signing_input.as_bytes());
         let given_sig = unhex(&hex(&unb64(parts[2])?)); // decode then re-hex for constant-time
         let ok = expected_sig.len() == given_sig.len() && bool::from(expected_sig.ct_eq(&given_sig));
         if !ok {
@@ -533,6 +568,45 @@ mod tests {
 
         // 过期拒绝
         assert!(svc.verify_token(&access, now + ACCESS_TOKEN_TTL_SECS + 1, "access").is_err());
+    }
+
+    #[test]
+    fn test_jwt_double_generation_rotation() {
+        // 45 号 §3.3 K4：签发用 active；轮换 previous 后，旧 token（active 时代签发）不再能验，
+        // 但 pre-rotation token（用旧 active 签发，轮换后变成 previous）仍可验签。
+        let old_secret = "old-secret";
+        let new_secret = "new-secret";
+        let now = 1_700_000_000i64;
+        let user = User {
+            user_id: "usr_9".into(),
+            tenant_id: "tenant_a".into(),
+            username: "rot".into(),
+            password_hash: "x".into(),
+            salt: "y".into(),
+            role: Role::RuleEngineer,
+            disabled: false,
+            created_at: "t".into(),
+            updated_at: "t".into(),
+        };
+
+        // 用旧密钥签发（轮换前的 token）
+        let svc_old = AuthService::new(old_secret);
+        let legacy_token = svc_old.issue_access_token(&user, now);
+
+        // 轮换：新 active=new-secret，previous=old-secret
+        let svc_rot = AuthService::with_previous(new_secret, Some(old_secret.into()), 1_000);
+        // 新签发用 active（self.secret = new-secret）
+        let new_token = svc_rot.issue_access_token(&user, now);
+        assert_eq!(svc_rot.secret, new_secret);
+
+        // 旧 token 仍可验（previous 兜底）
+        assert!(svc_rot.verify_token(&legacy_token, now, "access").is_ok(), "旧 token 应可验签");
+        // 新 token 用 active 验
+        assert!(svc_rot.verify_token(&new_token, now, "access").is_ok());
+
+        // 无 previous 的实例不能验旧 token
+        let svc_new_only = AuthService::new(new_secret);
+        assert!(svc_new_only.verify_token(&legacy_token, now, "access").is_err());
     }
 
     #[test]
