@@ -265,6 +265,330 @@ impl PgStore {
         }
         Ok(out)
     }
+
+    // ------------------------------------------------------------------
+    // P6 方言改写 · 其余核心表（2026-08-22）——service_templates / api_keys /
+    // llm_op_audit / auth_audits / revoked_tokens / users
+    // 对齐 migrations 列 + store/mod.rs 序列化；只读角色枚举等以 TEXT 落 JSON，与 SQLite 一致。
+    // ------------------------------------------------------------------
+
+    /// 注册服务模板（方言改写）。
+    pub async fn create_service_template(
+        &self,
+        t: &crate::model::dependency::ServiceTemplateRecord,
+    ) -> Result<(), PgError> {
+        sqlx::query(
+            "INSERT INTO service_templates
+               (template_id, tenant_id, service_name, kind, io_contract, endpoint_template,
+                method, headers_template, placeholder_notes, created_at, created_by)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
+        )
+        .bind(&t.template_id)
+        .bind(&t.tenant_id)
+        .bind(&t.service_name)
+        .bind(&t.kind)
+        .bind(serde_json::to_string(&t.io_contract)?)
+        .bind(&t.endpoint_template)
+        .bind(&t.method)
+        .bind(serde_json::to_string(&t.headers_template)?)
+        .bind(serde_json::to_string(&t.placeholder_notes)?)
+        .bind(&t.created_at)
+        .bind(&t.created_by)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// 取服务模板（tenancy 校验由调用方在 API 层完成）。
+    pub async fn get_service_template(
+        &self,
+        template_id: &str,
+    ) -> Result<Option<crate::model::dependency::ServiceTemplateRecord>, PgError> {
+        let row = sqlx::query(
+            "SELECT template_id, tenant_id, service_name, kind, io_contract, endpoint_template,
+                    method, headers_template, placeholder_notes, created_at, created_by
+             FROM service_templates WHERE template_id = $1",
+        )
+        .bind(template_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        let Some(row) = row else { return Ok(None) };
+        Ok(Some(crate::model::dependency::ServiceTemplateRecord {
+            template_id: row.get("template_id"),
+            tenant_id: row.get("tenant_id"),
+            service_name: row.get("service_name"),
+            kind: row.get("kind"),
+            io_contract: decode_opt(row.get("io_contract"))?.unwrap(),
+            endpoint_template: row.get("endpoint_template"),
+            method: row.get("method"),
+            headers_template: decode_opt(row.get("headers_template"))?.unwrap_or_default(),
+            placeholder_notes: decode_opt(row.get("placeholder_notes"))?.unwrap_or_default(),
+            created_at: row.get("created_at"),
+            created_by: row.get("created_by"),
+        }))
+    }
+
+    /// 列服务模板（租户作用域）。
+    pub async fn list_service_templates(
+        &self,
+        tenant_id: &str,
+    ) -> Result<Vec<crate::model::dependency::ServiceTemplateRecord>, PgError> {
+        let rows = sqlx::query(
+            "SELECT template_id FROM service_templates WHERE tenant_id = $1 ORDER BY service_name",
+        )
+        .bind(tenant_id)
+        .fetch_all(&self.pool)
+        .await?;
+        let mut out = Vec::with_capacity(rows.len());
+        for r in rows {
+            let id: String = r.get("template_id");
+            if let Some(t) = self.get_service_template(&id).await? {
+                out.push(t);
+            }
+        }
+        Ok(out)
+    }
+
+    /// 记录 LLM 命名操作审计（方言改写，幂等：同 request_id 覆盖）。
+    pub async fn record_llm_audit(
+        &self,
+        a: &crate::model::llm_audit::LlmOpAudit,
+    ) -> Result<(), PgError> {
+        sqlx::query(
+            "INSERT INTO llm_op_audit
+               (request_id, operation, model, status, duration_ms, result_ref, error, created_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+             ON CONFLICT(request_id) DO UPDATE SET
+               operation=EXCLUDED.operation, model=EXCLUDED.model, status=EXCLUDED.status,
+               duration_ms=EXCLUDED.duration_ms, result_ref=EXCLUDED.result_ref,
+               error=EXCLUDED.error, created_at=EXCLUDED.created_at",
+        )
+        .bind(&a.request_id)
+        .bind(&a.operation)
+        .bind(&a.model)
+        .bind(&a.status)
+        .bind(a.duration_ms as i64)
+        .bind(&a.result_ref)
+        .bind(&a.error)
+        .bind(&a.created_at)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// 取单条 LLM 审计。
+    pub async fn get_llm_audit(
+        &self,
+        request_id: &str,
+    ) -> Result<Option<crate::model::llm_audit::LlmOpAudit>, PgError> {
+        let row = sqlx::query(
+            "SELECT request_id, operation, model, status, duration_ms, result_ref, error, created_at
+             FROM llm_op_audit WHERE request_id = $1",
+        )
+        .bind(request_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        let Some(row) = row else { return Ok(None) };
+        Ok(Some(crate::model::llm_audit::LlmOpAudit {
+            request_id: row.get("request_id"),
+            operation: row.get("operation"),
+            model: row.get("model"),
+            status: row.get("status"),
+            duration_ms: row.get::<i64, _>("duration_ms") as u64,
+            result_ref: row.get("result_ref"),
+            error: row.get("error"),
+            created_at: row.get("created_at"),
+        }))
+    }
+
+    /// 列 LLM 审计（倒序，limit）。
+    pub async fn list_llm_audits(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<crate::model::llm_audit::LlmOpAudit>, PgError> {
+        let rows = sqlx::query(
+            "SELECT request_id FROM llm_op_audit ORDER BY created_at DESC LIMIT $1",
+        )
+        .bind(limit as i64)
+        .fetch_all(&self.pool)
+        .await?;
+        let mut out = Vec::with_capacity(rows.len());
+        for r in rows {
+            let id: String = r.get("request_id");
+            if let Some(a) = self.get_llm_audit(&id).await? {
+                out.push(a);
+            }
+        }
+        Ok(out)
+    }
+
+    /// 记录认证审计（only-append，方言改写）。
+    pub async fn record_auth_audit(
+        &self,
+        a: &crate::model::auth::AuthAudit,
+    ) -> Result<(), PgError> {
+        sqlx::query(
+            "INSERT INTO auth_audits (audit_id, action, user_id, tenant_id, outcome, detail, created_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)",
+        )
+        .bind(&a.audit_id)
+        .bind(&a.action)
+        .bind(&a.user_id)
+        .bind(&a.tenant_id)
+        .bind(&a.outcome)
+        .bind(&a.detail)
+        .bind(&a.created_at)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// 创建 API Key（方言改写；仅存 key_hash，不存明文，对齐 44 号 §14）。
+    pub async fn create_api_key(
+        &self,
+        k: &crate::model::auth::ApiKey,
+    ) -> Result<(), PgError> {
+        sqlx::query(
+            "INSERT INTO api_keys (key_id, tenant_id, name, scope, key_hash, created_at, revoked_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)",
+        )
+        .bind(&k.key_id)
+        .bind(&k.tenant_id)
+        .bind(&k.name)
+        .bind(&k.scope)
+        .bind(&k.key_hash)
+        .bind(&k.created_at)
+        .bind(&k.revoked_at)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// 按哈希查 API Key（认证用）。
+    pub async fn get_api_key_by_hash(
+        &self,
+        key_hash: &str,
+    ) -> Result<Option<crate::model::auth::ApiKey>, PgError> {
+        let row = sqlx::query(
+            "SELECT key_id, tenant_id, name, scope, key_hash, created_at, revoked_at
+             FROM api_keys WHERE key_hash = $1",
+        )
+        .bind(key_hash)
+        .fetch_optional(&self.pool)
+        .await?;
+        let Some(row) = row else { return Ok(None) };
+        Ok(Some(crate::model::auth::ApiKey {
+            key_id: row.get("key_id"),
+            tenant_id: row.get("tenant_id"),
+            name: row.get("name"),
+            scope: row.get("scope"),
+            key_hash: row.get("key_hash"),
+            created_at: row.get("created_at"),
+            revoked_at: row.get("revoked_at"),
+        }))
+    }
+
+    /// 撤销 API Key（返回是否命中；方言改写）。
+    pub async fn revoke_api_key(
+        &self,
+        tenant_id: &str,
+        key_id: &str,
+        at: String,
+    ) -> Result<bool, PgError> {
+        let res = sqlx::query(
+            "UPDATE api_keys SET revoked_at = $1 WHERE tenant_id = $2 AND key_id = $3",
+        )
+        .bind(at)
+        .bind(tenant_id)
+        .bind(key_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(res.rows_affected() > 0)
+    }
+
+    /// 注册撤销 token（jti 黑名单，方言改写）。
+    pub async fn revoke_token(
+        &self,
+        jti: &str,
+        tenant_id: &str,
+        user_id: &str,
+        token_type: &str,
+        expires_at: i64,
+        revoked_at: String,
+    ) -> Result<(), PgError> {
+        sqlx::query(
+            "INSERT INTO revoked_tokens (jti, tenant_id, user_id, token_type, expires_at, revoked_at)
+             VALUES ($1, $2, $3, $4, $5, $6)",
+        )
+        .bind(jti)
+        .bind(tenant_id)
+        .bind(user_id)
+        .bind(token_type)
+        .bind(expires_at)
+        .bind(revoked_at)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// 查 token 是否已撤销（方言改写；now 之前且 jti 命中即视为 revoked）。
+    pub async fn is_token_revoked(&self, jti: &str, now: i64) -> Result<bool, PgError> {
+        let row = sqlx::query(
+            "SELECT 1 FROM revoked_tokens WHERE jti = $1 AND expires_at > $2",
+        )
+        .bind(jti)
+        .bind(now)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row.is_some())
+    }
+
+    /// 创建用户（方言改写；Role 以 snake_case 文本落库，与 SQLite 一致）。
+    pub async fn create_user(
+        &self,
+        u: &crate::model::auth::User,
+    ) -> Result<(), PgError> {
+        sqlx::query(
+            "INSERT INTO users
+               (user_id, tenant_id, username, password_hash, salt, role, disabled, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+        )
+        .bind(&u.user_id)
+        .bind(&u.tenant_id)
+        .bind(&u.username)
+        .bind(&u.password_hash)
+        .bind(&u.salt)
+        .bind(u.role.as_str())
+        // disabled 列在迁移中为 INTEGER（SQLite 风格 0/1），按整数 bind（真实 PG 已建旧结构，遵守既有列类型）
+        .bind(u.disabled as i32)
+        .bind(&u.created_at)
+        .bind(&u.updated_at)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// 确保租户存在（方言改写；对齐 SQLite `INSERT OR IGNORE`，PG 用 ON CONFLICT DO NOTHING）。
+    pub async fn ensure_default_tenant(
+        &self,
+        tenant_id: &str,
+        name: &str,
+        instance_id: &str,
+        created_at: &str,
+    ) -> Result<(), PgError> {
+        sqlx::query(
+            "INSERT INTO tenants(tenant_id, name, instance_id, created_at)
+             VALUES ($1, $2, $3, $4)
+             ON CONFLICT(tenant_id) DO NOTHING",
+        )
+        .bind(tenant_id)
+        .bind(name)
+        .bind(instance_id)
+        .bind(created_at)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
 }
 
 /// 把 `TEXT` 列（可为 NULL）反序列化为 `V`。
@@ -413,5 +737,119 @@ mod tests {
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].rule_body["rule_id"], entry_id);
         assert_eq!(entries[0].content_hash(), entry.content_hash());
+
+        // P6：其余核心表往返
+        pg_aux_tables_roundtrip(&store, &tenant).await.expect("P6 aux");
+    }
+
+    /// P6 其余核心表集成：service_templates / api_keys / llm_op_audit / auth_audits / revoked_tokens / users
+    async fn pg_aux_tables_roundtrip(
+        store: &super::PgStore,
+        tenant: &str,
+    ) -> Result<(), super::PgError> {
+        use crate::model::auth::{ApiKey, AuthAudit, User};
+        use crate::model::dependency::{IoContract, ServiceTemplateRecord};
+        use crate::model::llm_audit::LlmOpAudit;
+
+        // tenants 外键约束：先确保租户存在（真实 PG 校验数据完整性）
+        store
+            .ensure_default_tenant(tenant, "测试租户", "inst-pg6", "2026-08-22T00:00:00Z")
+            .await?;
+
+        // service_templates
+        let tpl = ServiceTemplateRecord {
+            template_id: format!("tpl-{tenant}"),
+            tenant_id: tenant.into(),
+            service_name: "s3-demo".into(),
+            kind: "pull".into(),
+            io_contract: IoContract { r#in: None, out: None },
+            endpoint_template: "https://api.example.com/{token}".into(),
+            method: Some("GET".into()),
+            headers_template: Default::default(),
+            placeholder_notes: Default::default(),
+            created_at: "2026-08-22T00:00:00Z".into(),
+            created_by: "u-1".into(),
+        };
+        store.create_service_template(&tpl).await?;
+        let got = store.get_service_template(&tpl.template_id).await?.expect("模板缺失");
+        assert_eq!(got.service_name, "s3-demo");
+        let list = store.list_service_templates(tenant).await?;
+        assert_eq!(list.len(), 1);
+
+        // llm_op_audit（幂等：同 request_id 覆盖）
+        let audit = LlmOpAudit {
+            request_id: format!("req-{tenant}"),
+            operation: "draft_rule".into(),
+            model: Some("pt-x".into()),
+            status: "completed".into(),
+            duration_ms: 120,
+            result_ref: None,
+            error: None,
+            created_at: "2026-08-22T00:00:01Z".into(),
+        };
+        store.record_llm_audit(&audit).await?;
+        let mut audit2 = audit.clone();
+        audit2.duration_ms = 999;
+        store.record_llm_audit(&audit2).await?; // 覆盖
+        let got = store.get_llm_audit(&audit.request_id).await?.expect("audit 缺失");
+        assert_eq!(got.duration_ms, 999);
+        // 列表含本条（共享库可能残留旧行，故验证包含而非全局长度==1）
+        let list = store.list_llm_audits(10).await?;
+        if !list.iter().any(|a| a.request_id == audit.request_id) {
+            panic!("list_llm_audits 未包含本 request_id");
+        }
+
+        // auth_audits（only-append）
+        let aa = AuthAudit {
+            audit_id: format!("aa-{tenant}"),
+            action: "login".into(),
+            user_id: Some("u-1".into()),
+            tenant_id: tenant.into(),
+            outcome: "success".into(),
+            detail: None,
+            created_at: "2026-08-22T00:00:02Z".into(),
+        };
+        store.record_auth_audit(&aa).await?;
+
+        // api_keys（仅存哈希）+ 撤销
+        let key = ApiKey {
+            key_id: format!("k-{tenant}"),
+            tenant_id: tenant.into(),
+            name: "exec".into(),
+            scope: "pull".into(),
+            key_hash: format!("sha256-{tenant}"),
+            created_at: "2026-08-22T00:00:03Z".into(),
+            revoked_at: None,
+        };
+        store.create_api_key(&key).await?;
+        let got = store.get_api_key_by_hash(&key.key_hash).await?.expect("key 缺失");
+        assert_eq!(got.scope, "pull");
+        let revoked = store
+            .revoke_api_key(tenant, &key.key_id, "2026-08-22T00:00:04Z".into())
+            .await?;
+        assert!(revoked);
+
+        // revoked_tokens jti 黑名单（用租户后缀保证测试幂等，避免共享库残留主键冲突）
+        let jti = format!("jti-x-{tenant}");
+        store
+            .revoke_token(&jti, tenant, "u-1", "access", 9_999_999_999, "now".into())
+            .await?;
+        assert!(store.is_token_revoked(&jti, 0).await?);
+        assert!(!store.is_token_revoked("jti-else", 0).await?);
+
+        // users
+        let user = User {
+            user_id: format!("u-{tenant}"),
+            tenant_id: tenant.into(),
+            username: "alice".into(),
+            password_hash: "pbkdf2$...".into(),
+            salt: "s0".into(),
+            role: crate::model::auth::Role::RuleEngineer,
+            disabled: false,
+            created_at: "2026-08-22T00:00:05Z".into(),
+            updated_at: "2026-08-22T00:00:05Z".into(),
+        };
+        store.create_user(&user).await?;
+        Ok(())
     }
 }
