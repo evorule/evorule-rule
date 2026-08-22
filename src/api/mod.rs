@@ -1,7 +1,8 @@
 //! REST API 面（44 号 正交 B）
 //!
 //! MVP 定案（44 号 §14，2026-08-22）：
-//! - REST+JSON、v1 版本化、cursor 分页（MVP 以 limit/offset 简化实现，接口契约对齐 cursor）；
+//! - REST+JSON、v1 版本化；cursor 分页（44 号 §14）**MVP 未落地**——列表端点返回全量数组，
+//!   limit/offset 与 `{items,next_cursor}` 结构后置批次 1，此处如实标注，不伪称已简化实现；
 //! - 统一错误不静默降级：`{ "error": { "code", "message" } }`；
 //! - 同步导入、`Idempotency-Key` 幂等（MVP 留契约，POST 重复由唯一键兜底）；
 //! - lifecycle 迁移统一走 `PATCH /v1/datasets/{id}/lifecycle`；
@@ -188,6 +189,18 @@ pub async fn require_auth(
         .auth
         .verify_token(token, now, "access")
         .map_err(|_| ApiError::unauthorized("token 非法或已过期"))?;
+    // 登出后被拉黑的 token 拒绝访问（43 号 §3.3 jti 黑名单）
+    // 查询黑名单遇存储错误不静默放行，显式报 500（不掩盖鉴权不确定性）
+    let revoked = state
+        .auth
+        .is_blacklisted(&state.store, &claims, now)
+        .map_err(|e| {
+            tracing::warn!("黑名单查询失败，拒绝放行: {e}");
+            ApiError::internal("鉴权状态不可用")
+        })?;
+    if revoked {
+        return Err(ApiError::unauthorized("token 已失效（登出）"));
+    }
     let role = Role::parse(&claims.role).ok_or_else(|| ApiError::unauthorized("token 角色非法"))?;
     req.extensions_mut().insert(AuthContext {
         user_id: claims.sub,
@@ -226,7 +239,8 @@ pub fn router(state: AppState) -> Router {
     let public = Router::new()
         .route("/register", post(handlers_auth::register))
         .route("/login", post(handlers_auth::login))
-        .route("/refresh", post(handlers_auth::refresh));
+        .route("/refresh", post(handlers_auth::refresh))
+        .route("/logout", post(handlers_auth::logout));
 
     // 快照包拉取：`get_bundle` 自身解析 Bearer / X-Api-Key 双认证，
     // 故不挂通用 Bearer 中间件（否则执行侧 X-Api-Key 拉取会被 401 拦截）
@@ -445,6 +459,60 @@ mod tests {
         assert_eq!(status, StatusCode::OK, "{body}");
         assert_eq!(body["username"], "alice");
         assert_eq!(body["role"], "rule_engineer");
+    }
+
+    #[tokio::test]
+    async fn test_logout_revokes_refresh_via_api() {
+        let (app, _state) = build_app();
+
+        // 注册（返回 access+refresh_token）
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/auth/register",
+            None,
+            Some(json!({
+                "tenant_id": "tenant_a",
+                "username": "eve",
+                "password": "password123",
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "{body}");
+        let refresh = body["refresh_token"].as_str().unwrap().to_string();
+
+        // 登出前 refresh 可用
+        let (status, _) = send(
+            app.clone(),
+            "POST",
+            "/v1/auth/refresh",
+            None,
+            Some(json!({ "tenant_id": "tenant_a", "refresh_token": refresh })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+
+        // 登出 → 204
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/auth/logout",
+            None,
+            Some(json!({ "refresh_token": refresh })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::NO_CONTENT, "{body}");
+
+        // 登出后同 refresh 刷新 → 401
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/auth/refresh",
+            None,
+            Some(json!({ "tenant_id": "tenant_a", "refresh_token": refresh })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED, "{body}");
     }
 
     #[tokio::test]
@@ -761,6 +829,131 @@ mod tests {
         let admin = admin_token(&state).await;
         let (status, body) = send(app.clone(), "DELETE", "/v1/datasets/ds-tax-01", Some(&admin), None).await;
         assert_eq!(status, StatusCode::CONFLICT, "{body}"); // Candidate 态不可删
+    }
+
+    #[tokio::test]
+    async fn test_publish_requires_second_confirm_and_tenant_guard() {
+        let (app, state) = build_app();
+        let token = register_login(&app).await; // rule_engineer
+        seed_dataset(&app, &token, "ds-tax-01").await;
+        let admin = admin_token(&state).await; // 审批者+二次确认（发布）
+
+        // 升到 Candidate（engineer）→ Active（审批者）
+        for (who, to) in [(&token, "candidate"), (&admin, "active")] {
+            let (status, body) = send(
+                app.clone(),
+                "PATCH",
+                "/v1/datasets/ds-tax-01/lifecycle",
+                Some(who),
+                Some(json!({ "to": to })),
+            )
+            .await;
+            assert_eq!(status, StatusCode::OK, "{body}");
+        }
+
+        // 二次确认：缺字段（结构拒绝 422）/ confirm=false（业务拒绝 400）
+        let (status, _) = send(
+            app.clone(),
+            "POST",
+            "/v1/datasets/ds-tax-01/publish",
+            Some(&admin),
+            Some(json!({})),
+        )
+        .await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY); // 缺 confirm 字段，axum 结构拒绝
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/datasets/ds-tax-01/publish",
+            Some(&admin),
+            Some(json!({ "confirm": false })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+        assert_eq!(body["error"]["code"], "bad_request");
+        // 确认后未被发布（状态仍 Active）
+        let (status, body) = send(app.clone(), "GET", "/v1/datasets/ds-tax-01", Some(&token), None).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["lifecycle"]["status"], "Active");
+
+        // 带 confirm=true → 发布成功 Published
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/datasets/ds-tax-01/publish",
+            Some(&admin),
+            Some(json!({ "confirm": true, "reason": "季度合规部验证通过" })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["lifecycle"]["status"], "Published");
+        let hist = body["lifecycle"]["state_history"].as_array().unwrap();
+        let published_cause = hist
+            .iter()
+            .find(|h| h["to"].as_str() == Some("Published"))
+            .and_then(|h| h["cause"].as_str())
+            .unwrap_or_default();
+        assert!(published_cause.contains("二次确认"), "cause: {published_cause}");
+
+        // 管理端撤销发布 → Published → Rejected（34 号 §2/§4，非 Active）
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/datasets/ds-tax-01/unpublish",
+            Some(&admin),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["lifecycle"]["status"], "Rejected");
+
+        // 租户隔离（38 号 §10-3）：他租户 admin 无法迁移/发布/撤销本租户数据集，均返回 404
+        state
+            .store
+            .ensure_default_tenant("tenant_b", "另一组织", "inst-002", "2026-08-22T00:00:00Z")
+            .expect("tenant_b");
+        state
+            .auth
+            .register(&state.store, "tenant_b", "badmin", "password123", Role::Admin, unix_now())
+            .expect("register b_admin");
+        let other_admin = state
+            .auth
+            .login(&state.store, "tenant_b", "badmin", "password123", unix_now())
+            .expect("login b_admin")
+            .access_token;
+
+        // 生命周期迁移：tenant_b admin → 404
+        let (status, body) = send(
+            app.clone(),
+            "PATCH",
+            "/v1/datasets/ds-tax-01/lifecycle",
+            Some(&other_admin),
+            Some(json!({ "to": "candidate" })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
+
+        // 发布：tenant_b admin → 404
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/datasets/ds-tax-01/publish",
+            Some(&other_admin),
+            Some(json!({ "confirm": true })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
+
+        // 撤销：tenant_b admin → 404
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/datasets/ds-tax-01/unpublish",
+            Some(&other_admin),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
     }
 
     #[tokio::test]

@@ -17,7 +17,7 @@ use crate::model::governance::Governance;
 use crate::model::lifecycle::{Lifecycle, LifecycleStatus, StateChange};
 use crate::model::llm_audit::{LlmAuditFilter, LlmAuditStats, LlmOpAudit, OperationStat};
 use crate::model::version::{BumpKind, VersionError, Versioning};
-use crate::validate::{ValidationError, Validator};
+use crate::validate::{ValidationError, Validator, scan_credentials};
 
 /// 存储错误
 #[derive(Debug, Error)]
@@ -210,6 +210,18 @@ impl RuleStore {
             );
             CREATE INDEX IF NOT EXISTS idx_auth_audit_time
                 ON auth_audits(tenant_id, created_at);
+
+            -- 43 号 §3.3：JWT 撤销黑名单（登出后按 jti 拉黑至 exp，防刷新旋转续用）
+            CREATE TABLE IF NOT EXISTS revoked_tokens (
+                jti        TEXT PRIMARY KEY,
+                tenant_id  TEXT NOT NULL,
+                user_id    TEXT,
+                token_type TEXT NOT NULL,                  -- access | refresh
+                expires_at INTEGER NOT NULL,               -- 过 exp 即可清理，鉴权时忽略
+                revoked_at TEXT NOT NULL                   -- ISO-8601 UTC
+            );
+            CREATE INDEX IF NOT EXISTS idx_revoked_token_exp
+                ON revoked_tokens(expires_at);
 
             -- 44 号 §14：API Key（MVP 最小 scope 版，仅存哈希）
             CREATE TABLE IF NOT EXISTS api_keys (
@@ -951,6 +963,22 @@ impl RuleStore {
         at: &str,
         instance_id: &str,
     ) -> Result<(), StoreError> {
+        self.publish_dataset_with_cause(
+            dataset_id,
+            publisher,
+            at,
+            &format!("独立发布审批通过，instance_id={}", instance_id),
+        )
+    }
+
+    /// 独立发布（34 号 §3/§9-1）：仅 Active 可发布，`cause` 由调用方（含二次确认回执与真实发布者）提供。
+    pub fn publish_dataset_with_cause(
+        &self,
+        dataset_id: &str,
+        publisher: &str,
+        at: &str,
+        cause: &str,
+    ) -> Result<(), StoreError> {
         let Some(mut ds) = self.get_dataset(dataset_id)? else {
             return Err(StoreError::DatasetNotFound(dataset_id.into()));
         };
@@ -963,6 +991,9 @@ impl RuleStore {
                 to: t,
             }
         })?;
+        // 发布前凭据静态扫描（35 号 §6/§9-3 强约束 MVP 手段）：数据集元数据 + 全部条目规则体。
+        // 命中疑似凭据 → 拒绝发布，交由发布审批人复核（不静默放行，硬失败）。
+        self.scan_dataset_credentials(dataset_id, &ds)?;
         let published_as = format!("{}@{}", ds.dataset_id, ds.versioning.current);
         ds.lifecycle.status = LifecycleStatus::Published;
         ds.lifecycle.state_history.push(StateChange {
@@ -970,7 +1001,7 @@ impl RuleStore {
             to: format!("{:?}", LifecycleStatus::Published),
             at: at.into(),
             by: publisher.into(),
-            cause: format!("独立发布审批通过，instance_id={}", instance_id),
+            cause: cause.into(),
             published_as: Some(published_as),
         });
         let conn = self.conn.lock().unwrap();
@@ -981,8 +1012,38 @@ impl RuleStore {
         Ok(())
     }
 
+    /// 发布前凭据静态扫描（35 号 §6/§9-3）：序列化数据集元数据 + 全部条目规则体，命中疑似凭据则拒绝。
+    fn scan_dataset_credentials(
+        &self,
+        dataset_id: &str,
+        ds: &RuleDataset,
+    ) -> Result<(), StoreError> {
+        let mut texts = Vec::new();
+        texts.push(serde_json::to_string(ds)?);
+        if let Some(deps) = &ds.data_dependencies {
+            texts.push(serde_json::to_string(deps)?);
+        }
+        // 条目规则体（执行内容核心，重点扫描）
+        for entry in self.list_entries(dataset_id, None)? {
+            texts.push(serde_json::to_string(&entry.rule_body)?);
+            if let Some(g) = &entry.governance {
+                texts.push(serde_json::to_string(g)?);
+            }
+        }
+        let mut hits = Vec::new();
+        for t in &texts {
+            hits.extend(scan_credentials(t));
+        }
+        if !hits.is_empty() {
+            return Err(StoreError::Validation(
+                ValidationError::CredentialScanFailed { hits },
+            ));
+        }
+        Ok(())
+    }
+
     /// 撤销发布（44 号 §4 `POST /datasets/{id}/unpublish`，admin 权限由 handler 把关）：
-    /// `Published → Active`，state_history 留痕（34 号 §2；撤销同样走审计）。
+    /// `Published → Rejected`，state_history 留痕（34 号 §2/§4：撤销发布移除对外可见，历史快照保留）。
     pub fn unpublish_dataset(&self, dataset_id: &str, by: &str, at: &str) -> Result<(), StoreError> {
         let Some(mut ds) = self.get_dataset(dataset_id)? else {
             return Err(StoreError::DatasetNotFound(dataset_id.into()));
@@ -991,16 +1052,16 @@ impl RuleStore {
         if prev != LifecycleStatus::Published {
             return Err(StoreError::IllegalTransition {
                 from: Some(prev),
-                to: LifecycleStatus::Active,
+                to: LifecycleStatus::Rejected,
             });
         }
-        ds.lifecycle.status = LifecycleStatus::Active;
+        ds.lifecycle.status = LifecycleStatus::Rejected;
         ds.lifecycle.state_history.push(StateChange {
             from: format!("{:?}", prev),
-            to: format!("{:?}", LifecycleStatus::Active),
+            to: format!("{:?}", LifecycleStatus::Rejected),
             at: at.into(),
             by: by.into(),
-            cause: "撤销发布（独立审批记录在案）".into(),
+            cause: "撤销发布（Published→Rejected，独立审批记录在案）".into(),
             published_as: None,
         });
         ds.meta.updated_at = Some(at.into());
@@ -1096,6 +1157,21 @@ impl RuleStore {
             });
         };
         let from = entry.status.unwrap_or(LifecycleStatus::Active);
+        // 专项拦截（37 号 §5 强约束）：LLM 产出（llm_generated=true）只能停留 Draft。
+        // 状态机层禁止其离开 Draft（含 Draft→Candidate），不只靠人工闸门；validate_llm_boundary
+        // 仅拦截"当前状态非 Draft"，此处补"迁移目标非 Draft"的离开拦截。
+        if entry
+            .governance
+            .as_ref()
+            .map(|g| g.is_llm_generated())
+            .unwrap_or(false)
+            && to != LifecycleStatus::Draft
+        {
+            return Err(StoreError::Validation(ValidationError::LlmGeneratedNotDraft {
+                entry: entry_id.into(),
+                status: to,
+            }));
+        }
         let valid = matches!(
             (from, to),
             (LifecycleStatus::Draft, LifecycleStatus::Candidate)
@@ -1783,6 +1859,37 @@ impl RuleStore {
         rows.collect::<Result<_, _>>().map_err(Into::into)
     }
 
+    /// 按 jti 拉黑 token（43 号 §3.3；登出后至 exp 拒用，`expires_at` 用于到期清理）
+    pub fn revoke_token(
+        &self,
+        jti: &str,
+        tenant_id: &str,
+        user_id: Option<&str>,
+        token_type: &str,
+        expires_at: i64,
+        revoked_at: &str,
+    ) -> Result<(), StoreError> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO revoked_tokens (jti, tenant_id, user_id, token_type, expires_at, revoked_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+             ON CONFLICT(jti) DO NOTHING",
+            params![jti, tenant_id, user_id, token_type, expires_at, revoked_at],
+        )?;
+        Ok(())
+    }
+
+    /// 是否已被拉黑（已过 exp 的记录视为不再有效，返回 false）
+    pub fn is_token_revoked(&self, jti: &str, now: i64) -> Result<bool, StoreError> {
+        let conn = self.conn.lock().unwrap();
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM revoked_tokens WHERE jti = ?1 AND expires_at > ?2",
+            params![jti, now],
+            |r| r.get(0),
+        )?;
+        Ok(count > 0)
+    }
+
     // ------------------------------------------------------------------
     // API Key（44 号 §14，MVP 最小 scope 版）
     // ------------------------------------------------------------------
@@ -2154,6 +2261,59 @@ mod tests {
         assert!(store.is_publicly_pullable("ds-tax-2024").unwrap());
         // 不存在 → false
         assert!(!store.is_publicly_pullable("nope").unwrap());
+    }
+
+    #[test]
+    fn test_publish_rejects_credential_scan() {
+        let store = RuleStore::in_memory().unwrap();
+        store.create_dataset(&tax_dataset()).unwrap();
+        // 往规则体里塞疑似凭据（35 号 §6/§9-3：发布前扫描拦截）
+        let mut entry = draft_entry();
+        entry.rule_body = serde_json::json!({
+            "transform": [{ "type": "io_request", "params": { "service_name": "payroll_svc" } }],
+            "note": "内嵌了一个不该存在的密钥",
+            "env": { "api_key": "SK-LIVE-abc12345" }
+        });
+        store.add_entry(&entry).unwrap();
+        for to in [LifecycleStatus::Candidate, LifecycleStatus::Active] {
+            store
+                .transition_dataset_status("ds-tax-2024", to, "eng", "提交", "t")
+                .unwrap();
+        }
+        let err = store
+            .publish_dataset("ds-tax-2024", "publisher-01", "t", "org")
+            .unwrap_err();
+        assert!(matches!(err, StoreError::Validation(ValidationError::CredentialScanFailed { .. })), "{err}");
+        // 未发布（仍 Active）
+        let ds = store.get_dataset("ds-tax-2024").unwrap().unwrap();
+        assert_eq!(ds.lifecycle.status, LifecycleStatus::Active);
+    }
+
+    #[test]
+    fn test_llm_generated_entry_cannot_leave_draft() {
+        use crate::model::governance::{Governance, LlmGenerated};
+        let store = RuleStore::in_memory().unwrap();
+        store.create_dataset(&tax_dataset()).unwrap();
+        let mut entry = draft_entry();
+        // 标记为 LLM 产出（37 号 §5：只到 Draft）
+        entry.governance = Some(Governance {
+            llm_generated: Some(LlmGenerated {
+                flag: true,
+                model: Some("deepseek-v4".into()),
+                op: Some("draft_rule".into()),
+                timestamp: Some("2026-07-01T08:10:00Z".into()),
+            }),
+            ..Governance::default()
+        });
+        store.add_entry(&entry).unwrap();
+        // 状态机层拦截：LLM 产出 Draft → Candidate 非法
+        let err = store
+            .transition_entry_status("ds-tax-2024", &entry.entry_id, LifecycleStatus::Candidate, "eng", "t", "提交")
+            .unwrap_err();
+        assert!(matches!(err, StoreError::Validation(ValidationError::LlmGeneratedNotDraft { .. })), "{err}");
+        // 仍为 Draft
+        let e = store.get_latest_entry("ds-tax-2024", &entry.entry_id).unwrap().unwrap();
+        assert_eq!(e.status, Some(LifecycleStatus::Draft));
     }
 
     #[test]

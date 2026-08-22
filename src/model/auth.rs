@@ -131,6 +131,8 @@ pub struct TokenClaims {
     pub token_type: String,
     pub iat: i64,
     pub exp: i64,
+    /// 唯一 token id（43 号 §3.3）：登出/撤销按 jti 拉黑，防刷新旋转后旧 token 续用
+    pub jti: String,
 }
 
 /// API Key（44 号 §14 定案：MVP 提供最小 scope 版，执行侧拉取快照包联动需要）

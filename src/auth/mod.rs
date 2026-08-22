@@ -4,7 +4,8 @@
 //! - 密码哈希：**PBKDF2-HMAC-SHA256**（OWASP 认可算法，离线可实现的 MVP 替代；
 //!   ⚠️ 43 号定案为 Argon2id(m=19MiB,t=2,p=1)——本实现因离线环境无 `argon2` crate
 //!   采用 PBKDF2-HMAC-SHA256(600k 迭代)，生产级（45 号批次1）必须换 Argon2id，接口不变）；
-//! - JWT：HS256 单密钥（access 15min / refresh 30d，43 号 §7）；
+//! - JWT：HS256 单密钥（access 15min / refresh 30d，43 号 §7）＋ jti 撤销黑名单
+//!   （43 号 §3.3：登出吊销 refresh，按 jti 拉黑至 exp，防刷新旋转续用）；
 //! - 注册/登录/刷新均落 auth_audits（43 号 §6，only-append）；
 //! - 禁用用户（disabled）拒绝登录与刷新。
 
@@ -127,6 +128,7 @@ impl AuthService {
             token_type: "access".to_string(),
             iat: now,
             exp: now + ACCESS_TOKEN_TTL_SECS,
+            jti: uuidish(),
         };
         self.sign(claims)
     }
@@ -139,6 +141,7 @@ impl AuthService {
             token_type: "refresh".to_string(),
             iat: now,
             exp: now + REFRESH_TOKEN_TTL_SECS,
+            jti: uuidish(),
         };
         self.sign(claims)
     }
@@ -261,6 +264,10 @@ impl AuthService {
         if claims.tenant_id != tenant_id {
             return Err(AuthError::InvalidToken);
         }
+        // 登出拉黑后拒绝刷新（43 号 §3.3：防旋转续用）
+        if store.is_token_revoked(&claims.jti, now)? {
+            return Err(AuthError::InvalidToken);
+        }
         let user = store
             .get_user(&claims.sub)?
             .ok_or(AuthError::TokenUserNotFound)?;
@@ -271,6 +278,31 @@ impl AuthService {
         let tokens = self.tokens_for(&user, now);
         self.audit(store, tenant_id, Some(&user.user_id), "refresh", "success", None, iso_from_unix(now));
         Ok(tokens)
+    }
+
+    /// 登出：吊销给定 refresh token（按 jti 拉黑至 exp），后续 refresh 用此 token 将失败
+    pub fn logout(
+        &self,
+        store: &RuleStore,
+        refresh_token: &str,
+        now: i64,
+    ) -> Result<(), AuthError> {
+        let claims = self.verify_token(refresh_token, now, "refresh")?;
+        store.revoke_token(
+            &claims.jti,
+            &claims.tenant_id,
+            Some(&claims.sub),
+            "refresh",
+            claims.exp,
+            &iso_from_unix(now),
+        )?;
+        self.audit(store, &claims.tenant_id, Some(&claims.sub), "logout", "success", None, iso_from_unix(now));
+        Ok(())
+    }
+
+    /// 校验收到的 access/refresh 是否已被拉黑（供 `require_auth` 鉴权中间件使用）
+    pub fn is_blacklisted(&self, store: &RuleStore, claims: &TokenClaims, now: i64) -> Result<bool, AuthError> {
+        Ok(store.is_token_revoked(&claims.jti, now)?)
     }
 
     /// 用户是否可执行动作（递进授权，43 号 §4）
@@ -578,6 +610,49 @@ mod tests {
             svc.login(&store, &tenant, "bob", "password123", now + 1),
             Err(AuthError::UserDisabled)
         ));
+    }
+
+    #[test]
+    fn test_logout_revokes_refresh_and_access() {
+        let store = store();
+        let tenant = seeded(&store);
+        let svc = AuthService::with_iterations("s", 1_000);
+        let now = 1_700_000_000i64;
+        let _ = svc
+            .register(&store, &tenant, "carol", "password123", Role::Admin, now)
+            .expect("register");
+        let tokens = svc
+            .login(&store, &tenant, "carol", "password123", now)
+            .expect("login");
+
+        // 登出前：access/refresh 均可用
+        assert!(svc.verify_token(&tokens.access_token, now, "access").is_ok());
+        assert!(svc
+            .refresh(&store, &tenant, &tokens.refresh_token, now + 60)
+            .is_ok());
+
+        // 登出：吊销 refresh（拉黑）
+        svc.logout(&store, &tokens.refresh_token, now + 61)
+            .expect("logout");
+
+        // refresh 已拉黑 → 刷新失败
+        assert!(matches!(
+            svc.refresh(&store, &tenant, &tokens.refresh_token, now + 62),
+            Err(AuthError::InvalidToken)
+        ));
+
+        // 同一 refresh 再次登出幂等（ON CONFLICT DO NOTHING）
+        svc.logout(&store, &tokens.refresh_token, now + 62)
+            .expect("idempotent logout");
+
+        // 未拉黑的另一用户不受影响
+        let _ = svc
+            .register(&store, &tenant, "dave", "password123", Role::Viewer, now)
+            .expect("register");
+        let dave_tokens = svc.login(&store, &tenant, "dave", "password123", now).expect("login");
+        assert!(svc
+            .refresh(&store, &tenant, &dave_tokens.refresh_token, now + 60)
+            .is_ok());
     }
 
     #[test]

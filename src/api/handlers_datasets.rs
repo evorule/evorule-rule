@@ -127,6 +127,14 @@ pub async fn transition_lifecycle(
     if !allowed {
         return Err(ApiError::forbidden("当前角色无权执行该状态迁移"));
     }
+    // 租户归属校验（38 号 §10-3：跨租户返回 404，防越权迁移他租户数据集）
+    let owned = state
+        .store
+        .get_dataset(&id)?
+        .ok_or_else(|| ApiError::not_found("数据集不存在"))?;
+    if owned.tenant_id != ctx.tenant_id {
+        return Err(ApiError::not_found("数据集不存在"));
+    }
     let at = iso_from_unix(unix_now());
     state
         .store
@@ -139,18 +147,49 @@ pub async fn transition_lifecycle(
 }
 
 /// 独立发布审批（34 号 §3 强约束）：Active → Published，发布者复用审批者 + 二次确认
+///
+/// 二次确认（34 号 §9-1 / 38 号 §10-2 定案"防误发"；设计未定义具体协议）：
+/// MVP 以**显式确认字段**固化——请求体必须携带且 `confirm==true` 才执行，
+/// 否则返回 400（把"弹窗二次确认"固化为接口契约，防误发；双步 token 回执后置批次 1）。
+#[derive(Deserialize)]
+pub struct PublishReq {
+    /// 二次确认回执（防误发）：必须显式置 true，缺省视为未确认
+    pub confirm: bool,
+    /// 可选发布原因，记入审计 cause
+    #[serde(default)]
+    pub reason: Option<String>,
+}
+
 pub async fn publish(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
     Path(id): Path<String>,
+    Json(req): Json<PublishReq>,
 ) -> Result<Json<RuleDataset>, ApiError> {
     if !can(ctx.role, Action::Publish) {
         return Err(ApiError::forbidden("发布需审批者及以上角色"));
     }
+    // 租户归属校验（38 号 §10-3：SQL 层 + 应用层补偿，跨租户返回 404）
+    let ds = state
+        .store
+        .get_dataset(&id)?
+        .ok_or_else(|| ApiError::not_found("数据集不存在"))?;
+    if ds.tenant_id != ctx.tenant_id {
+        return Err(ApiError::not_found("数据集不存在"));
+    }
+    if !req.confirm {
+        return Err(ApiError::bad_request(
+            "发布需二次确认：请求体须携带 confirm=true（防误发，34 号 §9-1）",
+        ));
+    }
     let at = iso_from_unix(unix_now());
+    let cause = req
+        .reason
+        .map(|r| format!("独立发布审批通过（二次确认），原因: {r}"))
+        .unwrap_or_else(|| "独立发布审批通过（二次确认）".to_string());
     state
         .store
-        .publish_dataset(&id, &ctx.user_id, &at, &state.instance_id)?;
+        .publish_dataset_with_cause(&id, &ctx.user_id, &at, &cause)?;
     let ds = state
         .store
         .get_dataset(&id)?
@@ -357,7 +396,7 @@ pub async fn create_patch(
     })))
 }
 
-/// POST /datasets/{id}/unpublish —— 撤销发布（Published → Active，admin）
+/// POST /datasets/{id}/unpublish —— 撤销发布（Published → Rejected，admin）
 pub async fn unpublish(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
@@ -365,6 +404,14 @@ pub async fn unpublish(
 ) -> Result<Json<RuleDataset>, ApiError> {
     if ctx.role != Role::Admin {
         return Err(ApiError::forbidden("撤销发布需管理员角色"));
+    }
+    // 租户归属校验（38 号 §10-3：跨租户返回 404，防越权撤销他租户发布）
+    let owned = state
+        .store
+        .get_dataset(&id)?
+        .ok_or_else(|| ApiError::not_found("数据集不存在"))?;
+    if owned.tenant_id != ctx.tenant_id {
+        return Err(ApiError::not_found("数据集不存在"));
     }
     state
         .store

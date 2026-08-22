@@ -29,6 +29,12 @@ pub struct RefreshReq {
     pub refresh_token: String,
 }
 
+#[derive(Deserialize)]
+pub struct LogoutReq {
+    /// 要吊销的 refresh token（登出后至 exp 拉黑，防旋转续用）
+    pub refresh_token: String,
+}
+
 #[derive(Serialize)]
 pub struct TokenResp {
     pub access_token: String,
@@ -120,6 +126,18 @@ pub async fn refresh(
         refresh_expires_at: tokens.refresh_expires_at,
         token_type: "Bearer",
     }))
+}
+
+/// 登出（43 号 §3.3）：吊销 refresh token（拉黑至 exp），其后用该 token 刷新将失败
+pub async fn logout(
+    State(state): State<AppState>,
+    Json(req): Json<LogoutReq>,
+) -> Result<StatusCode, ApiError> {
+    state
+        .auth
+        .logout(&state.store, &req.refresh_token, unix_now())
+        .map_err(|_| ApiError::bad_request("refresh token 非法或已过期"))?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// 当前用户信息

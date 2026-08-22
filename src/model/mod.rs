@@ -16,6 +16,7 @@ pub mod lifecycle;
 pub mod llm_audit;
 pub mod provenance;
 pub mod version;
+pub mod writeback;
 
 pub use auth::{Action, ApiKey, AuthAudit, Role, Tenant, TokenClaims, User, can};
 
@@ -32,3 +33,4 @@ pub use provenance::Provenance;
 pub use version::{
     BumpKind, LawRef, Version, VersionError, VersionSelection, VersionSelectionMode, Versioning,
 };
+pub use writeback::{ExecutionCtx, FailureDetail, RuleFailureEvent, validate_event};
