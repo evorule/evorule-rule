@@ -41,10 +41,17 @@ git config core.hooksPath scripts/hooks
   - 无 origin 远端 → 跳过(允许本地仓 / 离线开发)
   - amend commit → 跳过(避免循环)
   - push 失败 → 警告但不阻塞 commit(允许网络断时继续开发,下次 push 自动累积)
-- **pre-push**: push 前在 main/master 分支跑 `cargo test --workspace`
-  - 非 Rust 仓 → 跳过
-  - 非主分支 → 跳过(避免开发分支反复编译拖慢)
-  - 测试失败 → 阻止 push(防止 working commit 没编译就推)
+
+### ~~pre-push~~(2026-08-22 决策:**不装**)
+
+曾考虑装 pre-push(在 push 前跑 `cargo test --workspace`,失败阻止 push),但:
+
+- evorule-rule **108 测试** + feature 102 tests,实测**超过 60s 跑不完**
+- 这会导致日常 `git push` 经常卡住,违背"轻量工作流"原则
+- 用户核心诉求是"workingtree 永远干净",**post-commit 自动 push 已解决**
+- 测试门禁职责**留给 CI**(Gitee Go 启用时配 `ci.yml` 的 `test` / `clippy` job)
+
+如果你想加 pre-push,手动 `git config core.hooksPath scripts/hooks` 后,加 `pre-push` shell 脚本即可。**默认不装**。
 
 ## 3. 发版(tag + version bump)
 
@@ -115,9 +122,9 @@ evorule-rule 发版**不需要**等 evorule 仓,反之亦然。但 schema/接口
 - [ ] `cargo test --workspace` 0 failed
 - [ ] `cargo clippy --workspace --all-targets -- -D warnings` 干净
 - [ ] `git status` clean(没有 uncommitted / untracked)
-- [ ] 当前 branch = `main`,远端同步
-- [ ] 1 个 `chore(release): vX.Y.Z` commit
-- [ ] 1 个 `vX.Y.Z` annotated tag + push 到 origin
+- [ ] 当前 branch = `main`,远端同步(post-commit hook 自动保证)
+- [ ] 1 个 `chore(release): vX.Y.Z` commit(hook 自动 push)
+- [ ] 1 个 `vX.Y.Z` annotated tag + `git push origin vX.Y.Z`(手动)
 
 ---
 
