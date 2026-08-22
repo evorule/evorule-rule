@@ -60,7 +60,7 @@ pub fn scan_credentials(text: &str) -> Vec<String> {
         while let Some(rel) = lower[pos..].find(name) {
             let idx = pos + rel;
             // 取键名后到值片段（冒号/等号后 → 到空白/逗号/右括号/引号/右括号/换行）
-            if let Some(sep) = lower[idx..].find(|c| c == ':' || c == '=') {
+            if let Some(sep) = lower[idx..].find([':', '=']) {
                 let vstart = idx + sep + 1;
                 let vtrim = lower[vstart..].trim_start().trim_start_matches('"').trim_start_matches('\'');
                 // 值非空、非布尔/纯数字/对象/占位符 → 疑似凭据
@@ -73,10 +73,10 @@ pub fn scan_credentials(text: &str) -> Vec<String> {
                     && vtrim.chars().next().map(|c| !c.is_ascii_digit()).unwrap_or(false);
                 if non_trivial {
                     let val: String = vtrim
-                        .split(|c: char| c == ',' || c == '"' || c == '\'' || c == ')' || c == '}' || c == '\n' || c == ' ')
+                        .split([',', '"', '\'', ')', '}', '\n', ' '])
                         .next()
                         .unwrap_or("")
-                        .trim_end_matches(|c| c == '{' || c == ',')
+                        .trim_end_matches(['{', ','])
                         .to_string();
                     // 占位符/示例/说明值不算命中（避免误伤规则正文）
                     if !val.is_empty() && !val.contains("提示") && !val.contains("示例")
