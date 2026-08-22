@@ -24,3 +24,15 @@ http-body-util = "0.1"
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
+
+# PostgreSQL 生产后端（45 号批次1 §2）：默认不启用，`--features postgres` 才编译。
+# sqlx 为强重型依赖（异步 + 迁移嵌入），门控避免默认 build/test/clippy 负重。
+# SQLite 仍是当前 MVP 活跃引擎，PG 为生产级后续（如实标注，见 store/pg.rs / 45 号 §6）。
+[features]
+postgres = ["dep:sqlx"]
+
+[dependencies.sqlx]
+version = "0.8"
+optional = true
+default-features = false
+features = ["runtime-tokio", "postgres", "migrate", "json"]

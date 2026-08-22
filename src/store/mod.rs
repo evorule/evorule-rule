@@ -8,6 +8,11 @@
 use rusqlite::{params, Connection, OptionalExtension};
 use thiserror::Error;
 
+/// PostgreSQL 生产后端（45 号批次1 §2）：仅 `--features postgres` 编译。
+/// 默认 SQLite（`RuleStore`）仍是 MVP 活跃引擎，本模块为生产级后续接线位（骨架）。
+#[cfg(feature = "postgres")]
+pub mod pg;
+
 use crate::bundle::{BundleError, BundleExporter, BundleImporter, BundleTests, DatasetBundle, ImportResult};
 use crate::model::auth::{ApiKey, AuthAudit, Role, Tenant, User};
 use crate::model::dataset::{Meta, RuleDataset, Visibility};
