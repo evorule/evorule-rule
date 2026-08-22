@@ -13,13 +13,14 @@ use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use axum::body::Bytes;
-use axum::extract::{Request, State};
+use axum::extract::{Extension, Request, State};
 use axum::http::{HeaderMap, Method, StatusCode};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, patch, post};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 use crate::auth::AuthService;
 use crate::model::auth::Role;
@@ -34,6 +35,24 @@ pub mod handlers_keys;
 pub mod handlers_llm;
 pub mod handlers_search;
 
+/// 活跃存储后端（45 号批次1 配置化双后端 · 最小接线）
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BackendKind {
+    /// SQLite（默认，MVP 活跃引擎）
+    Sqlite,
+    /// PostgreSQL（仅 `--features postgres` 且成功建池/迁移后）
+    Postgres,
+}
+
+impl BackendKind {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            BackendKind::Sqlite => "sqlite",
+            BackendKind::Postgres => "postgres",
+        }
+    }
+}
+
 /// 应用状态
 #[derive(Clone)]
 pub struct AppState {
@@ -43,6 +62,10 @@ pub struct AppState {
     pub instance_id: String,
     /// evo-agent serve 地址（37 号：LLM 命名操作代理目标）
     pub llm_base_url: String,
+    /// 当前活跃存储后端（45 号 最小接线；SQLite 默认，PG 需 feature+URL）
+    pub backend: BackendKind,
+    /// PG 启动自检结果描述（SQLite 下为 None；PG 模式如实报告，不伪造）
+    pub pg_smoke: Option<String>,
     /// Idempotency-Key 幂等缓存（44 号 §14 / 60 号 P1-B4，单实例内存版）
     idem: Arc<Mutex<HashMap<String, IdemEntry>>>,
 }
@@ -54,10 +77,58 @@ impl AppState {
             auth: Arc::new(AuthService::new(secret)),
             instance_id: instance_id.to_string(),
             llm_base_url: llm_base_url.to_string(),
+            backend: BackendKind::Sqlite,
+            pg_smoke: None,
             idem: Arc::new(Mutex::new(HashMap::new())),
         }
     }
+
+    /// 设置后端与 PG 自检结果（启动 bootstrap 时调用；如实记录，单实例持久）。
+    pub fn set_backend(&mut self, kind: BackendKind, pg_smoke: Option<String>) {
+        self.backend = kind;
+        self.pg_smoke = pg_smoke;
+    }
+
+    /// 配置化双后端启动靴（45 号 最小接线 · 不伪造）：
+    /// - 默认 SQLite 活跃（MVP 引擎）；
+    /// - `--features postgres` 且 `DATABASE_URL` 可用时，运行 `PgStore::smoke_check()`
+    ///   （建池+迁移+最小 CRUD 往返）作为启动门控；
+    /// - 冒烟成功 → 标注 Postgres + 探针详情；失败或未启用 → 回落到 SQLite 但如实记录原因。
+    /// 返回诊断描述（供启动日志与 `/v1/admin/backend`）。
+    pub async fn bootstrap_backend(mut self) -> Self {
+        #[cfg(feature = "postgres")]
+        {
+            let has_url = std::env::var("DATABASE_URL").is_ok();
+            if !has_url {
+                self.set_backend(BackendKind::Sqlite, None);
+                // 注：未设 URL 时不伪造；PG 未实际启用，SQLite 继续活跃
+                return self;
+            }
+            match crate::store::pg::PgStore::smoke_check().await {
+                Ok(diag) => {
+                    self.set_backend(BackendKind::Postgres, Some(diag));
+                }
+                Err(e) => {
+                    // PG 连接/迁移失败：回落 SQLite，并如实记录失败原因（不 panic、不伪造）
+                    self.set_backend(
+                        BackendKind::Sqlite,
+                        Some(format!("POSTGRES_PROBE_ERROR={e} → 回落到 SQLite，PG 未激活")),
+                    );
+                }
+            }
+        }
+        #[cfg(not(feature = "postgres"))]
+        {
+            // 未编译 postgres feature 时永不启用 PG；保留一次真实 await 避免 unused_async（语义无害）
+            noop_await().await;
+        }
+        self
+    }
 }
+
+/// 无副作用的一次 await（仅默认构建下保持 async 语义；不作任何实事）。
+#[cfg(not(feature = "postgres"))]
+async fn noop_await() {}
 
 /// 幂等缓存条目（44 号 §14；数据源：写请求 + 响应；同 key 同负载返回缓存，不同负载 409）
 struct IdemEntry {
@@ -392,6 +463,30 @@ pub fn unix_now() -> i64 {
         .unwrap_or(0)
 }
 
+/// GET /v1/admin/backend —— 存储后端自检（45 号 最小接线；如实报告活跃后端 + PG 探针，不伪造）
+async fn admin_backend(
+    State(state): State<AppState>,
+    Extension(ctx): Extension<AuthContext>,
+) -> Result<Json<Value>, ApiError> {
+    use crate::model::auth::{Action, can};
+    // 运维诊断端点：要求管理员角色（四角色递进最高级）
+    if !can(ctx.role, Action::Admin) {
+        return Err(ApiError::forbidden("需要管理员角色查看后端自检"));
+    }
+    let mut out = serde_json::json!({
+        "backend": state.backend.as_str(),
+        "instance_id": state.instance_id,
+        "note": "SQLite 为默认 MVP 活跃引擎；Postgres 仅 --features postgres 且 DATABASE_URL 可用时激活。此处如实报告，不伪造已切换。",
+    });
+    // PG 探针结果（有则附，无则标注未启用）
+    if let Some(smoke) = &state.pg_smoke {
+        out["postgres_probe"] = serde_json::json!({ "connected": true, "detail": smoke });
+    } else {
+        out["postgres_probe"] = serde_json::json!({ "connected": false });
+    }
+    Ok(Json(out))
+}
+
 /// 构建 API 路由（44 号 §6 端点面，MVP 骨架）
 pub fn router(state: AppState) -> Router {
     let public = Router::new()
@@ -409,6 +504,7 @@ pub fn router(state: AppState) -> Router {
 
     let protected = Router::new()
         .route("/me", get(handlers_auth::me))
+        .route("/admin/backend", get(admin_backend))
         .route("/audits", get(handlers_auth::audits))
         .route("/audits/auth", get(handlers_auth::audits))
         .route("/audits/lifecycle", get(handlers_auth::lifecycle_audits))

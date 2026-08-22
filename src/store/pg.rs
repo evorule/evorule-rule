@@ -69,6 +69,50 @@ impl PgStore {
         Ok(())
     }
 
+    /// 冒烟自检（45 号 最小接线 · 启动门控）：建池 + 迁移 + 最小 CRUD 往返。
+    /// 返回人类可读诊断字符串（如实说明成功环节与边界，不伪造）。
+    pub async fn smoke_check() -> Result<String, PgError> {
+        let store = Self::connect_from_env().await?;
+        store.ping().await?;
+        // 最小 CRUD 往返：建租户 + 建数据集 + 读回（验证方言改写路径可用）
+        let tenant = format!("smoke-{}", entry_epoch_ms());
+        let ds_id = format!("smoke-ds-{}", entry_epoch_ms());
+        store
+            .ensure_default_tenant(&tenant, "冒烟租户", "inst-smoke", "2026-08-22T00:00:00Z")
+            .await?;
+        let ds = crate::model::dataset::RuleDataset {
+            dataset_id: ds_id.clone(),
+            name: "冒烟数据集".into(),
+            description: Some("45 号最小接线自检".into()),
+            domain: vec!["smoke".into()],
+            tags: vec![],
+            tenant_id: tenant.clone(),
+            visibility: crate::model::dataset::Visibility::Private,
+            lifecycle: Default::default(),
+            versioning: Default::default(),
+            law_ref: None,
+            version_selection: None,
+            data_dependencies: None,
+            meta: crate::model::dataset::Meta {
+                created_at: "2026-08-22T00:00:01Z".into(),
+                created_by: "smoke".into(),
+                updated_at: None,
+                updated_by: None,
+            },
+        };
+        store.create_dataset(&ds).await?;
+        let got = store.get_dataset(&ds_id).await?.ok_or_else(|| {
+            PgError::NotYetWired // 读回失败按接线缺失处理（后续接查询层后不存在）
+        })?;
+        if got.dataset_id != ds_id {
+            return Err(PgError::NotYetWired);
+        }
+        Ok(format!(
+            "PGCONNECT=ok MIGRATE=ok CRUD_ROUNDTRIP=ok tenant={tenant} dataset={ds_id} \
+             (方言改写最小链路可用；usage_records 配额与全量 API 网关为后续批次)"
+        ))
+    }
+
     /// 暴露池，供后续批次接入查询层（P4 方言改写 + P6 事务）。
     pub fn pool(&self) -> &PgPool {
         &self.pool
@@ -1087,5 +1131,34 @@ mod tests {
         };
         store.create_user(&user).await?;
         Ok(())
+    }
+
+    /// 配置化双后端冒烟（45 号 最小接线）：真实 PG 下 `smoke_check` 应成功并返回 CRUD_ROUNDTRIP=ok。
+    #[tokio::test]
+    #[ignore = "需要真实 PostgreSQL：DATABASE_URL"]
+    async fn pg_smoke_check() {
+        let url = std::env::var("DATABASE_URL").unwrap_or_default();
+        if url.is_empty() {
+            eprintln!("跳过：未设置 DATABASE_URL");
+            return;
+        }
+        let diag = super::PgStore::smoke_check()
+            .await
+            .expect("smoke_check 失败（真实 PG 应可用）");
+        assert!(diag.contains("CRUD_ROUNDTRIP=ok"), "diag={diag}");
+        eprintln!("smoke_check OK: {diag}");
+    }
+
+    /// 配置化双后端维持默认：无 DATABASE_URL 时不启用 PG（回落 SQLite，不伪造）。
+    #[tokio::test]
+    #[ignore = "需在隔离环境验证 env；默认下不执行"]
+    async fn backend_default_sqlite_no_env() {
+        std::env::remove_var("DATABASE_URL");
+        let store = crate::store::RuleStore::open(":memory:").expect("open sqlite");
+        let state = crate::api::AppState::new(store, "s", "inst", "http://x")
+            .bootstrap_backend()
+            .await;
+        assert_eq!(state.backend, crate::api::BackendKind::Sqlite);
+        assert_eq!(state.pg_smoke, None);
     }
 }
