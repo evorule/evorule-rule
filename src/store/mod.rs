@@ -182,6 +182,21 @@ impl RuleStore {
             );
             CREATE INDEX IF NOT EXISTS idx_snapshots_ds ON entry_snapshots(dataset_id);
 
+            -- 45 号批次1 / 33 号 §6：数据集版本内容归因快照（闭合 C 类残留）。
+            -- 记录每个数据集版本的条目 content_hash 归因（不可变）："哪一数据集版本含哪几条快照"。
+            -- 由 create_dataset_version 落库；version_diff 据此做内容归因级 diff（先于 PostgreSQL 迁移，
+            -- 治理数据 MVP 仍 SQLite，45 号 §5 如实标注）。
+            CREATE TABLE IF NOT EXISTS dataset_versions (
+                dataset_id   TEXT NOT NULL,
+                version      TEXT NOT NULL,               -- 数据集版本号（v1 / v1.p1）
+                entry_hash   TEXT NOT NULL,               -- 条目 content_hash
+                entry_id     TEXT NOT NULL,               -- 冗余便于归因可读（非唯一：跨版本复用）
+                created_at   TEXT NOT NULL,
+                PRIMARY KEY (dataset_id, version, entry_hash),
+                FOREIGN KEY (dataset_id) REFERENCES datasets(dataset_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_dsver_ds ON dataset_versions(dataset_id, version);
+
             -- 37 号 §8：LLM 命名操作审计（"LLM 每步可审计"）
             CREATE TABLE IF NOT EXISTS llm_op_audit (
                 request_id   TEXT PRIMARY KEY,
@@ -526,6 +541,8 @@ impl RuleStore {
         };
         // 版本链完整性（防损坏数据被继续追加）
         ds.versioning.validate()?;
+        // 旧版本号（触发升版的版本）：为它落库条目 content_hash 归因（45 号批次1 / C 类闭合）
+        let old_version = ds.versioning.current.clone();
         // 按变更线生成新版本
         let new_versioning = ds.versioning.bump(kind)?;
         let new_version = new_versioning.current.clone();
@@ -553,6 +570,26 @@ impl RuleStore {
                 dataset_id,
             ],
         )?;
+        // 内容归因落库（45 号批次1）：记录"旧版本含哪些条目快照"（POST-bump 前当前 entries = 旧版本内容）。
+        // 跨版本未变内容复用同一 snapshot，归因行按 (version, content_hash) 唯一，可在多版本出现。
+        let rows: Vec<(String, String)> = conn
+            .prepare(
+                "SELECT entry_id, content_hash FROM entries WHERE dataset_id=?1
+                 ORDER BY entry_id",
+            )?
+            .query_map(params![dataset_id], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+            })?
+            .collect::<Result<_, _>>()?;
+        {
+            let mut stmt = conn.prepare(
+                "INSERT INTO dataset_versions (dataset_id, version, entry_hash, entry_id, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+            )?;
+            for (entry_id, content_hash) in rows {
+                stmt.execute(params![dataset_id, old_version, content_hash, entry_id, at])?;
+            }
+        }
         Ok(new_version)
     }
 
@@ -1684,8 +1721,10 @@ impl RuleStore {
 
     /// 版本 diff（44 号 §9 `GET /search/datasets/{id}/diff`，33 号内容哈希语义）。
     ///
-    /// MVP 只存当前版本条目，无法重建历史版本内容 → 返回**结构级 diff**（版本链增量 + 当前条目清单），
-    /// 内容级 diff 待历史快照落库后补（批次 1）。诚实标注，不伪造。
+    /// - **结构级**（版本链增量 + 当前条目清单）始终返回；
+    /// - **内容归因级**（45 号批次1 / C 类闭合）：对比 `from`/`to` 两版本在 `dataset_versions`
+    ///   快照表中的条目 content_hash 归因，给出 added/removed/unchanged（跨版本未变内容复用同哈希）。
+    ///   若 from 无归因记录（该版本未被升版留档，如从未升版过的初始版本），如实标注归因缺失，不伪造。
     pub fn version_diff(
         &self,
         dataset_id: &str,
@@ -1716,6 +1755,33 @@ impl RuleStore {
         }
         let entries = self.list_entries(dataset_id, None)?;
         let entry_ids: Vec<String> = entries.iter().map(|e| e.entry_id.clone()).collect();
+        // 内容归因（45 号批次1）：取两版本的归因哈希集。
+        // - from 必为历史版本 → 读 dataset_versions 留档；
+        // - to 若为当前版本（未升版，无留档）→ 用当前 entries 实时哈希；
+        //   否则为历史版本 → 读留档。
+        let from_set = self.dataset_version_hashes(dataset_id, from)?;
+        let to_set = if ds.versioning.current == *to {
+            entries.iter().map(|e| e.content_hash()).collect()
+        } else {
+            self.dataset_version_hashes(dataset_id, to)?
+        };
+        // from 无可归因记录（该版本从未被升版留档）→ 结构级回退，如实标注
+        if from_set.is_empty() && to_set.is_empty() {
+            return Ok(serde_json::json!({
+                "dataset_id": dataset_id,
+                "from": from,
+                "to": to,
+                "added_versions": &chain[fi + 1..=ti],
+                "current_entry_count": entries.len(),
+                "current_entry_ids": entry_ids,
+                "content_attribution": null,
+                "note": "结构级 diff（版本链增量 + 当前条目清单）；内容归因不可用：from/to 版本均无 dataset_versions 快照留档（初始版本未升版过）。45 号批次1 落库后，后续升版将产生归因。",
+            }));
+        }
+        // 内容归因级 diff：按 content_hash 比较（跨版本复用同哈希 = 未变）
+        let added: Vec<String> = to_set.difference(&from_set).cloned().collect();
+        let removed: Vec<String> = from_set.difference(&to_set).cloned().collect();
+        let unchanged: Vec<String> = from_set.intersection(&to_set).cloned().collect();
         Ok(serde_json::json!({
             "dataset_id": dataset_id,
             "from": from,
@@ -1723,8 +1789,31 @@ impl RuleStore {
             "added_versions": &chain[fi + 1..=ti],
             "current_entry_count": entries.len(),
             "current_entry_ids": entry_ids,
-            "note": "数据集版本级结构 diff（版本链增量 + 当前条目清单）。条目级内容 diff 已提供：GET /entries/{id}/diff?from=..&to=..（C2）。数据集版本↔条目快照的内容归因需 dataset_versions 快照表（45 号批次 1）",
+            "content_attribution": {
+                "added": added,
+                "removed": removed,
+                "unchanged": unchanged,
+                "note": "按条目 content_hash 归因（45 号批次1 dataset_versions 快照表）：跨版本未变内容复用同哈希，归为 unchanged。",
+            },
         }))
+    }
+
+    /// 读取某数据集某版本在 `dataset_versions` 快照表中的条目 content_hash 归因集
+    /// （45 号批次1；跨版本未变内容多版本共享，去重后作集合返回）。
+    fn dataset_version_hashes(
+        &self,
+        dataset_id: &str,
+        version: &str,
+    ) -> Result<std::collections::BTreeSet<String>, StoreError> {
+        let conn = self.conn.lock().unwrap();
+        let rows = conn
+            .prepare(
+                "SELECT entry_hash FROM dataset_versions
+                 WHERE dataset_id=?1 AND version=?2 ORDER BY entry_hash",
+            )?
+            .query_map(params![dataset_id, version], |r| r.get::<_, String>(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows.into_iter().collect())
     }
 
     /// 生命周期审计（44 号 §11 `GET /audits/lifecycle`）：租户内数据集 state_history 扁平输出

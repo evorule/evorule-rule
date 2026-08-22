@@ -1411,6 +1411,16 @@ mod tests {
         .await;
         assert_eq!(status, StatusCode::OK, "{body}");
         assert_eq!(body["added_versions"][0], "v2");
+        // 内容归因（45 号批次1 / C 类闭合）：升版 v1→v2 条目未变 → v1 留档哈希与当前 v2 归因相同 ⇒ unchanged。
+        let attr = &body["content_attribution"];
+        assert!(attr.is_object(), "缺少内容归因：{body}");
+        assert_eq!(
+            body["current_entry_count"].as_u64().unwrap(),
+            attr["unchanged"].as_array().map(|a| a.len()).unwrap_or(0) as u64,
+            "升版未改条目 ⇒ 全部归 unchanged：{body}"
+        );
+        assert_eq!(attr["added"].as_array().map(|a| a.len()).unwrap_or(0), 0, "{body}");
+        assert_eq!(attr["removed"].as_array().map(|a| a.len()).unwrap_or(0), 0, "{body}");
     }
 
     #[tokio::test]
