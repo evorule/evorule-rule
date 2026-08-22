@@ -9,13 +9,13 @@
 
 use std::collections::BTreeMap;
 
-use axum::extract::{Extension, Path, State};
+use axum::extract::{Extension, Path, Query, State};
 use axum::http::StatusCode;
 use axum::Json;
 use serde::Deserialize;
 
 use crate::api::handlers_auth::now_iso;
-use crate::api::{unix_now, AppState, ApiError, AuthContext};
+use crate::api::{paginate, unix_now, AppState, ApiError, AuthContext, Page, PageQuery};
 use crate::model::auth::{Action, Role, can};
 use crate::model::dependency::{
     DataDependencies, IoContract, ServiceTemplate, ServiceTemplateRecord,
@@ -109,11 +109,13 @@ pub async fn create_template(
 pub async fn list_templates(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
-) -> Result<Json<Vec<ServiceTemplateRecord>>, ApiError> {
+    Query(page): Query<PageQuery>,
+) -> Result<Json<Page<ServiceTemplateRecord>>, ApiError> {
     if !can(ctx.role, Action::View) {
         return Err(ApiError::forbidden("无查看权限"));
     }
-    Ok(Json(state.store.list_service_templates(&ctx.tenant_id)?))
+    let t = state.store.list_service_templates(&ctx.tenant_id)?;
+    Ok(paginate(t, page.limit, page.offset))
 }
 
 /// GET /deps/templates/{id} —— 模板详情（含参数形状 placeholder_notes）

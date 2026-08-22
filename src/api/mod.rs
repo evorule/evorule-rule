@@ -1,23 +1,25 @@
 //! REST API 面（44 号 正交 B）
 //!
 //! MVP 定案（44 号 §14，2026-08-22）：
-//! - REST+JSON、v1 版本化；cursor 分页（44 号 §14）**MVP 未落地**——列表端点返回全量数组，
-//!   limit/offset 与 `{items,next_cursor}` 结构后置批次 1，此处如实标注，不伪称已简化实现；
+//! - REST+JSON、v1 版本化；分页 `{ items, next_cursor }` + `limit`/`offset`（44 号 §3.3，
+//!   60 号 P1-B3 已落地：路由层对租户作用域结果集内存分页，SQL pushdown 归批次 2）；
 //! - 统一错误不静默降级：`{ "error": { "code", "message" } }`；
-//! - 同步导入、`Idempotency-Key` 幂等（MVP 留契约，POST 重复由唯一键兜底）；
+//! - 同步导入、`Idempotency-Key` 幂等（44 号 §14；60 号 P1-B4 落地，见各写端点）；
 //! - lifecycle 迁移统一走 `PATCH /v1/datasets/{id}/lifecycle`；
 //! - api_keys 提供最小 scope 版（pull，执行侧拉取快照包联动）。
 
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use axum::body::Bytes;
 use axum::extract::{Request, State};
-use axum::http::{HeaderMap, StatusCode};
+use axum::http::{HeaderMap, Method, StatusCode};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, patch, post};
 use axum::{Json, Router};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::auth::AuthService;
 use crate::model::auth::Role;
@@ -41,6 +43,8 @@ pub struct AppState {
     pub instance_id: String,
     /// evo-agent serve 地址（37 号：LLM 命名操作代理目标）
     pub llm_base_url: String,
+    /// Idempotency-Key 幂等缓存（44 号 §14 / 60 号 P1-B4，单实例内存版）
+    idem: Arc<Mutex<HashMap<String, IdemEntry>>>,
 }
 
 impl AppState {
@@ -50,9 +54,30 @@ impl AppState {
             auth: Arc::new(AuthService::new(secret)),
             instance_id: instance_id.to_string(),
             llm_base_url: llm_base_url.to_string(),
+            idem: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 }
+
+/// 幂等缓存条目（44 号 §14；数据源：写请求 + 响应；同 key 同负载返回缓存，不同负载 409）
+struct IdemEntry {
+    /// 首次请求体（Bytes 等值比较判定负载是否一致）
+    req_body: Bytes,
+    /// Pending=在途（并发同 key 防重入）；Done=已缓存完整响应
+    state: IdemState,
+    status: StatusCode,
+    headers: HeaderMap,
+    body: Bytes,
+    expires_at: i64,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum IdemState {
+    Pending,
+    Done,
+}
+
+const IDEM_TTL_SECS: i64 = 86400; // 24h
 
 /// 已认证上下文（由 require_auth 中间件注入）
 #[derive(Debug, Clone)]
@@ -210,6 +235,101 @@ pub async fn require_auth(
     Ok(next.run(req).await)
 }
 
+/// Idempotency-Key 幂等中间件（44 号 §14 / 60 号 P1-B4，单实例内存版）。
+///
+/// 仅对可能产生副作用的非幂等方法启用；需在 require_auth **之后**运行以取租户作用域。
+/// - 无 `Idempotency-Key`：透传，不启用；
+/// - 同 key 同负载：返回首次缓存的完整响应（重试不重复生效）；
+/// - 同 key 不同负载：`409`（复用 key 改变负载）；
+/// - 并发同 key 在途：`409`（防双写）。
+pub async fn idempotency(
+    State(state): State<AppState>,
+    req: Request,
+    next: Next,
+) -> Result<Response, ApiError> {
+    if matches!(
+        req.method(),
+        &Method::GET | &Method::HEAD | &Method::OPTIONS
+    ) {
+        return Ok(next.run(req).await);
+    }
+    let Some(key_header) = req
+        .headers()
+        .get("Idempotency-Key")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.trim().to_string())
+    else {
+        return Ok(next.run(req).await);
+    };
+    if key_header.is_empty() {
+        return Ok(next.run(req).await);
+    }
+    let Some(ctx) = req.extensions().get::<AuthContext>().cloned() else {
+        // 未完成认证（正常不应发生于受保护路由）：透传，不施加幂等语义
+        return Ok(next.run(req).await);
+    };
+    let cache_key = format!("{}:{}", ctx.tenant_id, key_header);
+
+    // 拆请求体并保留 parts，供下游 next 复用
+    let (parts, body) = req.into_parts();
+    let req_body = axum::body::to_bytes(body, usize::MAX)
+        .await
+        .map_err(|_| ApiError::bad_request("读取请求体失败"))?;
+
+    let now = unix_now();
+    {
+        let mut map = state.idem.lock().unwrap();
+        map.retain(|_, e| e.expires_at > now); // 机会式清理过期项
+        if let Some(entry) = map.get(&cache_key) {
+            if entry.state == IdemState::Pending {
+                return Err(ApiError::conflict("该 Idempotency-Key 正在处理中（并发重复请求）"));
+            }
+            if entry.req_body == req_body {
+                let mut rp = Response::new(()).into_parts().0;
+                rp.status = entry.status;
+                rp.headers = entry.headers.clone();
+                return Ok(Response::from_parts(rp, entry.body.clone().into()));
+            }
+            return Err(ApiError::conflict("Idempotency-Key 复用但请求体不同"));
+        }
+        // 首次：先登记在途，防止并发同 key 双写
+        map.insert(
+            cache_key.clone(),
+            IdemEntry {
+                req_body: req_body.clone(),
+                state: IdemState::Pending,
+                status: StatusCode::INTERNAL_SERVER_ERROR,
+                headers: HeaderMap::new(),
+                body: Bytes::new(),
+                expires_at: now + IDEM_TTL_SECS,
+            },
+        );
+    }
+
+    // 还原请求并交给下游
+    let req = Request::from_parts(parts, req_body.into());
+    let resp = next.run(req).await;
+    let (rparts, rbody) = resp.into_parts();
+    let rbytes = match axum::body::to_bytes(rbody, usize::MAX).await {
+        Ok(b) => b,
+        Err(e) => {
+            tracing::warn!("幂等缓存收集响应失败: {e}");
+            return Err(ApiError::internal("读取响应体失败"));
+        }
+    };
+    {
+        let mut map = state.idem.lock().unwrap();
+        if let Some(entry) = map.get_mut(&cache_key) {
+            entry.state = IdemState::Done;
+            entry.status = rparts.status;
+            entry.headers = rparts.headers.clone();
+            entry.body = rbytes.clone();
+            entry.expires_at = unix_now() + IDEM_TTL_SECS;
+        }
+    }
+    Ok(Response::from_parts(rparts, rbytes.into()))
+}
+
 /// 从请求头取 Bearer token
 pub fn bearer_token(headers: &HeaderMap) -> Option<&str> {
     let header = headers.get(axum::http::header::AUTHORIZATION)?;
@@ -224,6 +344,44 @@ pub fn api_key_from_header(headers: &HeaderMap) -> Option<&str> {
         .to_str()
         .ok()
         .map(|s| s.trim())
+}
+
+/// 分页请求参数（44 号 §3.3，60 号 P1-B3 落地）
+#[derive(Debug, Deserialize, Default)]
+pub struct PageQuery {
+    #[serde(default)]
+    pub limit: Option<usize>,
+    #[serde(default)]
+    pub offset: Option<usize>,
+}
+
+pub const DEFAULT_PAGE_LIMIT: usize = 20;
+pub const MAX_PAGE_LIMIT: usize = 100;
+
+/// 分页响应封装 `{ items, next_cursor }`（44 号 §3.3）
+#[derive(Serialize)]
+pub struct Page<T> {
+    pub items: Vec<T>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_cursor: Option<String>,
+}
+
+/// 对租户作用域结果集应用 limit/offset 分页并计算 `next_cursor`（下一偏移，无更多则 null）。
+/// 现于路由层做内存分页（结果集已按租户 SQL 过滤）；SQL 层 limit/offset pushdown 归批次 2。
+pub fn paginate<T>(items: Vec<T>, limit: Option<usize>, offset: Option<usize>) -> Json<Page<T>> {
+    let limit = limit.unwrap_or(DEFAULT_PAGE_LIMIT).clamp(1, MAX_PAGE_LIMIT);
+    let offset = offset.unwrap_or(0);
+    let total = items.len();
+    let window_end = offset.saturating_add(limit);
+    let next_cursor = if window_end < total {
+        Some(window_end.to_string())
+    } else {
+        None
+    };
+    Json(Page {
+        items: items.into_iter().skip(offset).take(limit).collect(),
+        next_cursor,
+    })
 }
 
 /// 当前 unix 秒
@@ -348,6 +506,11 @@ pub fn router(state: AppState) -> Router {
         .route("/llm/ops/{operation}", post(handlers_llm::run_llm_op))
         .route("/api_keys", get(handlers_keys::list).post(handlers_keys::create))
         .route("/api_keys/{id}", delete(handlers_keys::revoke))
+        // 幂等层置于 require_auth 之后运行（取证注入的 AuthContext 租户作用域）
+        .route_layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            idempotency,
+        ))
         .route_layer(axum::middleware::from_fn_with_state(
             state.clone(),
             require_auth,
@@ -431,6 +594,65 @@ mod tests {
         let (status, body) = send(app.clone(), "GET", "/v1/datasets", None, None).await;
         assert_eq!(status, StatusCode::UNAUTHORIZED, "{body}");
         assert_eq!(body["error"]["code"], "unauthorized");
+    }
+
+    #[tokio::test]
+    async fn test_idempotency_key_envelope() {
+        let (app, _state) = build_app();
+        let token = register_login(&app).await;
+        let body_json = json!({ "dataset_id": "ds-idem-1", "name": "幂等数据集" });
+        let body_bytes = axum::body::to_bytes(Body::from(body_json.to_string()), usize::MAX)
+            .await
+            .unwrap();
+
+        // 带 Idempotency-Key 首次 POST（44 号 §14 幂等重试不重复生效）
+        async fn post_with_key(
+            app: &Router,
+            token: &str,
+            key: &str,
+            body: Bytes,
+        ) -> (StatusCode, serde_json::Value) {
+            let req = Request::builder()
+                .method("POST")
+                .uri("/v1/datasets")
+                .header("authorization", format!("Bearer {token}"))
+                .header("Idempotency-Key", key)
+                .header("content-type", "application/json")
+                .body(Body::from(body))
+                .unwrap();
+            let resp = app.clone().oneshot(req).await.unwrap();
+            let status = resp.status();
+            let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+            let text = String::from_utf8(bytes.to_vec()).unwrap_or_default();
+            let value = serde_json::from_str(&text).unwrap_or(serde_json::Value::Null);
+            (status, value)
+        }
+
+        // 首次：201
+        let (status, body) = post_with_key(&app, &token, "key-1", body_bytes.clone()).await;
+        assert_eq!(status, StatusCode::CREATED, "{body}");
+        assert_eq!(body["dataset_id"], "ds-idem-1");
+
+        // 同 key 同负载重放：返回缓存的 201（不因数据集已存在而 409）
+        let (status, body) = post_with_key(&app, &token, "key-1", body_bytes.clone()).await;
+        assert_eq!(status, StatusCode::CREATED, "重放应返回缓存响应: {body}");
+        assert_eq!(body["dataset_id"], "ds-idem-1");
+
+        // 同 key 不同负载：409 拒绝（key 不可复用换负载）
+        let (status, body) = post_with_key(
+            &app,
+            &token,
+            "key-1",
+            axum::body::to_bytes(
+                Body::from(json!({ "dataset_id": "ds-idem-1", "name": "改名" }).to_string()),
+                usize::MAX,
+            )
+            .await
+            .unwrap(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CONFLICT, "换负载需 409: {body}");
+        assert_eq!(body["error"]["message"], "Idempotency-Key 复用但请求体不同");
     }
 
     #[tokio::test]
@@ -541,7 +763,7 @@ mod tests {
         // 列表
         let (status, body) = send(app.clone(), "GET", "/v1/datasets", Some(&token), None).await;
         assert_eq!(status, StatusCode::OK, "{body}");
-        assert_eq!(body.as_array().map(|a| a.len()).unwrap_or(0), 1);
+        assert_eq!(body["items"].as_array().map(|a| a.len()).unwrap_or(0), 1);
 
         // 生命周期：rule_engineer 不能 active（需审批者）
         let (status, body) = send(
@@ -565,6 +787,51 @@ mod tests {
         .await;
         assert_eq!(status, StatusCode::OK, "{body}");
         assert_eq!(body["lifecycle"]["status"], "Candidate");
+    }
+
+    #[tokio::test]
+    async fn test_list_pagination_envelope() {
+        let (app, _state) = build_app();
+        let token = register_login(&app).await;
+
+        // 建 3 个数据集，验证 { items, next_cursor } 分页封装（44 号 §3.3）
+        for i in 0..3 {
+            let (status, body) = send(
+                app.clone(),
+                "POST",
+                "/v1/datasets",
+                Some(&token),
+                Some(json!({ "dataset_id": format!("ds-pg-{i}"), "name": format!("pg{i}") })),
+            )
+            .await;
+            assert_eq!(status, StatusCode::CREATED, "{body}");
+        }
+
+        // 首页 limit=2：items 2 条，next_cursor=2
+        let (status, body) = send(
+            app.clone(),
+            "GET",
+            "/v1/datasets?limit=2",
+            Some(&token),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["items"].as_array().map(|a| a.len()).unwrap_or(0), 2);
+        assert_eq!(body["next_cursor"], "2");
+
+        // 第二页 offset=2：剩余 1 条，无更多 → next_cursor 为 null
+        let (status, body) = send(
+            app.clone(),
+            "GET",
+            "/v1/datasets?offset=2",
+            Some(&token),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["items"].as_array().map(|a| a.len()).unwrap_or(0), 1);
+        assert!(body["next_cursor"].is_null());
     }
 
     #[tokio::test]
@@ -697,7 +964,7 @@ mod tests {
         // GET /entries（租户内全部）
         let (status, body) = send(app.clone(), "GET", "/v1/entries", Some(&token), None).await;
         assert_eq!(status, StatusCode::OK, "{body}");
-        assert_eq!(body.as_array().map(|a| a.len()).unwrap_or(0), 1);
+        assert_eq!(body["items"].as_array().map(|a| a.len()).unwrap_or(0), 1);
 
         // GET /entries/{id}（详情）
         let (status, body) = send(app.clone(), "GET", "/v1/entries/rule-01", Some(&token), None).await;
@@ -1019,7 +1286,7 @@ mod tests {
         // 模板列表/详情
         let (status, body) = send(app.clone(), "GET", "/v1/deps/templates", Some(&token), None).await;
         assert_eq!(status, StatusCode::OK, "{body}");
-        assert_eq!(body.as_array().map(|a| a.len()).unwrap_or(0), 1);
+        assert_eq!(body["items"].as_array().map(|a| a.len()).unwrap_or(0), 1);
 
         let (status, body) = send(
             app.clone(),
@@ -1055,7 +1322,7 @@ mod tests {
         )
         .await;
         assert_eq!(status, StatusCode::OK, "{body}");
-        assert_eq!(body.as_array().map(|a| a.len()).unwrap_or(0), 1);
+        assert_eq!(body["items"].as_array().map(|a| a.len()).unwrap_or(0), 1);
 
         let (status, body) = send(
             app.clone(),
@@ -1066,7 +1333,7 @@ mod tests {
         )
         .await;
         assert_eq!(status, StatusCode::OK, "{body}");
-        assert_eq!(body.as_array().map(|a| a.len()).unwrap_or(0), 1);
+        assert_eq!(body["items"].as_array().map(|a| a.len()).unwrap_or(0), 1);
 
         // 版本 diff（先升一版）
         send(

@@ -7,7 +7,7 @@ use axum::Json;
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::api::{AppState, ApiError, AuthContext};
+use crate::api::{paginate, AppState, ApiError, AuthContext, Page};
 use crate::model::auth::{Action, can};
 use crate::model::dataset::{RuleDataset, Visibility};
 use crate::model::entry::RuleEntry;
@@ -26,6 +26,10 @@ pub struct SearchDatasetsQuery {
     pub effective_from_after: Option<String>,
     #[serde(default)]
     pub visibility: Option<Visibility>,
+    #[serde(default)]
+    pub limit: Option<usize>,
+    #[serde(default)]
+    pub offset: Option<usize>,
 }
 
 /// GET /search/datasets —— 数据集检索（域/关键词/标签/生效日期/可见性组合）
@@ -33,7 +37,7 @@ pub async fn search_datasets(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
     Query(query): Query<SearchDatasetsQuery>,
-) -> Result<Json<Vec<RuleDataset>>, ApiError> {
+) -> Result<Json<Page<RuleDataset>>, ApiError> {
     if !can(ctx.role, Action::View) {
         return Err(ApiError::forbidden("无查看权限"));
     }
@@ -55,7 +59,7 @@ pub async fn search_datasets(
         query.effective_from_after.as_deref(),
         query.visibility,
     )?;
-    Ok(Json(out))
+    Ok(paginate(out, query.limit, query.offset))
 }
 
 #[derive(Deserialize)]
@@ -71,6 +75,10 @@ pub struct SearchEntriesQuery {
     /// PascalCase：Draft/Candidate/Active/Published/Rejected
     #[serde(default)]
     pub status: Option<LifecycleStatus>,
+    #[serde(default)]
+    pub limit: Option<usize>,
+    #[serde(default)]
+    pub offset: Option<usize>,
 }
 
 /// GET /search/entries —— 条目检索（租户作用域）
@@ -78,7 +86,7 @@ pub async fn search_entries(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
     Query(query): Query<SearchEntriesQuery>,
-) -> Result<Json<Vec<RuleEntry>>, ApiError> {
+) -> Result<Json<Page<RuleEntry>>, ApiError> {
     if !can(ctx.role, Action::View) {
         return Err(ApiError::forbidden("无查看权限"));
     }
@@ -100,7 +108,7 @@ pub async fn search_entries(
         &tags,
         query.status,
     )?;
-    Ok(Json(out))
+    Ok(paginate(out, query.limit, query.offset))
 }
 
 #[derive(Deserialize)]

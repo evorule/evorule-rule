@@ -1,13 +1,13 @@
 //! 数据集 / 条目 / 生命周期 / 快照包端点（44 号 §8-§11）
 
-use axum::extract::{Extension, Path, State};
+use axum::extract::{Extension, Path, Query, State};
 use axum::http::StatusCode;
 use axum::Json;
 use serde::Deserialize;
 use serde_json::Value;
 
 use crate::api::handlers_auth::now_iso;
-use crate::api::{api_key_from_header, bearer_token, unix_now, AppState, ApiError, AuthContext};
+use crate::api::{api_key_from_header, bearer_token, paginate, unix_now, AppState, ApiError, AuthContext, Page, PageQuery};
 use crate::auth::iso_from_unix;
 use crate::model::auth::{Action, Role, can};
 use crate::model::dataset::{Meta, RuleDataset, Visibility};
@@ -37,12 +37,13 @@ pub struct CreateDatasetReq {
 pub async fn list_datasets(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
-) -> Result<Json<Vec<RuleDataset>>, ApiError> {
+    Query(page): Query<PageQuery>,
+) -> Result<Json<Page<RuleDataset>>, ApiError> {
     if !can(ctx.role, Action::View) {
         return Err(ApiError::forbidden("无查看权限"));
     }
     let ds = state.store.list_datasets(&ctx.tenant_id)?;
-    Ok(Json(ds))
+    Ok(paginate(ds, page.limit, page.offset))
 }
 
 pub async fn create_dataset(
@@ -447,7 +448,8 @@ pub async fn list_entries(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
     Path(id): Path<String>,
-) -> Result<Json<Vec<RuleEntry>>, ApiError> {
+    Query(page): Query<PageQuery>,
+) -> Result<Json<Page<RuleEntry>>, ApiError> {
     let ds = state
         .store
         .get_dataset(&id)?
@@ -456,7 +458,7 @@ pub async fn list_entries(
         return Err(ApiError::not_found("数据集不存在"));
     }
     let entries = state.store.list_entries(&id, None)?;
-    Ok(Json(entries))
+    Ok(paginate(entries, page.limit, page.offset))
 }
 
 pub async fn add_entry(

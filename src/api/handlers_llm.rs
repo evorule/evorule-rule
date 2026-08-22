@@ -2,12 +2,12 @@
 
 use std::time::Instant;
 
-use axum::extract::{Extension, Path, State};
+use axum::extract::{Extension, Path, Query, State};
 use axum::Json;
 use serde_json::Value;
 
 use crate::api::handlers_auth::now_iso;
-use crate::api::{AppState, ApiError, AuthContext};
+use crate::api::{paginate, AppState, ApiError, AuthContext, Page, PageQuery};
 use crate::llm_client::{LlmClient, LlmOpRequest, Operation};
 use crate::model::auth::{Action, Role, can};
 use crate::model::llm_audit::{LlmAuditFilter, LlmAuditStats, LlmOpAudit};
@@ -26,12 +26,13 @@ fn parse_operation(s: &str) -> Option<Operation> {
 pub async fn list_llm_audits(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
-) -> Result<Json<Vec<LlmOpAudit>>, ApiError> {
+    Query(page): Query<PageQuery>,
+) -> Result<Json<Page<LlmOpAudit>>, ApiError> {
     if ctx.role != Role::Admin {
         return Err(ApiError::forbidden("仅管理员可查看 LLM 审计"));
     }
     let audits = state.store.list_llm_audits_filtered(&LlmAuditFilter::default())?;
-    Ok(Json(audits))
+    Ok(paginate(audits, page.limit, page.offset))
 }
 
 /// LLM 操作审计统计（仅管理员，37 号 §8）

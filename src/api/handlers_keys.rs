@@ -1,6 +1,6 @@
 //! API Key 端点（44 号 §14：MVP 最小 scope 版，执行侧拉取快照包联动）
 
-use axum::extract::{Extension, Path, State};
+use axum::extract::{Extension, Path, Query, State};
 use axum::http::StatusCode;
 use axum::Json;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -9,7 +9,7 @@ use rand::RngCore;
 use serde::{Deserialize, Serialize};
 
 use crate::api::handlers_auth::now_iso;
-use crate::api::{AppState, ApiError, AuthContext};
+use crate::api::{paginate, AppState, ApiError, AuthContext, Page, PageQuery};
 use crate::model::auth::{ApiKey, Role};
 
 #[derive(Deserialize)]
@@ -79,7 +79,8 @@ pub struct KeySummary {
 pub async fn list(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
-) -> Result<Json<Vec<KeySummary>>, ApiError> {
+    Query(page): Query<PageQuery>,
+) -> Result<Json<Page<KeySummary>>, ApiError> {
     if ctx.role != Role::Admin {
         return Err(ApiError::forbidden("仅管理员可查看 API Key"));
     }
@@ -94,7 +95,7 @@ pub async fn list(
             revoked_at: k.revoked_at,
         })
         .collect();
-    Ok(Json(out))
+    Ok(paginate(out, page.limit, page.offset))
 }
 
 /// 管理员吊销 API Key

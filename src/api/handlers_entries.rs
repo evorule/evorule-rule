@@ -11,7 +11,7 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use crate::api::handlers_auth::now_iso;
-use crate::api::{AppState, ApiError, AuthContext};
+use crate::api::{paginate, AppState, ApiError, AuthContext, Page};
 use crate::model::auth::{Action, can};
 use crate::model::dependency::SourceBinding;
 use crate::model::entry::RuleEntry;
@@ -179,6 +179,10 @@ pub async fn deps(
 pub struct EntryListQuery {
     #[serde(default)]
     pub dataset_id: Option<String>,
+    #[serde(default)]
+    pub limit: Option<usize>,
+    #[serde(default)]
+    pub offset: Option<usize>,
 }
 
 /// GET /entries —— 租户内条目列表（可选 ?dataset_id= 过滤）
@@ -186,7 +190,7 @@ pub async fn list_entries_all(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
     Query(query): Query<EntryListQuery>,
-) -> Result<Json<Vec<RuleEntry>>, ApiError> {
+) -> Result<Json<Page<RuleEntry>>, ApiError> {
     if !can(ctx.role, Action::View) {
         return Err(ApiError::forbidden("无查看权限"));
     }
@@ -198,7 +202,7 @@ pub async fn list_entries_all(
         &[],
         None,
     )?;
-    Ok(Json(entries))
+    Ok(paginate(entries, query.limit, query.offset))
 }
 
 /// GET /entries/{id} —— 条目详情（租户内定位）
