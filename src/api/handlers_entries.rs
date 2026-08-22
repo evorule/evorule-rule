@@ -215,6 +215,71 @@ pub async fn get_entry(
     Ok(Json(entry))
 }
 
+/// GET /entries/{id}/versions —— 条目版本历史（C1，33 号 §6 历史可回查）
+pub async fn entry_versions(
+    State(state): State<AppState>,
+    Extension(ctx): Extension<AuthContext>,
+    Path(entry_id): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    if !can(ctx.role, Action::View) {
+        return Err(ApiError::forbidden("无查看权限"));
+    }
+    let (dataset_id, _) = locate_entry(&state, &ctx.tenant_id, &entry_id)?;
+    let versions = state.store.list_entry_versions(&dataset_id, &entry_id)?;
+    let summary: Vec<Value> = versions
+        .iter()
+        .map(|e| {
+            serde_json::json!({
+                "version": e.version,
+                "status": e.status,
+                "content_hash": e.content_hash(),
+            })
+        })
+        .collect();
+    Ok(Json(serde_json::json!({
+        "dataset_id": dataset_id,
+        "entry_id": entry_id,
+        "versions": summary,
+    })))
+}
+
+/// GET /entries/{id}/diff?from=..&to=.. —— 条目内容级 diff（C2，44 号 §9 / 33 号）
+#[derive(Deserialize)]
+pub struct EntryDiffQuery {
+    pub from: u32,
+    pub to: u32,
+}
+
+pub async fn entry_diff(
+    State(state): State<AppState>,
+    Extension(ctx): Extension<AuthContext>,
+    Path(entry_id): Path<String>,
+    Query(query): Query<EntryDiffQuery>,
+) -> Result<Json<Value>, ApiError> {
+    if !can(ctx.role, Action::View) {
+        return Err(ApiError::forbidden("无查看权限"));
+    }
+    let (dataset_id, _) = locate_entry(&state, &ctx.tenant_id, &entry_id)?;
+    let out = state
+        .store
+        .entry_content_diff(&dataset_id, &entry_id, query.from, query.to)
+        .map_err(map_store_err)?;
+    Ok(Json(out))
+}
+
+fn map_store_err(e: crate::store::StoreError) -> ApiError {
+    use crate::store::StoreError as SE;
+    match e {
+        SE::InvalidDiffRange { from, to } => ApiError::bad_request(format!(
+            "版本 diff 区间非法: from=`{from}` to=`{to}`（from 须先于 to 且版本存在）"
+        )),
+        SE::EntryVersionNotFound { dataset, entry, version } => ApiError::not_found(format!(
+            "条目版本不存在: dataset=`{dataset}` entry=`{entry}` version=`{version}`"
+        )),
+        other => other.into(),
+    }
+}
+
 /// POST /entries —— 顶层创建条目（默认 Draft，dataset_id 在 body 中）
 #[derive(Deserialize)]
 pub struct CreateEntryReq {

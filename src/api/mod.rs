@@ -463,6 +463,9 @@ pub fn router(state: AppState) -> Router {
         .route("/entries/{id}/approve", post(handlers_entries::approve))
         .route("/entries/{id}/history", get(handlers_entries::history))
         .route("/entries/{id}/deps", get(handlers_entries::deps))
+        .route("/entries/{id}/versions", get(handlers_entries::entry_versions))
+        .route("/entries/{id}/diff", get(handlers_entries::entry_diff))
+        .route("/datasets/{id}/snapshots/stats", get(handlers_datasets::snapshot_stats))
         .route(
             "/deps/datasets/{id}",
             get(handlers_deps::get_dataset_deps).put(handlers_deps::put_dataset_deps),
@@ -1008,6 +1011,60 @@ mod tests {
         let (status, body) = send(app.clone(), "GET", "/v1/entries/rule-02/history", Some(&token), None).await;
         assert_eq!(status, StatusCode::OK, "{body}");
         assert_eq!(body.as_array().map(|a| a.len()).unwrap_or(0), 1);
+    }
+
+    #[tokio::test]
+    async fn test_entry_versions_and_content_diff() {
+        let (app, _state) = build_app();
+        let token = register_login(&app).await;
+        seed_dataset(&app, &token, "ds-tax-02").await;
+
+        // 建一个条目 v1
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/datasets/ds-tax-02/entries",
+            Some(&token),
+            Some(json!({
+                "entry_id": "rule-a",
+                "version": 1,
+                "rule_body": { "rule_id": "a", "description": "初版", "transform": [] }
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "v1 create status={status} body={body}");
+
+        // v2：变化内容
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/entries",
+            Some(&token),
+            Some(json!({
+                "dataset_id": "ds-tax-02",
+                "entry_id": "rule-a",
+                "version": 2,
+                "rule_body": { "rule_id": "a", "description": "改版", "transform": [] }
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "{body}");
+
+        // 版本历史（C1）
+        let (status, body) = send(app.clone(), "GET", "/v1/entries/rule-a/versions", Some(&token), None).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["versions"].as_array().map(|a| a.len()).unwrap_or(0), 2);
+
+        // 内容级 diff（C2）：v1→v2 变化，含 description
+        let (status, body) = send(app.clone(), "GET", "/v1/entries/rule-a/diff?from=1&to=2", Some(&token), None).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["changed"], true);
+
+        // 内容去重统计（C1）
+        let (status, body) = send(app.clone(), "GET", "/v1/datasets/ds-tax-02/snapshots/stats", Some(&token), None).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["entry_version_rows"], 3, "seed rule-01 + rule-a v1 + rule-a v2");
+        assert!(body["distinct_snapshots"].as_u64().unwrap() >= 1);
     }
 
     #[tokio::test]

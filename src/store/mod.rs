@@ -64,6 +64,9 @@ pub enum StoreError {
     #[error("版本 diff 区间非法: from=`{from}` to=`{to}`（需均存在于版本链且 from 先于 to）")]
     InvalidDiffRange { from: String, to: String },
 
+    #[error("条目版本不存在: dataset=`{dataset}` entry=`{entry}` version=`{version}`")]
+    EntryVersionNotFound { dataset: String, entry: String, version: u32 },
+
     #[error("非法状态迁移: {from:?} → {to:?}")]
     IllegalTransition { from: Option<LifecycleStatus>, to: LifecycleStatus },
 
@@ -164,6 +167,20 @@ impl RuleStore {
             );
             CREATE INDEX IF NOT EXISTS idx_entries_domain ON entries(dataset_id, domain);
             CREATE INDEX IF NOT EXISTS idx_entries_hash ON entries(dataset_id, content_hash);
+
+            -- 33 号 §6 / C1（内容哈希落库去重）：内容寻址快照，key=(dataset, content_hash)。
+            -- 未变条目跨版本复用同一快照行（零拷贝，rule_body 不重复存储）；entries 仍内联
+            -- rule_body 以兼容现有读取路径与既有库动态迁移（物理去重/移除内联列为存储层后续项）。
+            -- created_at 用于去重统计与可见性。
+            CREATE TABLE IF NOT EXISTS entry_snapshots (
+                dataset_id    TEXT NOT NULL,
+                content_hash  TEXT NOT NULL,
+                rule_body     TEXT NOT NULL,               -- evorule 原生 JSON（content_hash 的内容源）
+                created_at    TEXT NOT NULL,
+                PRIMARY KEY (dataset_id, content_hash),
+                FOREIGN KEY (dataset_id) REFERENCES datasets(dataset_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_snapshots_ds ON entry_snapshots(dataset_id);
 
             -- 37 号 §8：LLM 命名操作审计（"LLM 每步可审计"）
             CREATE TABLE IF NOT EXISTS llm_op_audit (
@@ -568,6 +585,18 @@ impl RuleStore {
             });
         }
         // 5) 写入
+        // 5a) 内容寻址快照去重落库（33 号 §6/C1）：未变内容跨版本复用同一快照行
+        conn.execute(
+            "INSERT INTO entry_snapshots(dataset_id, content_hash, rule_body, created_at)
+             VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(dataset_id, content_hash) DO NOTHING",
+            params![
+                entry.dataset_id,
+                entry.content_hash(),
+                serde_json::to_string(&entry.rule_body)?,
+                epoch_ms_now(),
+            ],
+        )?;
         conn.execute(
             "INSERT INTO entries
                (dataset_id, entry_id, version, status, provenance, domain, tags,
@@ -718,6 +747,104 @@ impl RuleStore {
                     .ok_or_else(|| StoreError::DatasetNotFound(id.clone()))
             })
             .collect()
+    }
+
+    /// 条目版本历史（C1：内容寻址落库后可回查；33 号 §6 历史可回查）。升序返回全部版本。
+    pub fn list_entry_versions(
+        &self,
+        dataset_id: &str,
+        entry_id: &str,
+    ) -> Result<Vec<RuleEntry>, StoreError> {
+        let mut out = Vec::new();
+        let versions: Vec<u32> = {
+            let conn = self.conn.lock().unwrap();
+            let vs = conn.prepare(
+                "SELECT version FROM entries WHERE dataset_id=?1 AND entry_id=?2 ORDER BY version",
+            )?
+            .query_map(params![dataset_id, entry_id], |r| r.get(0))?
+            .collect::<Result<_, _>>()?;
+            vs
+        };
+        for v in versions {
+            if let Some(e) = self.get_entry(dataset_id, entry_id, v)? {
+                out.push(e);
+            }
+        }
+        Ok(out)
+    }
+
+    /// 内容级 diff（C2，44 号 §9 / 33 号）：对比条目两个版本的**内容快照**。
+    ///
+    /// - `content_hash` 相同 → 未变；不同 → 已变（给出规则体 JSON 键级差异摘要 added/removed/changed）。
+    /// - 同一 `content_hash` 跨版本共享同一快照行（33 号 §6 去重语义）。
+    pub fn entry_content_diff(
+        &self,
+        dataset_id: &str,
+        entry_id: &str,
+        from_version: u32,
+        to_version: u32,
+    ) -> Result<serde_json::Value, StoreError> {
+        if to_version <= from_version {
+            return Err(StoreError::InvalidDiffRange {
+                from: from_version.to_string(),
+                to: to_version.to_string(),
+            });
+        }
+        let from = self
+            .get_entry(dataset_id, entry_id, from_version)?
+            .ok_or_else(|| StoreError::EntryVersionNotFound {
+                dataset: dataset_id.into(),
+                entry: entry_id.into(),
+                version: from_version,
+            })?;
+        let to = self
+            .get_entry(dataset_id, entry_id, to_version)?
+            .ok_or_else(|| StoreError::EntryVersionNotFound {
+                dataset: dataset_id.into(),
+                entry: entry_id.into(),
+                version: to_version,
+            })?;
+
+        let from_hash = from.content_hash();
+        let to_hash = to.content_hash();
+        let mut result = serde_json::json!({
+            "dataset_id": dataset_id,
+            "entry_id": entry_id,
+            "from": from_version,
+            "to": to_version,
+            "from_content_hash": from_hash,
+            "to_content_hash": to_hash,
+            "changed": from_hash != to_hash,
+            "note": "内容级 diff：content_hash 刻定规则体内容；跨版本共享同一快照行（33 号 §6）",
+        });
+        if from_hash != to_hash {
+            let (added, removed, changed) = json_keywise_diff(&from.rule_body, &to.rule_body);
+            result["keys"] = serde_json::json!({ "added": added, "removed": removed, "changed": changed });
+        }
+        Ok(result)
+    }
+
+    /// 内容去重统计（C1）：数据集内 `entries` 行数 vs 去重后 `entry_snapshots` 快照数。
+    pub fn snapshot_dedup_stats(&self, dataset_id: &str) -> Result<serde_json::Value, StoreError> {
+        let conn = self.conn.lock().unwrap();
+        let entry_rows: u64 = conn.query_row(
+            "SELECT COUNT(*) FROM entries WHERE dataset_id=?1",
+            params![dataset_id],
+            |r| r.get(0),
+        )?;
+        let snapshots: u64 = conn.query_row(
+            "SELECT COUNT(*) FROM entry_snapshots WHERE dataset_id=?1",
+            params![dataset_id],
+            |r| r.get(0),
+        )?;
+        Ok(serde_json::json!({
+            "dataset_id": dataset_id,
+            "entry_version_rows": entry_rows,
+            "distinct_snapshots": snapshots,
+            "dedup_ratio": if entry_rows == 0 { serde_json::Value::Null } else {
+                serde_json::json!((snapshots as f64) / (entry_rows as f64))
+            },
+        }))
     }
 
     // ------------------------------------------------------------------
@@ -878,6 +1005,18 @@ impl RuleStore {
         Validator::validate_symbol_consistency(&ds, entry)?;
         Validator::validate_llm_boundary(entry)?;
         let conn = self.conn.lock().unwrap();
+        // 内容寻址快照去重落库（33 号 §6/C1）
+        conn.execute(
+            "INSERT INTO entry_snapshots(dataset_id, content_hash, rule_body, created_at)
+             VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(dataset_id, content_hash) DO NOTHING",
+            params![
+                entry.dataset_id,
+                entry.content_hash(),
+                serde_json::to_string(&entry.rule_body)?,
+                epoch_ms_now(),
+            ],
+        )?;
         let n = conn.execute(
             "UPDATE entries SET status=?3, provenance=?4, domain=?5, tags=?6,
                     data_source_binding=?7, rule_body=?8, governance=?9, content_hash=?10
@@ -1584,7 +1723,7 @@ impl RuleStore {
             "added_versions": &chain[fi + 1..=ti],
             "current_entry_count": entries.len(),
             "current_entry_ids": entry_ids,
-            "note": "MVP 结构级 diff：仅版本链增量 + 当前条目清单；内容级 diff 待历史快照落库（批次 1）",
+            "note": "数据集版本级结构 diff（版本链增量 + 当前条目清单）。条目级内容 diff 已提供：GET /entries/{id}/diff?from=..&to=..（C2）。数据集版本↔条目快照的内容归因需 dataset_versions 快照表（45 号批次 1）",
         }))
     }
 
@@ -1956,6 +2095,71 @@ fn bump_kind_label(kind: BumpKind) -> &'static str {
     }
 }
 
+/// 单调 epoch 毫秒字符串（C1 快照 `created_at`，仅用于去重统计/顺序，非业务时间的权威来源）
+fn epoch_ms_now() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis().to_string())
+        .unwrap_or_else(|_| "0".into())
+}
+
+/// JSON 键级差异摘要（C2）：扁平化后比较两对象，返回 added/removed/changed 键路径。
+fn json_keywise_diff(
+    a: &serde_json::Value,
+    b: &serde_json::Value,
+) -> (Vec<String>, Vec<String>, Vec<String>) {
+    // 以"键路径（扁平化）+ 规范化叶子值"判定增删改
+    let map_a = flatten(a);
+    let map_b = flatten(b);
+    let oa = map_a.as_object().cloned().unwrap_or_default();
+    let ob = map_b.as_object().cloned().unwrap_or_default();
+    let mut added = Vec::new();
+    let mut removed = Vec::new();
+    let mut changed = Vec::new();
+    for (k, v) in &oa {
+        match ob.get(k) {
+            None => removed.push(k.clone()),
+            Some(vb) => {
+                if vb != v {
+                    changed.push(k.clone());
+                }
+            }
+        }
+    }
+    for (k, _) in &ob {
+        if !oa.contains_key(k) {
+            added.push(k.clone());
+        }
+    }
+    (added, removed, changed)
+}
+
+/// 将任意 JSON 扁平化为 `键路径 → 值`（数组元素以 `\N[i]` 索引）。
+fn flatten(v: &serde_json::Value) -> serde_json::Value {
+    fn walk(prefix: String, node: &serde_json::Value, acc: &mut serde_json::Map<String, serde_json::Value>) {
+        match node {
+            serde_json::Value::Object(m) => {
+                for (k, c) in m {
+                    let p = if prefix.is_empty() { k.clone() } else { format!("{prefix}.{k}") };
+                    walk(p, c, acc);
+                }
+            }
+            serde_json::Value::Array(arr) => {
+                for (i, item) in arr.iter().enumerate() {
+                    walk(format!("{prefix}\\{i}"), item, acc);
+                }
+            }
+            other => {
+                acc.insert(prefix, other.clone());
+            }
+        }
+    }
+    let mut acc = serde_json::Map::new();
+    walk(String::new(), v, &mut acc);
+    serde_json::Value::Object(acc)
+}
+
 /// `llm_op_audit` 行 → `LlmOpAudit`
 fn row_to_audit(r: &rusqlite::Row) -> rusqlite::Result<LlmOpAudit> {
     Ok(LlmOpAudit {
@@ -2126,12 +2330,95 @@ mod tests {
     }
 
     #[test]
-    fn test_add_entry_dup_version_rejected() {
+fn test_add_entry_dup_version_rejected() {
         let store = RuleStore::in_memory().unwrap();
         store.create_dataset(&tax_dataset()).unwrap();
         store.add_entry(&draft_entry()).unwrap();
         let err = store.add_entry(&draft_entry()).unwrap_err();
         assert!(matches!(err, StoreError::EntryExists { .. }));
+    }
+
+    /// C1：内容哈希去重落库——跨版本未变内容复用同一快照行，变更产生新快照
+    #[test]
+    fn test_entry_snapshot_dedup() {
+        let store = RuleStore::in_memory().unwrap();
+        store.create_dataset(&tax_dataset()).unwrap();
+
+        let mut v1 = draft_entry();
+        v1.version = 1;
+        store.add_entry(&v1).unwrap();
+
+        // v2 与 v1 内容完全一致 → 去重，不应新增快照
+        let mut v2 = draft_entry();
+        v2.version = 2;
+        store.add_entry(&v2).unwrap();
+
+        // v3 内容变化（仅改 description，transform 仍引用 payroll_svc 以过符号一致性）→ 新快照
+        let mut v3 = draft_entry();
+        v3.version = 3;
+        v3.rule_body["description"] = serde_json::json!("税率调整后的新规则");
+        store.add_entry(&v3).unwrap();
+
+        let stats = store.snapshot_dedup_stats("ds-tax-2024").unwrap();
+        assert_eq!(stats["entry_version_rows"], 3);
+        assert_eq!(stats["distinct_snapshots"], 2, "v1/v2 内容一致应共享同一快照");
+
+        // 版本历史可回查（33 号 §6）
+        let versions = store.list_entry_versions("ds-tax-2024", "tax-001").unwrap();
+        assert_eq!(versions.len(), 3);
+        assert_eq!(versions[0].version, 1);
+        assert_eq!(versions[2].version, 3);
+    }
+
+    /// C2：条目内容级 diff（content_hash 刻定内容；变更给出键级差异）
+    #[test]
+    fn test_entry_content_diff() {
+        let store = RuleStore::in_memory().unwrap();
+        store.create_dataset(&tax_dataset()).unwrap();
+
+        let mut v1 = draft_entry();
+        v1.version = 1;
+        v1.rule_body["description"] = serde_json::json!("初版规则说明"); // 让 description 成为两版共有键
+        store.add_entry(&v1).unwrap();
+
+        let mut v2 = draft_entry();
+        v2.version = 2; // 内容与 v1 一致 → 应判未变
+        v2.rule_body["description"] = serde_json::json!("初版规则说明");
+        store.add_entry(&v2).unwrap();
+
+        let mut v3 = draft_entry();
+        v3.version = 3;
+        v3.rule_body["description"] = serde_json::json!("改版规则说明");
+        store.add_entry(&v3).unwrap();
+
+        // 内容未变（v1→v2 相同 rule_body）→ changed=false
+        let unchanged = store
+            .entry_content_diff("ds-tax-2024", "tax-001", 1, 2)
+            .unwrap();
+        assert_eq!(unchanged["changed"], false);
+
+        // 内容变化（v1→v3）→ changed=true，键级差异里含 description
+        let changed_diff = store
+            .entry_content_diff("ds-tax-2024", "tax-001", 1, 3)
+            .unwrap();
+        assert_eq!(changed_diff["changed"], true);
+        assert!(changed_diff["keys"]["changed"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|k| k.as_str().unwrap().contains("description")));
+
+        // 非法区间（from >= to）
+        let err = store
+            .entry_content_diff("ds-tax-2024", "tax-001", 3, 1)
+            .unwrap_err();
+        assert!(matches!(err, StoreError::InvalidDiffRange { .. }));
+
+        // 版本不存在
+        let err = store
+            .entry_content_diff("ds-tax-2024", "tax-001", 1, 99)
+            .unwrap_err();
+        assert!(matches!(err, StoreError::EntryVersionNotFound { .. }));
     }
 
     #[test]

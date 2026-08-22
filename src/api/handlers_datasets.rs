@@ -46,6 +46,25 @@ pub async fn list_datasets(
     Ok(paginate(ds, page.limit, page.offset))
 }
 
+/// GET /datasets/{id}/snapshots/stats —— 内容去重统计（C1：版本行 vs 去重快照）
+pub async fn snapshot_stats(
+    State(state): State<AppState>,
+    Extension(ctx): Extension<AuthContext>,
+    Path(id): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    if !can(ctx.role, Action::View) {
+        return Err(ApiError::forbidden("无查看权限"));
+    }
+    let ds = state
+        .store
+        .get_dataset(&id)?
+        .ok_or_else(|| ApiError::not_found("数据集不存在"))?;
+    if ds.tenant_id != ctx.tenant_id {
+        return Err(ApiError::not_found("数据集不存在"));
+    }
+    Ok(Json(state.store.snapshot_dedup_stats(&id)?))
+}
+
 pub async fn create_dataset(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
