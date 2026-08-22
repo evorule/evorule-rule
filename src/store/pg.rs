@@ -589,6 +589,181 @@ impl PgStore {
         .await?;
         Ok(())
     }
+
+    // ------------------------------------------------------------------
+    // P6 剩余表方言改写（2026-08-22）——dataset_versions / entry_state_history /
+    // bundles_import_logs。（usage_records 为 45 号 §2.4 配额预留，store 层当前无写入路径，
+    // 本轮不落地，如实标注后续。）
+    // ------------------------------------------------------------------
+
+    /// 写一条 dataset_versions 归因行（幂等：同 (dataset, version, entry_hash) 去重，跨版本未变内容复用）。
+    pub async fn record_dataset_version_row(
+        &self,
+        dataset_id: &str,
+        version: &str,
+        entry_hash: &str,
+        entry_id: &str,
+        created_at: &str,
+    ) -> Result<(), PgError> {
+        sqlx::query(
+            "INSERT INTO dataset_versions (dataset_id, version, entry_hash, entry_id, created_at)
+             VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING",
+        )
+        .bind(dataset_id)
+        .bind(version)
+        .bind(entry_hash)
+        .bind(entry_id)
+        .bind(created_at)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// 读取某数据集某版本的条目 content_hash 归因集（升版留档，对齐 store/mod.rs 语义）。
+    pub async fn get_dataset_version_hashes(
+        &self,
+        dataset_id: &str,
+        version: &str,
+    ) -> Result<Vec<(String, String)>, PgError> {
+        let rows = sqlx::query(
+            "SELECT entry_hash, entry_id FROM dataset_versions
+             WHERE dataset_id = $1 AND version = $2",
+        )
+        .bind(dataset_id)
+        .bind(version)
+        .fetch_all(&self.pool)
+        .await?;
+        let mut out = Vec::with_capacity(rows.len());
+        for r in rows {
+            out.push((r.get("entry_hash"), r.get("entry_id")));
+        }
+        Ok(out)
+    }
+
+    /// 记录条目状态迁移（only-append 审计，对齐 store/mod.rs 的 StateChange Debug 序列化）。
+    pub async fn record_entry_state(
+        &self,
+        dataset_id: &str,
+        entry_id: &str,
+        version: u32,
+        from_state: Option<&str>,
+        to_state: &str,
+        at: &str,
+        by: &str,
+        cause: &str,
+    ) -> Result<(), PgError> {
+        sqlx::query(
+            "INSERT INTO entry_state_history
+               (dataset_id, entry_id, version, from_state, to_state, at, by, cause)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+        )
+        .bind(dataset_id)
+        .bind(entry_id)
+        .bind(version as i32)
+        .bind(from_state)
+        .bind(to_state)
+        .bind(at)
+        .bind(by)
+        .bind(cause)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// 条目状态迁移历史（only-append 只读，按 id 升序）。
+    pub async fn get_entry_state_history(
+        &self,
+        dataset_id: &str,
+        entry_id: &str,
+    ) -> Result<Vec<crate::model::lifecycle::StateChange>, PgError> {
+        let rows = sqlx::query(
+            "SELECT from_state, to_state, at, by, cause FROM entry_state_history
+             WHERE dataset_id = $1 AND entry_id = $2 ORDER BY id",
+        )
+        .bind(dataset_id)
+        .bind(entry_id)
+        .fetch_all(&self.pool)
+        .await?;
+        let mut out = Vec::with_capacity(rows.len());
+        for r in rows {
+            out.push(crate::model::lifecycle::StateChange {
+                from: r.get::<Option<String>, _>("from_state").unwrap_or_default(),
+                to: r.get("to_state"),
+                at: r.get("at"),
+                by: r.get("by"),
+                cause: r.get("cause"),
+                published_as: None,
+            });
+        }
+        Ok(out)
+    }
+
+    /// 记录快照包导入流水（content_hash 幂等，44 号 §9）。
+    pub async fn log_bundle_import(
+        &self,
+        log_id: &str,
+        dataset_id: &str,
+        bundle_hash: &str,
+        status: &str,
+        detail: Option<&str>,
+        operator: Option<&str>,
+        created_at: &str,
+    ) -> Result<(), PgError> {
+        sqlx::query(
+            "INSERT INTO bundles_import_logs
+               (log_id, dataset_id, bundle_hash, status, detail, operator, created_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)",
+        )
+        .bind(log_id)
+        .bind(dataset_id)
+        .bind(bundle_hash)
+        .bind(status)
+        .bind(detail)
+        .bind(operator)
+        .bind(created_at)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// 读某数据集的导入流水（倒序）。返回 `(bundle_hash, status, detail, operator, created_at, log_id)`，
+    /// detail/operator 可为 NULL。
+    pub async fn get_bundle_import_logs(
+        &self,
+        dataset_id: &str,
+        limit: usize,
+    ) -> Result<
+        Vec<(
+            String,
+            String,
+            Option<String>,
+            Option<String>,
+            String,
+            String,
+        )>,
+        PgError,
+    > {
+        let rows = sqlx::query(
+            "SELECT bundle_hash, status, detail, operator, created_at, log_id
+             FROM bundles_import_logs WHERE dataset_id = $1 ORDER BY created_at DESC LIMIT $2",
+        )
+        .bind(dataset_id)
+        .bind(limit as i64)
+        .fetch_all(&self.pool)
+        .await?;
+        let mut out = Vec::with_capacity(rows.len());
+        for r in rows {
+            out.push((
+                r.get("bundle_hash"),
+                r.get("status"),
+                r.get("detail"),
+                r.get("operator"),
+                r.get("created_at"),
+                r.get("log_id"),
+            ));
+        }
+        Ok(out)
+    }
 }
 
 /// 把 `TEXT` 列（可为 NULL）反序列化为 `V`。
@@ -740,6 +915,67 @@ mod tests {
 
         // P6：其余核心表往返
         pg_aux_tables_roundtrip(&store, &tenant).await.expect("P6 aux");
+
+        // P6 剩余表：dataset_versions 归因 / entry_state_history 迁移审计 / bundles_import_logs
+        let hash = entry.content_hash();
+        let v1 = "v1".to_string();
+        store
+            .record_dataset_version_row(&ds_id, &v1, &hash, entry_id, "2026-08-22T00:00:10Z")
+            .await
+            .expect("record_dataset_version_row");
+        // 幂等：同 (dataset, version, entry_hash) 重复写不新增
+        store
+            .record_dataset_version_row(&ds_id, &v1, &hash, entry_id, "2026-08-22T00:00:11Z")
+            .await
+            .expect("record_dataset_version_row_dup");
+        let vrows = store
+            .get_dataset_version_hashes(&ds_id, &v1)
+            .await
+            .expect("get_dataset_version_hashes");
+        assert_eq!(vrows.len(), 1, "dataset_versions 去重应只有 1 行");
+        assert_eq!(vrows[0], (hash.clone(), entry_id.to_string()));
+
+        store
+            .record_entry_state(
+                &ds_id,
+                entry_id,
+                1,
+                None,
+                "Draft",
+                "2026-08-22T00:00:12Z",
+                "u-1",
+                "P6 验证",
+            )
+            .await
+            .expect("record_entry_state");
+        let hist = store
+            .get_entry_state_history(&ds_id, entry_id)
+            .await
+            .expect("get_entry_state_history");
+        assert_eq!(hist.len(), 1);
+        assert_eq!(hist[0].to, "Draft");
+        assert_eq!(hist[0].cause, "P6 验证");
+
+        store
+            .log_bundle_import(
+                "b1",
+                &ds_id,
+                "hash-x",
+                "ok",
+                Some("P6 验证"),
+                Some("u-1"),
+                "2026-08-22T00:00:13Z",
+            )
+            .await
+            .expect("log_bundle_import");
+        let logs = store
+            .get_bundle_import_logs(&ds_id, 10)
+            .await
+            .expect("get_bundle_import_logs");
+        assert_eq!(logs.len(), 1);
+        // tuple: (bundle_hash=0, status=1, detail=2, operator=3, created_at=4, log_id=5)
+        assert_eq!(logs[0].1, "ok");
+        assert_eq!(logs[0].2, Some("P6 验证".to_string()));
     }
 
     /// P6 其余核心表集成：service_templates / api_keys / llm_op_audit / auth_audits / revoked_tokens / users
