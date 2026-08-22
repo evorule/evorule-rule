@@ -1,6 +1,6 @@
 [package]
 name = "evorule-rule"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "evorule-rule data governance system — JSON rule asset library (decision point ①: data model & schema)"
 license = "AGPL-3.0-or-later"
