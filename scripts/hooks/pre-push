@@ -1,0 +1,24 @@
+#!/bin/sh
+# pre-push hook: push 前跑 cargo test --workspace,失败则阻止 push
+# 目的:防止 working commit 没编译就推上去
+# 装法: scripts/install-hooks.ps1 或 `git config core.hooksPath scripts/hooks`
+
+# 仅 evorule-* 仓(检查 Cargo.toml)
+if [ ! -f "Cargo.toml" ]; then
+    exit 0  # 非 Rust 仓不跑
+fi
+
+# 仅 main / master 分支跑(避免开发分支反复编译)
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+case "$BRANCH" in
+    main|master) ;;
+    *) exit 0 ;;
+esac
+
+echo "[pre-push] running cargo test --workspace on $BRANCH..."
+if ! cargo test --workspace --quiet 2>&1 | tail -20; then
+    echo "[pre-push] FAILED — push aborted"
+    exit 1
+fi
+echo "[pre-push] cargo test passed — push allowed"
+exit 0

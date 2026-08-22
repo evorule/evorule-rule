@@ -1,0 +1,23 @@
+#!/bin/sh
+# post-commit hook: commit 后立刻 push origin current-branch
+# 目的:防止本地 commit 堆积,working tree 永远保持推送同步
+# 装法: scripts/install-hooks.ps1 或 `git config core.hooksPath scripts/hooks`
+
+# 检查是否有 origin 远端
+if ! git remote get-url origin >/dev/null 2>&1; then
+    echo "[post-commit] no 'origin' remote, skip push"
+    exit 0
+fi
+
+# 跳过 amend 触发的二次 commit(否则会循环 push)
+LAST=$(git log -1 --pretty=%s)
+case "$LAST" in
+    *"amend"*) exit 0 ;;
+esac
+
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+echo "[post-commit] pushing $BRANCH to origin..."
+git push origin "$BRANCH" || {
+    echo "[post-commit] push FAILED, working tree dirty is OK for offline dev"
+    exit 0  # push 失败不阻塞 commit(允许离线开发)
+}
