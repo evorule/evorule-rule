@@ -12,6 +12,7 @@ use super::dependency::SourceBinding;
 use super::governance::Governance;
 use super::lifecycle::LifecycleStatus;
 use super::provenance::Provenance;
+use evorule_hash;
 
 /// 规则条目
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -28,7 +29,8 @@ pub struct RuleEntry {
     pub provenance: Provenance,
     /// 领域（与数据集 domain 一致，供检索/裁剪）
     pub domain: String,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    /// 契约（types.ts GovernanceEntry）：必填数组 —— 空也必须输出 `[]`，不得省略
+    #[serde(default)]
     pub tags: Vec<String>,
     /// 规则体→服务 绑定映射（§6）
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -53,13 +55,10 @@ impl RuleEntry {
     }
 
     /// 内容哈希（未变条目按内容哈希去重存储，决策点③/§10）
+    /// 统一为 BLAKE3（blake3 crate），与 evorule-reactor 审计链同源；`blake3:` 前缀自描述。
     pub fn content_hash(&self) -> String {
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::{Hash, Hasher};
-        let mut h = DefaultHasher::new();
-        self.rule_body.to_string().hash(&mut h);
         // 只对可执行体做去重哈希（治理元数据不参与）
-        format!("{:016x}", h.finish())
+        evorule_hash::prefixed(&evorule_hash::json_digest(&self.rule_body))
     }
 }
 

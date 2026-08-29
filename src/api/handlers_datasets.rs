@@ -14,7 +14,7 @@ use crate::model::dataset::{Meta, RuleDataset, Visibility};
 use crate::model::entry::RuleEntry;
 use crate::model::lifecycle::LifecycleStatus;
 use crate::model::provenance::Provenance;
-use crate::model::version::{BumpKind, Versioning};
+use crate::model::version::{BumpKind, LawRef, Versioning, VersionSelection};
 
 // ----------------------------------------------------------------------
 // 数据集
@@ -32,6 +32,12 @@ pub struct CreateDatasetReq {
     pub tags: Vec<String>,
     #[serde(default)]
     pub visibility: Option<Visibility>,
+    /// 法规锚（合规场景，可选）
+    #[serde(default)]
+    pub law_ref: Option<LawRef>,
+    /// 版本选择双模式（可选；缺省 = auto_by_effective_date）
+    #[serde(default)]
+    pub version_selection: Option<VersionSelection>,
 }
 
 pub async fn list_datasets(
@@ -84,8 +90,8 @@ pub async fn create_dataset(
         visibility: req.visibility.unwrap_or(Visibility::Private),
         lifecycle: crate::model::lifecycle::Lifecycle::default(),
         versioning: crate::model::version::Versioning::default(),
-        law_ref: None,
-        version_selection: None,
+        law_ref: req.law_ref,
+        version_selection: req.version_selection,
         data_dependencies: None,
         meta: Meta {
             created_at: now.clone(),
@@ -233,6 +239,12 @@ pub struct PatchDatasetReq {
     pub tags: Option<Vec<String>>,
     #[serde(default)]
     pub visibility: Option<Visibility>,
+    /// 法规锚（可选；None = 不修改）
+    #[serde(default)]
+    pub law_ref: Option<LawRef>,
+    /// 版本选择双模式（可选；None = 不修改）
+    #[serde(default)]
+    pub version_selection: Option<VersionSelection>,
 }
 
 /// PATCH /datasets/{id} —— 更新元数据（域/描述/标签/可见性；版本链/生命周期/依赖由专用端点管理）
@@ -266,6 +278,12 @@ pub async fn update_dataset_meta(
     }
     if let Some(v) = req.visibility {
         ds.visibility = v;
+    }
+    if let Some(l) = req.law_ref {
+        ds.law_ref = Some(l);
+    }
+    if let Some(vs) = req.version_selection {
+        ds.version_selection = Some(vs);
     }
     let at = iso_from_unix(unix_now());
     ds.meta.updated_at = Some(at);
@@ -585,7 +603,9 @@ async fn export_for(
         .store
         .export_bundle(
             dataset_id,
-            &crate::bundle::BundleTests::default(),
+            // T0 决策（2026-08-24）：拉取路径无测试工作台 → 显式 verdict=fail（不默认 Pass），
+            // 使 F5 执行侧导入闸门一真实生效（矛盾 B 推荐方案）。
+            &crate::bundle::BundleTests::unverified(),
             by,
             &iso_from_unix(unix_now()),
             &state.instance_id,

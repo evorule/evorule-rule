@@ -41,7 +41,10 @@ pub struct StateChange {
 pub struct Lifecycle {
     pub status: LifecycleStatus,
     /// 审计：每次状态变更（只增不改）
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    ///
+    /// 契约（31 号 §3 / console-cloud types.ts）：必填字段 —— 空历史也必须输出 `[]`，
+    /// 不能省略，否则前端 `state_history.length` 崩溃（Phase 2 治理接线实测缺陷）。
+    #[serde(default)]
     pub state_history: Vec<StateChange>,
 }
 

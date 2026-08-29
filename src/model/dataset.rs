@@ -38,9 +38,11 @@ pub struct RuleDataset {
     pub name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    /// 契约（types.ts GovernanceDataset）：必填数组 —— 空也必须输出 `[]`，不得省略
+    #[serde(default)]
     pub domain: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    /// 契约（types.ts GovernanceDataset）：必填数组 —— 空也必须输出 `[]`，不得省略
+    #[serde(default)]
     pub tags: Vec<String>,
     pub tenant_id: String,
     #[serde(default)]

@@ -11,7 +11,10 @@ serde_json = "1"
 thiserror = "2"
 tracing = "0.1"
 sha2 = "0.10"
+evorule-hash = { version = "0.1.0" }
 subtle = "2"
+# 共享快照包校验（36 号集成契约；T1：版本/依赖/溯源/符号提取 + 6 项校验链 SSOT = evorule-bundle）
+evorule-bundle = { version = "0.2.0" }
 rand = "0.8"
 base64 = "0.22"
 rusqlite = { version = "0.31", features = ["bundled"] }
@@ -20,10 +23,18 @@ axum = "0.8"
 tokio = { version = "1", features = ["full"] }
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
+clap = { version = "4", features = ["derive", "env"] }
+tower-http = { version = "0.6", features = ["cors"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
+
+# 独立治理服务二进制（Phase 2：console-cloud GovernanceBackend 对接目标）
+[[bin]]
+name = "evorule-rule-serve"
+path = "src/main.rs"
 
 # PostgreSQL 生产后端（45 号批次1 §2）：默认不启用，`--features postgres` 才编译。
 # sqlx 为强重型依赖（异步 + 迁移嵌入），门控避免默认 build/test/clippy 负重。
@@ -36,3 +47,10 @@ version = "0.8"
 optional = true
 default-features = false
 features = ["runtime-tokio", "postgres", "migrate", "json"]
+
+# 本地开发：用 path 覆盖 crates.io 上的 evorule-bundle（与 evorule-server 钉 evorule 核心 crates 同模式）。
+# T1 修正（2026-08-24）：git 依赖 + [patch.crates-io] 无法同时生效（patch 只覆盖 crates.io registry 来源），
+# 故采用「crates.io version 需求 + path patch」——发布 evorule-bundle 到 crates.io 后去掉本段即走正式版。
+[patch.crates-io]
+evorule-bundle = { path = "../evorule-bundle" }
+evorule-hash = { path = "../evorule-hash" }

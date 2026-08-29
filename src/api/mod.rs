@@ -34,6 +34,7 @@ pub mod handlers_entries;
 pub mod handlers_keys;
 pub mod handlers_llm;
 pub mod handlers_search;
+pub mod handlers_services;
 
 /// 活跃存储后端（45 号批次1 配置化双后端 · 最小接线）
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -95,34 +96,37 @@ impl AppState {
     ///   （建池+迁移+最小 CRUD 往返）作为启动门控；
     /// - 冒烟成功 → 标注 Postgres + 探针详情；失败或未启用 → 回落到 SQLite 但如实记录原因。
     /// 返回诊断描述（供启动日志与 `/v1/admin/backend`）。
-    pub async fn bootstrap_backend(mut self) -> Self {
+    pub async fn bootstrap_backend(self) -> Self {
         #[cfg(feature = "postgres")]
         {
+            // `mut` 仅 PG 分支需要（set_backend 取 &mut self），避免默认构建 unused_mut 告警
+            let mut s = self;
             let has_url = std::env::var("DATABASE_URL").is_ok();
             if !has_url {
-                self.set_backend(BackendKind::Sqlite, None);
+                s.set_backend(BackendKind::Sqlite, None);
                 // 注：未设 URL 时不伪造；PG 未实际启用，SQLite 继续活跃
-                return self;
+                return s;
             }
             match crate::store::pg::PgStore::smoke_check().await {
                 Ok(diag) => {
-                    self.set_backend(BackendKind::Postgres, Some(diag));
+                    s.set_backend(BackendKind::Postgres, Some(diag));
                 }
                 Err(e) => {
                     // PG 连接/迁移失败：回落 SQLite，并如实记录失败原因（不 panic、不伪造）
-                    self.set_backend(
+                    s.set_backend(
                         BackendKind::Sqlite,
                         Some(format!("POSTGRES_PROBE_ERROR={e} → 回落到 SQLite，PG 未激活")),
                     );
                 }
             }
+            s
         }
         #[cfg(not(feature = "postgres"))]
         {
             // 未编译 postgres feature 时永不启用 PG；保留一次真实 await 避免 unused_async（语义无害）
             noop_await().await;
+            self
         }
-        self
     }
 }
 
@@ -579,6 +583,11 @@ pub fn router(state: AppState) -> Router {
             post(handlers_deps::bind_template),
         )
         .route(
+            "/services",
+            get(handlers_services::list_services).post(handlers_services::create_service),
+        )
+        .route("/services/{name}", get(handlers_services::get_service).put(handlers_services::update_service))
+        .route(
             "/search/datasets",
             get(handlers_search::search_datasets),
         )
@@ -591,6 +600,8 @@ pub fn router(state: AppState) -> Router {
             "/bundles/datasets/{id}/versions/{ver}",
             get(handlers_bundle::export_version),
         )
+        // T0 决策（2026-08-24）：带真实闸门一证据的导出（body 承载 tests 数组）
+        .route("/bundles/export", post(handlers_bundle::export_with_tests))
         .route("/bundles/import", post(handlers_bundle::import_bundle))
         .route(
             "/bundles/import/dry-run",
@@ -889,6 +900,100 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_dataset_lawref_and_version_selection_roundtrip() {
+        let (app, _state) = build_app();
+        let token = register_login(&app).await;
+
+        // 创建带 law_ref + version_selection 的数据集（T6 偏差修复：导出 bundle 不再缺字段）
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/datasets",
+            Some(&token),
+            Some(json!({
+                "dataset_id": "ds-law-01",
+                "name": "法规锚数据集",
+                "domain": ["compliance"],
+                "tags": ["法规"],
+                "visibility": "private",
+                "law_ref": {
+                    "document_id": "com.yuanze.robot.quality_control",
+                    "law_version": "1.0.0",
+                    "effective_from": "2024-01-01"
+                },
+                "version_selection": { "mode": "auto_by_effective_date" }
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "{body}");
+        assert_eq!(body["law_ref"]["document_id"], "com.yuanze.robot.quality_control");
+        assert_eq!(body["law_ref"]["effective_from"], "2024-01-01");
+        assert_eq!(body["version_selection"]["mode"], "auto_by_effective_date");
+
+        // 加一条合法最小规则体，保证导出非空
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/datasets/ds-law-01/entries",
+            Some(&token),
+            Some(json!({
+                "dataset_id": "ds-law-01",
+                "entry_id": "rule-demo",
+                "version": 1,
+                "domain": "compliance",
+                "tags": [],
+                "rule_body": [{"type": "set", "params": {"attr": "x", "operation": "set", "value": 1}}]
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "{body}");
+
+        // 导出 bundle 验证携带 law_ref + version_selection（无需 resign_bundle 改签补字段）
+        let (status, body) = send(
+            app.clone(),
+            "GET",
+            "/v1/bundles/datasets/ds-law-01/versions/v1",
+            Some(&token),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(
+            body["dataset"]["law_ref"]["document_id"],
+            "com.yuanze.robot.quality_control"
+        );
+        assert_eq!(body["dataset"]["law_ref"]["effective_from"], "2024-01-01");
+        assert_eq!(
+            body["dataset"]["version_selection"]["mode"],
+            "auto_by_effective_date"
+        );
+
+        // PATCH 更新 law_ref / version_selection（None = 不修改）
+        let (status, body) = send(
+            app.clone(),
+            "PATCH",
+            "/v1/datasets/ds-law-01",
+            Some(&token),
+            Some(json!({
+                "version_selection": {
+                    "mode": "pinned",
+                    "pinned_version": "v2",
+                    "pinned_include_patch": false
+                }
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["version_selection"]["mode"], "pinned");
+        assert_eq!(body["version_selection"]["pinned_version"], "v2");
+        // law_ref 未被触碰（PATCH 语义：None = 不修改）
+        assert_eq!(
+            body["law_ref"]["document_id"],
+            "com.yuanze.robot.quality_control"
+        );
+    }
+
+    #[tokio::test]
     async fn test_list_pagination_envelope() {
         let (app, _state) = build_app();
         let token = register_login(&app).await;
@@ -960,7 +1065,7 @@ mod tests {
                 "entry_id": "rule-01",
                 "version": 1,
                 "domain": "tax",
-                "rule_body": { "rule_id": "tax-01", "transform": [] }
+                "rule_body": { "rule_id": "tax-01", "transform": [{"type": "set", "params": {"attr": "x", "operation": "set", "value": 1}}] }
             })),
         )
         .await;
@@ -1006,6 +1111,52 @@ mod tests {
         let bytes = resp.into_body().collect().await.unwrap().to_bytes();
         let bundle: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(bundle["dataset"]["dataset_id"], "ds-tax-01");
+        // T0 决策（2026-08-24 矛盾 B）：执行侧拉取无测试工作台 → 显式 verdict=fail（不默认 Pass）
+        assert_eq!(bundle["tests"]["verdict"], "fail", "T0: get_bundle 无证据必须显式 fail");
+
+        // T0 决策（2026-08-24 矛盾 A）：GET export_version 无 tests → 显式 verdict=fail（不默认 Pass）
+        let (status, body) = send(
+            app.clone(),
+            "GET",
+            "/v1/bundles/datasets/ds-tax-01/versions/v1",
+            Some(&token),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["tests"]["verdict"], "fail", "T0: GET 导出无证据必须显式 fail");
+
+        // T0 决策（2026-08-24 矛盾 A）：POST /bundles/export 携带真实 tests → verdict 如实反映（pass）
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/bundles/export",
+            Some(&token),
+            Some(json!({
+                "dataset_id": "ds-tax-01",
+                "version": "v1",
+                "tests": { "verdict": "pass", "subset": ["rule-01"], "fixtures": [] }
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["tests"]["verdict"], "pass", "T0: 带证据导出 verdict 如实反映沙箱结果");
+
+        // T0 决策：带证据导出若 verdict=fail 也必须如实带出（不静默改 Pass）
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/bundles/export",
+            Some(&token),
+            Some(json!({
+                "dataset_id": "ds-tax-01",
+                "version": "v1",
+                "tests": { "verdict": "fail", "subset": ["rule-01"], "fixtures": [] }
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["tests"]["verdict"], "fail", "T0: 带证据导出 verdict=fail 如实带出");
     }
 
     /// 测试辅助：直接注册 admin 并返回 access token
@@ -1047,7 +1198,7 @@ mod tests {
                 "entry_id": "rule-01",
                 "version": 1,
                 "domain": "tax",
-                "rule_body": { "rule_id": "tax-01", "transform": [] }
+                "rule_body": { "rule_id": "tax-01", "transform": [{"type": "set", "params": {"attr": "x", "operation": "set", "value": 1}}] }
             })),
         )
         .await;
@@ -1080,7 +1231,7 @@ mod tests {
                 "dataset_id": "ds-tax-01",
                 "entry_id": "rule-02",
                 "domain": "tax",
-                "rule_body": { "rule_id": "tax-02", "transform": [] }
+                "rule_body": { "rule_id": "tax-02", "transform": [{"type": "set", "params": {"attr": "x", "operation": "set", "value": 1}}] }
             })),
         )
         .await;
@@ -1124,7 +1275,7 @@ mod tests {
             Some(json!({
                 "entry_id": "rule-a",
                 "version": 1,
-                "rule_body": { "rule_id": "a", "description": "初版", "transform": [] }
+                "rule_body": { "rule_id": "a", "description": "初版", "transform": [{"type": "set", "params": {"attr": "x", "operation": "set", "value": 1}}] }
             })),
         )
         .await;
@@ -1140,7 +1291,7 @@ mod tests {
                 "dataset_id": "ds-tax-02",
                 "entry_id": "rule-a",
                 "version": 2,
-                "rule_body": { "rule_id": "a", "description": "改版", "transform": [] }
+                "rule_body": { "rule_id": "a", "description": "改版", "transform": [{"type": "set", "params": {"attr": "x", "operation": "set", "value": 1}}] }
             })),
         )
         .await;
@@ -1382,6 +1533,22 @@ mod tests {
         let token = register_login(&app).await;
         seed_dataset(&app, &token, "ds-tax-01").await;
 
+        // C1（02 方案层1）：依赖声明服务名必须已注册在服务目录 —— 先注册 payroll_svc
+        let admin = admin_token(&state).await;
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/services",
+            Some(&admin),
+            Some(json!({
+                "service_name": "payroll_svc",
+                "version": "1.0.0",
+                "sensitive": false
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "{body}");
+
         // PUT 数据集依赖（engineer）
         let (status, body) = send(
             app.clone(),
@@ -1418,7 +1585,6 @@ mod tests {
         .await;
         assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
 
-        let admin = admin_token(&state).await;
         let (status, body) = send(
             app.clone(),
             "POST",
@@ -1520,6 +1686,142 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_service_catalog_and_deps_declaration_validation() {
+        // 02 方案 C1/C2：服务目录 CRUD + 依赖声明服务名事前预检（不静默）
+        let (app, state) = build_app();
+        let token = register_login(&app).await; // rule_engineer
+        seed_dataset(&app, &token, "ds-tax-01").await;
+
+        // 普通工程师无权限注册服务（D13：服务由服务公司/官方维护）
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/services",
+            Some(&token),
+            Some(json!({ "service_name": "payroll_svc" })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+
+        // 依赖声明未注册服务 → 400 显式拒绝（C1 事前预检）
+        let (status, body) = send(
+            app.clone(),
+            "PUT",
+            "/v1/deps/datasets/ds-tax-01",
+            Some(&token),
+            Some(json!({ "inputs": [], "services": [{ "service_name": "ghost_svc" }] })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+        assert!(
+            body["error"]["message"]
+                .as_str()
+                .unwrap_or("")
+                .contains("未在服务目录注册"),
+            "应显式提示注册路径: {body}"
+        );
+
+        // 平台官方目录 seed（模拟 main.rs 启动预置 7 原生服务）
+        let seeded = state
+            .store
+            .seed_official_services_if_empty("2026-08-25T00:00:00Z")
+            .unwrap();
+        assert_eq!(seeded, 7, "官方原生服务应预置 7 个");
+
+        let admin = admin_token(&state).await;
+
+        // GET /v1/services：平台官方 7 + 本租户自定义
+        let (status, body) = send(app.clone(), "GET", "/v1/services", Some(&admin), None).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        let list = body.as_array().expect("services 应为数组");
+        assert!(list.len() >= 7, "官方目录至少 7 个: {body}");
+        assert!(
+            list.iter().any(|s| s["service_name"] == "llm_advisor" && s["sensitive"] == true),
+            "llm_advisor 应标记 sensitive=true（C6）"
+        );
+
+        // 租户注册新服务（sensitive 由目录权威标记）
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/services",
+            Some(&admin),
+            Some(json!({
+                "service_name": "payroll_svc",
+                "version": "1.2.0",
+                "sensitive": true,
+                "binding_hint": "registry"
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "{body}");
+        assert_eq!(body["scope"], "tenant:tenant_a");
+        assert_eq!(body["version"], "1.2.0");
+
+        // 详情 + 更新
+        let (status, body) = send(
+            app.clone(),
+            "GET",
+            "/v1/services/payroll_svc",
+            Some(&token),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["service_name"], "payroll_svc");
+        let (status, body) = send(
+            app.clone(),
+            "PUT",
+            "/v1/services/payroll_svc",
+            Some(&admin),
+            Some(json!({ "service_name": "payroll_svc", "version": "1.3.0", "sensitive": true })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["version"], "1.3.0");
+
+        // 已注册服务（平台官方 llm_advisor + 租户 payroll_svc）可声明
+        let (status, body) = send(
+            app.clone(),
+            "PUT",
+            "/v1/deps/datasets/ds-tax-01",
+            Some(&token),
+            Some(json!({
+                "inputs": [],
+                "services": [
+                    { "service_name": "llm_advisor", "sensitive": true },
+                    { "service_name": "payroll_svc", "sensitive": true }
+                ]
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["services"].as_array().map(|a| a.len()).unwrap_or(0), 2);
+
+        // bundle 导出应携带服务契约补齐（C3/C4/C6：version/io_contract/sensitive 从目录下沉）
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/bundles/export",
+            Some(&admin),
+            Some(json!({
+                "dataset_id": "ds-tax-01",
+                "version": "v1",
+                "tests": { "verdict": "pass", "subset": [], "fixtures": [] }
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        let services = body["data_dependencies"]["services"].as_array().unwrap();
+        let payroll = services
+            .iter()
+            .find(|s| s["service_name"] == "payroll_svc")
+            .expect("导出应含 payroll_svc");
+        assert_eq!(payroll["version"], "1.3.0", "服务版本应从目录补齐（C4）");
+        assert_eq!(payroll["sensitive"], true, "敏感标记以目录为权威（C6）");
+    }
+
+    #[tokio::test]
     async fn test_bundle_import_via_admin() {
         let (app, state) = build_app();
         let token = register_login(&app).await;
@@ -1547,6 +1849,7 @@ mod tests {
                 inputs: vec![],
                 services: vec![crate::model::dependency::ServiceDecl {
                     service_name: "payroll_svc".into(),
+                    version: None,
                     io_contract: None,
                     sensitive: false,
                     description: None,

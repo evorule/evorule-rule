@@ -16,6 +16,7 @@ pub mod lifecycle;
 pub mod llm_audit;
 pub mod provenance;
 pub mod secret;
+pub mod service_catalog;
 pub mod version;
 pub mod writeback;
 
@@ -31,6 +32,7 @@ pub use governance::{Governance, LifecycleTimestamps, LlmGenerated};
 pub use lifecycle::{Lifecycle, LifecycleStatus, StateChange};
 pub use llm_audit::{LlmAuditFilter, LlmAuditStats, LlmOpAudit, OperationStat};
 pub use provenance::Provenance;
+pub use service_catalog::{BindingHint, ServiceCatalogEntry, OFFICIAL_NATIVE_SERVICES, official_entry};
 pub use version::{
     BumpKind, LawRef, Version, VersionError, VersionSelection, VersionSelectionMode, Versioning,
 };

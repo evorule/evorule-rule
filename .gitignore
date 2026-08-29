@@ -30,3 +30,7 @@ desktop.ini
 # mdBook build output(鑷姩鐢熸垚,涓嶈繘鐗堟湰)
 **/book/
 **/docs/book/
+
+# 本地工具临时目录
+.workbuddy/
+logs/

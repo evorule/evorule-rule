@@ -28,6 +28,9 @@ pub enum ValidationError {
     #[error("rule_body 结构无法解析 transform（需含 type=io_request 且 params.service_name）")]
     InvalidRuleBody,
 
+    #[error("规则体含动态服务引用（__exec__.instruction.params.*）但数据集 `{dataset}` 未声明任何服务：运行所需服务必须显式声明，否则执行侧绑定核对无法覆盖（C1，不静默）")]
+    DynamicRefNeedsDeclaration { dataset: String },
+
     #[error("发布前凭据静态扫描未通过：命中疑似凭据 {hits:?}（35 号 §6/§9-3：凭据永不入规则资产库）")]
     CredentialScanFailed { hits: Vec<String> },
 }
@@ -100,30 +103,10 @@ pub fn scan_credentials(text: &str) -> Vec<String> {
 pub struct Validator;
 
 impl Validator {
-    /// 从 rule_body 提取所有 `io_request.params.service_name`（锚定 10_role13_demo.json 结构）
+    /// 从 rule_body 提取所有 `io_request.params.service_name`（锚定 10_role13_demo.json 结构）。
+    /// **T1 决策（2026-08-24）**：符号提取唯一来源已迁至 `evorule-bundle`（SSOT），本函数薄包装转发。
     pub fn io_services_from_rule_body(rule_body: &serde_json::Value) -> Vec<String> {
-        let mut out = Vec::new();
-        let Some(transform) = rule_body.get("transform").and_then(|t| t.as_array()) else {
-            return out;
-        };
-        for step in transform {
-            let is_io = step
-                .get("type")
-                .and_then(|t| t.as_str())
-                .map(|s| s == "io_request")
-                .unwrap_or(false);
-            if !is_io {
-                continue;
-            }
-            if let Some(name) = step
-                .get("params")
-                .and_then(|p| p.get("service_name"))
-                .and_then(|s| s.as_str())
-            {
-                out.push(name.to_string());
-            }
-        }
-        out
+        evorule_bundle::symbols::io_services_from_rule_body(rule_body)
     }
 
     /// 符号三方一致校验（§9-3）：rule_body ≡ binding ≡ dataset.data_dependencies
@@ -131,10 +114,6 @@ impl Validator {
         dataset: &RuleDataset,
         entry: &RuleEntry,
     ) -> Result<(), ValidationError> {
-        // 1) 无绑定条目直接通过（无外部数据的规则）
-        if entry.data_source_binding.is_empty() {
-            return Ok(());
-        }
         let rule_body_services = Self::io_services_from_rule_body(&entry.rule_body);
         let declared_services = dataset
             .data_dependencies
@@ -142,6 +121,21 @@ impl Validator {
             .map(|d| &d.services)
             .cloned()
             .unwrap_or_default();
+
+        // C1（02 方案层1）：动态服务引用（__exec__.instruction.params.*）运行时才解析，
+        // 无法静态核对 → 强制要求数据集显式声明服务（声明非空），否则执行侧绑定核对
+        // 覆盖不到运行所需服务（不静默）。先于空绑定早退判断，确保动态引用规则也必须声明。
+        let has_dynamic = evorule_bundle::symbols::has_dynamic_service_ref(&entry.rule_body);
+        if has_dynamic && declared_services.is_empty() {
+            return Err(ValidationError::DynamicRefNeedsDeclaration {
+                dataset: dataset.dataset_id.clone(),
+            });
+        }
+
+        // 1) 无绑定条目直接通过（无外部数据的规则）
+        if entry.data_source_binding.is_empty() {
+            return Ok(());
+        }
 
         for binding in &entry.data_source_binding {
             // a) 必须出现在数据集声明中
@@ -244,6 +238,7 @@ mod tests {
                 inputs: vec![],
                 services: vec![crate::model::ServiceDecl {
                     service_name: "payroll_svc".into(),
+                    version: None,
                     io_contract: None,
                     sensitive: false,
                     description: None,
@@ -328,6 +323,41 @@ mod tests {
         // 数据集声明了 payroll_svc，但 rule_body 无 io_request 引用
         let err = Validator::validate_symbol_consistency(&ds, &entry).unwrap_err();
         assert!(matches!(err, ValidationError::ServiceNotInRuleBody { .. }));
+    }
+
+    #[test]
+    fn test_dynamic_ref_requires_declared_services() {
+        // C1：规则体含动态服务引用 + 数据集未声明任何服务 → 显式拒绝（不静默）
+        let mut ds = sample_dataset();
+        ds.data_dependencies = Some(crate::model::DataDependencies {
+            inputs: vec![],
+            services: vec![],
+        });
+        let entry = sample_entry(serde_json::json!({
+            "transform": [{
+                "type": "io_request",
+                "params": {"service_name": "__exec__.instruction.params.service_name"}
+            }]
+        }));
+        let err = Validator::validate_symbol_consistency(&ds, &entry).unwrap_err();
+        assert!(matches!(err, ValidationError::DynamicRefNeedsDeclaration { .. }));
+
+        // 声明非空 → 通过（即使无绑定条目，动态引用也可入库）
+        // 动态服务引用规则无法静态绑定（运行时才解析），故 data_source_binding 为空
+        let mut entry = entry;
+        entry.data_source_binding = vec![];
+        ds.data_dependencies = Some(crate::model::DataDependencies {
+            inputs: vec![],
+            services: vec![crate::model::ServiceDecl {
+                service_name: "inverse_kinematics_solver".into(),
+                version: None,
+                io_contract: None,
+                sensitive: false,
+                description: None,
+                template: None,
+            }],
+        });
+        assert!(Validator::validate_symbol_consistency(&ds, &entry).is_ok());
     }
 
     #[test]

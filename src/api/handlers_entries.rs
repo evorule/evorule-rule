@@ -10,6 +10,8 @@ use axum::Json;
 use serde::Deserialize;
 use serde_json::Value;
 
+use evorule_bundle::validate_rule_structure;
+
 use crate::api::handlers_auth::now_iso;
 use crate::api::{paginate, AppState, ApiError, AuthContext, Page};
 use crate::model::auth::{Action, can};
@@ -56,6 +58,12 @@ pub async fn patch_entry(
     }
     let (dataset_id, mut entry) = locate_entry(&state, &ctx.tenant_id, &entry_id)?;
     if let Some(b) = req.rule_body {
+        if let Err(errors) = validate_rule_structure(&b) {
+            return Err(ApiError::bad_request(format!(
+                "规则体结构校验失败: {}",
+                errors.join("; ")
+            )));
+        }
         entry.rule_body = b;
     }
     if let Some(t) = req.tags {
@@ -341,6 +349,12 @@ pub async fn create_entry(
         rule_body: req.rule_body,
         governance: None,
     };
+    if let Err(errors) = validate_rule_structure(&entry.rule_body) {
+        return Err(ApiError::bad_request(format!(
+            "规则体结构校验失败: {}",
+            errors.join("; ")
+        )));
+    }
     state.store.add_entry(&entry)?;
     Ok((StatusCode::CREATED, Json(entry)))
 }

@@ -21,6 +21,9 @@ use crate::model::entry::RuleEntry;
 use crate::model::governance::Governance;
 use crate::model::lifecycle::{Lifecycle, LifecycleStatus, StateChange};
 use crate::model::llm_audit::{LlmAuditFilter, LlmAuditStats, LlmOpAudit, OperationStat};
+use crate::model::service_catalog::{
+    OFFICIAL_NATIVE_SERVICES, ServiceCatalogEntry, official_entry,
+};
 use crate::model::version::{BumpKind, VersionError, Versioning};
 use crate::validate::{ValidationError, Validator, scan_credentials};
 
@@ -107,6 +110,20 @@ type ServiceTemplateRow = (
     String,        // placeholder_notes (JSON)
     String,        // created_at
     String,        // created_by
+);
+
+/// service_catalog 行原始列（rusqlite 闭包只读原始列，JSON 反序列化移到闭包外）
+type ServiceCatalogRow = (
+    String,         // service_name
+    String,         // version
+    Option<String>, // description
+    Option<String>, // io_contract (JSON)
+    i64,            // sensitive (0/1)
+    String,         // binding_hint (JSON)
+    String,         // managed_by
+    String,         // scope
+    String,         // created_at
+    Option<String>, // updated_at
 );
 
 impl RuleStore {
@@ -307,6 +324,21 @@ impl RuleStore {
             );
             CREATE INDEX IF NOT EXISTS idx_templates_tenant
                 ON service_templates(tenant_id, service_name);
+
+            -- 02 方案 C2：服务目录（服务名/契约治理侧 SSOT；scope=platform 官方 + tenant 租户自定义）
+            CREATE TABLE IF NOT EXISTS service_catalog (
+                service_name TEXT PRIMARY KEY,
+                version      TEXT NOT NULL DEFAULT '1.0.0',
+                description  TEXT,
+                io_contract  TEXT,                          -- JSON nullable
+                sensitive    INTEGER NOT NULL DEFAULT 0,
+                binding_hint TEXT NOT NULL DEFAULT 'native',
+                managed_by   TEXT NOT NULL,                 -- official | org:<tenant_id>
+                scope        TEXT NOT NULL,                 -- platform | tenant:<tenant_id>
+                created_at   TEXT NOT NULL,
+                updated_at   TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_catalog_scope ON service_catalog(scope);
             "#,
         )?;
         // 轻量迁移：若旧库 entries 表缺 35 号新增的 consumed_inputs 列，则补齐
@@ -1286,7 +1318,21 @@ impl RuleStore {
         let ds = self.get_dataset(dataset_id)?
             .ok_or_else(|| StoreError::DatasetNotFound(dataset_id.into()))?;
         let entries = self.list_entries(dataset_id, None)?;
-        Ok(BundleExporter::export(&ds, &entries, tests, by, at, instance_id))
+        // C3/C4/C6：服务契约 SSOT 下沉 —— 从服务目录（平台 + 本租户）构建补齐映射
+        let catalog: std::collections::BTreeMap<String, ServiceCatalogEntry> = self
+            .list_services(&ds.tenant_id)?
+            .into_iter()
+            .map(|e| (e.service_name.clone(), e))
+            .collect();
+        Ok(BundleExporter::export(
+            &ds,
+            &entries,
+            tests,
+            by,
+            at,
+            instance_id,
+            &catalog,
+        ))
     }
 
     // ------------------------------------------------------------------
@@ -1598,6 +1644,167 @@ impl RuleStore {
                 },
             )
             .collect()
+    }
+
+    // ------------------------------------------------------------------
+    // 服务目录（02 方案 C2：服务名/契约治理侧 SSOT）
+    // ------------------------------------------------------------------
+
+    /// 注册/更新服务目录条目（upsert，主键 service_name）
+    pub fn upsert_service(&self, e: &ServiceCatalogEntry) -> Result<(), StoreError> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO service_catalog
+               (service_name, version, description, io_contract, sensitive, binding_hint,
+                managed_by, scope, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+             ON CONFLICT(service_name) DO UPDATE SET
+               version=excluded.version, description=excluded.description,
+               io_contract=excluded.io_contract, sensitive=excluded.sensitive,
+               binding_hint=excluded.binding_hint, managed_by=excluded.managed_by,
+               scope=excluded.scope, updated_at=excluded.updated_at",
+            params![
+                e.service_name,
+                e.version,
+                e.description,
+                e.io_contract.as_ref().map(serde_json::to_string).transpose()?,
+                e.sensitive as i64,
+                serde_json::to_string(&e.binding_hint)?,
+                e.managed_by,
+                e.scope,
+                e.created_at,
+                e.updated_at,
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// 取服务目录条目
+    pub fn get_service(&self, service_name: &str) -> Result<Option<ServiceCatalogEntry>, StoreError> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT service_name, version, description, io_contract, sensitive, binding_hint,
+                    managed_by, scope, created_at, updated_at
+             FROM service_catalog WHERE service_name = ?1",
+        )?;
+        let row = stmt
+            .query_row(params![service_name], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, Option<String>>(2)?,
+                    r.get::<_, Option<String>>(3)?,
+                    r.get::<_, i64>(4)?,
+                    r.get::<_, String>(5)?,
+                    r.get::<_, String>(6)?,
+                    r.get::<_, String>(7)?,
+                    r.get::<_, String>(8)?,
+                    r.get::<_, Option<String>>(9)?,
+                ))
+            })
+            .optional()?;
+        let Some((
+            service_name,
+            version,
+            description,
+            io_contract,
+            sensitive,
+            binding_hint,
+            managed_by,
+            scope,
+            created_at,
+            updated_at,
+        )) = row
+        else {
+            return Ok(None);
+        };
+        Ok(Some(ServiceCatalogEntry {
+            service_name,
+            version,
+            description,
+            io_contract: io_contract
+                .as_deref()
+                .map(serde_json::from_str)
+                .transpose()?,
+            sensitive: sensitive != 0,
+            binding_hint: serde_json::from_str(&binding_hint)?,
+            managed_by,
+            scope,
+            created_at,
+            updated_at,
+        }))
+    }
+
+    /// 服务目录列表：平台官方（scope=platform）+ 本租户自定义
+    pub fn list_services(&self, tenant_id: &str) -> Result<Vec<ServiceCatalogEntry>, StoreError> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT service_name, version, description, io_contract, sensitive, binding_hint,
+                    managed_by, scope, created_at, updated_at
+             FROM service_catalog
+             WHERE scope = 'platform' OR scope = ?1
+             ORDER BY managed_by, service_name",
+        )?;
+        let rows = stmt.query_map(params![format!("tenant:{tenant_id}")], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, Option<String>>(2)?,
+                r.get::<_, Option<String>>(3)?,
+                r.get::<_, i64>(4)?,
+                r.get::<_, String>(5)?,
+                r.get::<_, String>(6)?,
+                r.get::<_, String>(7)?,
+                r.get::<_, String>(8)?,
+                r.get::<_, Option<String>>(9)?,
+            ))
+        })?;
+        let raw: Vec<ServiceCatalogRow> = rows.collect::<Result<_, _>>()?;
+        raw.into_iter()
+            .map(
+                |(service_name, version, description, io_contract, sensitive, binding_hint, managed_by, scope, created_at, updated_at)| {
+                    Ok(ServiceCatalogEntry {
+                        service_name,
+                        version,
+                        description,
+                        io_contract: io_contract
+                            .as_deref()
+                            .map(serde_json::from_str)
+                            .transpose()?,
+                        sensitive: sensitive != 0,
+                        binding_hint: serde_json::from_str(&binding_hint)?,
+                        managed_by,
+                        scope,
+                        created_at,
+                        updated_at,
+                    })
+                },
+            )
+            .collect()
+    }
+
+    /// C2：预置官方 7 个原生服务（幂等 seed，服务启动时调用）。
+    ///
+    /// 仅当平台官方目录（scope=platform）为空时补齐，避免覆盖运维/租户后续对
+    /// 官方服务版本的自定义。返回本次新增条数。
+    pub fn seed_official_services_if_empty(&self, now: &str) -> Result<usize, StoreError> {
+        let platform_count: i64 = {
+            let conn = self.conn.lock().unwrap();
+            conn.query_row(
+                "SELECT COUNT(*) FROM service_catalog WHERE scope = 'platform'",
+                [],
+                |r| r.get(0),
+            )?
+        };
+        if platform_count > 0 {
+            return Ok(0);
+        }
+        let mut inserted = 0usize;
+        for (name, sensitive, desc) in OFFICIAL_NATIVE_SERVICES {
+            self.upsert_service(&official_entry(name, *sensitive, desc, now))?;
+            inserted += 1;
+        }
+        Ok(inserted)
     }
 
     // ------------------------------------------------------------------
@@ -2349,6 +2556,7 @@ mod tests {
                 inputs: vec![],
                 services: vec![ServiceDecl {
                     service_name: "payroll_svc".into(),
+                    version: None,
                     io_contract: None,
                     sensitive: false,
                     description: None,
@@ -2405,6 +2613,58 @@ mod tests {
     }
 
     #[test]
+    fn test_service_catalog_crud_and_seed() {
+        // 02 方案 C2：服务目录 upsert/get/list/seed（幂等，平台 + 租户作用域）
+        use crate::model::service_catalog::BindingHint;
+
+        let store = RuleStore::in_memory().unwrap();
+        // 官方 seed：预置 7 个原生服务；重复 seed 幂等
+        assert_eq!(store.seed_official_services_if_empty("t").unwrap(), 7);
+        assert_eq!(store.seed_official_services_if_empty("t").unwrap(), 0, "重复 seed 应幂等");
+
+        // 平台官方目录对任意租户可见
+        let platform = store.list_services("tenant_a").unwrap();
+        assert_eq!(platform.len(), 7);
+        let llm = store.get_service("llm_advisor").unwrap().unwrap();
+        assert!(llm.sensitive, "llm_advisor 应标记 sensitive（C6）");
+        assert_eq!(llm.scope, "platform");
+        assert_eq!(llm.binding_hint, BindingHint::Native);
+
+        // 租户注册/更新自定义服务
+        store
+            .upsert_service(&ServiceCatalogEntry {
+                service_name: "payroll_svc".into(),
+                version: "1.2.0".into(),
+                description: Some("payroll".into()),
+                io_contract: None,
+                sensitive: true,
+                binding_hint: BindingHint::Registry,
+                managed_by: "org:tenant_a".into(),
+                scope: "tenant:tenant_a".into(),
+                created_at: "t".into(),
+                updated_at: None,
+            })
+            .unwrap();
+        let got = store.get_service("payroll_svc").unwrap().unwrap();
+        assert_eq!(got.version, "1.2.0");
+        assert!(got.sensitive);
+
+        // 租户可见范围 = 官方 7 + 本租户 1；其他租户看不到租户自定义
+        assert_eq!(store.list_services("tenant_a").unwrap().len(), 8);
+        assert_eq!(store.list_services("tenant_b").unwrap().len(), 7);
+
+        // 平台官方条目可被运维更新（seed 只在空目录时补齐，不覆盖既有）
+        let mut e = store.get_service("llm_advisor").unwrap().unwrap();
+        e.version = "2.0.0".into();
+        store.upsert_service(&e).unwrap();
+        assert_eq!(
+            store.get_service("llm_advisor").unwrap().unwrap().version,
+            "2.0.0"
+        );
+        assert_eq!(store.seed_official_services_if_empty("t").unwrap(), 0, "目录非空不再 seed");
+    }
+
+    #[test]
     fn test_add_and_get_entry() {
         let store = RuleStore::in_memory().unwrap();
         store.create_dataset(&tax_dataset()).unwrap();
@@ -2424,7 +2684,7 @@ mod tests {
     }
 
     #[test]
-fn test_add_entry_dup_version_rejected() {
+    fn test_add_entry_dup_version_rejected() {
         let store = RuleStore::in_memory().unwrap();
         store.create_dataset(&tax_dataset()).unwrap();
         store.add_entry(&draft_entry()).unwrap();

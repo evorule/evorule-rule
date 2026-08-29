@@ -50,6 +50,26 @@ pub async fn put_dataset_deps(
     if !can(ctx.role, Action::Edit) {
         return Err(ApiError::forbidden("需要规则工程师及以上角色"));
     }
+    // C1（02 方案层1）：依赖声明的服务名必须已注册在服务目录（本租户可见范围）——
+    // 把「服务名错误」从导入期提前到声明期（事前预检，不静默）。
+    let catalog: std::collections::HashSet<String> = state
+        .store
+        .list_services(&ctx.tenant_id)?
+        .into_iter()
+        .map(|e| e.service_name)
+        .collect();
+    let unknown: Vec<&str> = deps
+        .services
+        .iter()
+        .map(|s| s.service_name.as_str())
+        .filter(|name| !catalog.contains(*name))
+        .collect();
+    if !unknown.is_empty() {
+        return Err(ApiError::bad_request(format!(
+            "依赖声明包含未在服务目录注册的服务（不静默）: {}；请先 POST /v1/services 注册后再声明",
+            unknown.join(", ")
+        )));
+    }
     state.store.update_dataset_deps(&id, &deps, &ctx.user_id, &now_iso())?;
     Ok(Json(deps))
 }

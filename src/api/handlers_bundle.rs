@@ -29,6 +29,9 @@ pub struct ExportQuery {
 /// - subset=tag:core：裁剪视图导出（仅保留命中条目 + 依赖收缩，view_of 指向原版本）。
 ///
 /// MVP 仅存当前版本条目内容：`ver != current` 显式拒绝，不伪造历史内容。
+///
+/// **T0 决策（2026-08-24）**：GET 无法承载 tests 数组 → 无证据导出统一显式 `unverified()`（verdict=fail），
+/// 不默认 Pass；带真实沙箱证据的导出走 `POST /bundles/export`（T0 决策：矛盾 A 推荐方案）。
 pub async fn export_version(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
@@ -53,12 +56,64 @@ pub async fn export_version(
     }
     let bundle = state.store.export_bundle(
         &id,
-        &BundleTests::default(),
+        &BundleTests::unverified(),
         &ctx.user_id,
         &iso_from_unix(unix_now()),
         &state.instance_id,
     )?;
     match query.subset {
+        Some(spec) => trim(&bundle, &spec, &ctx.user_id),
+        None => Ok(Json(bundle)),
+    }
+}
+
+/// 带证据导出请求体（T0 决策：矛盾 A —— POST 承载 tests 数组）
+#[derive(Deserialize)]
+pub struct ExportReq {
+    pub dataset_id: String,
+    /// 要导出的版本（MVP 仅当前版本有内容，历史版本显式拒绝）
+    pub version: String,
+    /// 真实沙箱验证证据（闸门一产出，测试工作台跑完直接带入；不新增治理存储模型）
+    pub tests: BundleTests,
+    /// 裁剪视图语法（可选）：`tag:core` / `domain:tax`
+    #[serde(default)]
+    pub subset: Option<String>,
+}
+
+/// POST /bundles/export —— 带真实闸门一证据的导出（T0 决策 2026-08-24）
+///
+/// - 调用方（console-cloud 测试工作台）先跑确定性执行产出 verdict，再带进本请求；
+/// - 缺省/未验证证据由调用方负责显式标注（verdict=fail），本端点**不默认 Pass**（T0）；
+/// - 权限：与 GET export_version 一致（本租户可导出；发布/交付权威仍在治理层 D12）。
+pub async fn export_with_tests(
+    State(state): State<AppState>,
+    Extension(ctx): Extension<AuthContext>,
+    Json(req): Json<ExportReq>,
+) -> Result<Json<DatasetBundle>, ApiError> {
+    let ds = state
+        .store
+        .get_dataset(&req.dataset_id)?
+        .ok_or_else(|| ApiError::not_found("数据集不存在"))?;
+    if ds.tenant_id != ctx.tenant_id {
+        return Err(ApiError::not_found("数据集不存在"));
+    }
+    if !ds.versioning.chain.iter().any(|v| v == &req.version) {
+        return Err(ApiError::not_found(format!("版本 `{}` 不在版本链中", req.version)));
+    }
+    if ds.versioning.current != req.version {
+        return Err(ApiError::bad_request(format!(
+            "MVP 仅存当前版本 `{}` 条目内容，无法导出历史版本 `{}`（批次 1 快照落库后支持）",
+            ds.versioning.current, req.version
+        )));
+    }
+    let bundle = state.store.export_bundle(
+        &req.dataset_id,
+        &req.tests,
+        &ctx.user_id,
+        &iso_from_unix(unix_now()),
+        &state.instance_id,
+    )?;
+    match req.subset {
         Some(spec) => trim(&bundle, &spec, &ctx.user_id),
         None => Ok(Json(bundle)),
     }
