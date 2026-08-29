@@ -13,7 +13,10 @@ use thiserror::Error;
 #[cfg(feature = "postgres")]
 pub mod pg;
 
-use crate::bundle::{BundleError, BundleExporter, BundleImporter, BundleTests, DatasetBundle, ImportResult};
+use crate::bundle::{
+    BundleEntry, BundleError, BundleExporter, BundleImporter, BundleTests, DatasetBundle,
+    ImportResult,
+};
 use crate::model::auth::{ApiKey, AuthAudit, Role, Tenant, User};
 use crate::model::dataset::{Meta, RuleDataset, Visibility};
 use crate::model::dependency::{DataDependencies, ServiceTemplateRecord};
@@ -644,6 +647,22 @@ impl RuleStore {
         Validator::validate_symbol_consistency(&ds, entry)?;
         // 3) LLM 边界
         Validator::validate_llm_boundary(entry)?;
+        // 3b) 执行侧条目门禁（C8）：与 server 执行侧导入同口径（BundleImporter::validate_entry
+        //     SSOT：rule_body 结构 + 符号三方一致），消除"治理放行、执行拒收"窗口
+        let declared_services: Vec<String> = ds
+            .data_dependencies
+            .as_ref()
+            .map(|d| d.services.iter().map(|s| s.service_name.clone()).collect())
+            .unwrap_or_default();
+        let bundle_entry = BundleEntry {
+            entry_id: entry.entry_id.clone(),
+            rule_body: entry.rule_body.clone(),
+            provenance: entry.provenance.clone(),
+            domain: entry.domain.clone(),
+            tags: entry.tags.clone(),
+            dependencies: entry.data_source_binding.clone(),
+        };
+        BundleImporter::validate_entry(&bundle_entry, &declared_services)?;
         // 4) 唯一性（entry_id + version 已由主键保证，此处显式检查以便友好报错）
         let conn = self.conn.lock().unwrap();
         let exists: bool = conn.query_row(
@@ -2690,6 +2709,23 @@ mod tests {
         store.add_entry(&draft_entry()).unwrap();
         let err = store.add_entry(&draft_entry()).unwrap_err();
         assert!(matches!(err, StoreError::EntryExists { .. }));
+    }
+
+    /// C8：入库门禁接执行侧 SSOT（BundleImporter::validate_entry）——
+    /// 结构非法 rule_body（如空 transform）入库被拒，杜绝"治理放行、执行拒收"窗口
+    #[test]
+    fn test_add_entry_rejects_invalid_rule_body_structure() {
+        let store = RuleStore::in_memory().unwrap();
+        store.create_dataset(&tax_dataset()).unwrap();
+        let mut e = draft_entry();
+        // 清空绑定（否则符号一致校验先报 ServiceNotInRuleBody），聚焦结构门禁
+        e.data_source_binding = vec![];
+        e.rule_body = serde_json::json!({"transform": []});
+        let err = store.add_entry(&e).unwrap_err();
+        assert!(matches!(
+            err,
+            StoreError::Bundle(BundleError::InvalidEntryStructure { .. })
+        ));
     }
 
     /// C1：内容哈希去重落库——跨版本未变内容复用同一快照行，变更产生新快照
