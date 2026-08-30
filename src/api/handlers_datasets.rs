@@ -10,7 +10,7 @@ use crate::api::handlers_auth::now_iso;
 use crate::api::{api_key_from_header, bearer_token, paginate, unix_now, AppState, ApiError, AuthContext, Page, PageQuery};
 use crate::auth::iso_from_unix;
 use crate::model::auth::{Action, Role, can};
-use crate::model::dataset::{Meta, RuleDataset, Visibility};
+use crate::model::dataset::{DatasetKind, Meta, RuleDataset, Visibility};
 use crate::model::entry::RuleEntry;
 use crate::model::lifecycle::LifecycleStatus;
 use crate::model::provenance::Provenance;
@@ -38,6 +38,9 @@ pub struct CreateDatasetReq {
     /// 版本选择双模式（可选；缺省 = auto_by_effective_date）
     #[serde(default)]
     pub version_selection: Option<VersionSelection>,
+    /// 数据集类型（Q12 R1，可选；缺省 = rule_set。创建后不可变更）
+    #[serde(default)]
+    pub dataset_kind: Option<DatasetKind>,
 }
 
 pub async fn list_datasets(
@@ -84,6 +87,7 @@ pub async fn create_dataset(
         dataset_id: req.dataset_id,
         name: req.name,
         description: req.description,
+        dataset_kind: req.dataset_kind.unwrap_or(DatasetKind::RuleSet),
         domain: req.domain,
         tags: req.tags,
         tenant_id: ctx.tenant_id.clone(),
@@ -481,12 +485,29 @@ pub struct AddEntryReq {
     pub provenance: Option<Provenance>,
 }
 
+/// knowledge 数据条目请求体（Q12 R4：payload + schema_ref 必填，与规则条目互斥）
+#[derive(Deserialize)]
+pub struct AddKnowledgeEntryReq {
+    pub entry_id: String,
+    pub version: u32,
+    #[serde(default)]
+    pub domain: Option<String>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    /// 领域结构化数据本体（任意 JSON，过 schema_ref 领域 schema 强校验）
+    pub payload: Value,
+    /// 领域 JSON Schema 引用 URI（resolver 未命中 = 拒绝入库，D3）
+    pub schema_ref: String,
+    #[serde(default)]
+    pub provenance: Option<Provenance>,
+}
+
 pub async fn list_entries(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
     Path(id): Path<String>,
     Query(page): Query<PageQuery>,
-) -> Result<Json<Page<RuleEntry>>, ApiError> {
+) -> Result<Json<Page<Value>>, ApiError> {
     let ds = state
         .store
         .get_dataset(&id)?
@@ -494,7 +515,21 @@ pub async fn list_entries(
     if ds.tenant_id != ctx.tenant_id {
         return Err(ApiError::not_found("数据集不存在"));
     }
-    let entries = state.store.list_entries(&id, None)?;
+    // Q12 R4：按数据集类型分流（rule_set → 规则条目；knowledge → 数据条目）
+    let entries: Vec<Value> = match ds.dataset_kind {
+        DatasetKind::RuleSet => state
+            .store
+            .list_entries(&id, None)?
+            .iter()
+            .map(|e| serde_json::to_value(e).unwrap_or(Value::Null))
+            .collect(),
+        DatasetKind::Knowledge => state
+            .store
+            .list_knowledge_entries(&id, None)?
+            .iter()
+            .map(|e| serde_json::to_value(e).unwrap_or(Value::Null))
+            .collect(),
+    };
     Ok(paginate(entries, page.limit, page.offset))
 }
 
@@ -502,8 +537,8 @@ pub async fn add_entry(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
     Path(id): Path<String>,
-    Json(req): Json<AddEntryReq>,
-) -> Result<(StatusCode, Json<RuleEntry>), ApiError> {
+    Json(body): Json<Value>,
+) -> Result<(StatusCode, Json<Value>), ApiError> {
     if !can(ctx.role, Action::Edit) {
         return Err(ApiError::forbidden("需要规则工程师及以上角色"));
     }
@@ -514,33 +549,80 @@ pub async fn add_entry(
     if ds.tenant_id != ctx.tenant_id {
         return Err(ApiError::not_found("数据集不存在"));
     }
-    let domain = req.domain.unwrap_or_else(|| {
-        ds.domain.first().cloned().unwrap_or_else(|| "general".to_string())
-    });
-    let provenance = req.provenance.unwrap_or_else(|| Provenance {
-        source: "API 收录".into(),
-        clause: None,
-        document_id: None,
-        effective_from: None,
-        effective_to: None,
-        last_verified: None,
-        verified_by: None,
-    });
-    let entry = RuleEntry {
-        entry_id: req.entry_id,
-        dataset_id: id.clone(),
-        version: req.version,
-        status: Some(LifecycleStatus::Draft),
-        provenance,
-        domain,
-        tags: req.tags,
-        data_source_binding: vec![],
-        consumed_inputs: req.consumed_inputs,
-        rule_body: req.rule_body,
-        governance: None,
-    };
-    state.store.add_entry(&entry)?;
-    Ok((StatusCode::CREATED, Json(entry)))
+    // Q12 R4：按数据集类型分流校验（同一端点，两类条目互斥、显式报错）
+    match ds.dataset_kind {
+        DatasetKind::Knowledge => {
+            let req: AddKnowledgeEntryReq = serde_json::from_value(body)
+                .map_err(|e| ApiError::bad_request(format!(
+                    "knowledge 数据集条目须为 {{entry_id, version, payload, schema_ref, ...}}: {e}"
+                )))?;
+            let domain = req.domain.unwrap_or_else(|| {
+                ds.domain.first().cloned().unwrap_or_else(|| "general".to_string())
+            });
+            let provenance = req.provenance.unwrap_or_else(|| Provenance {
+                source: "API 收录".into(),
+                clause: None,
+                document_id: None,
+                effective_from: None,
+                effective_to: None,
+                last_verified: None,
+                verified_by: None,
+            });
+            let entry = crate::model::knowledge::KnowledgeEntry {
+                entry_id: req.entry_id,
+                dataset_id: id.clone(),
+                version: req.version,
+                status: Some(LifecycleStatus::Draft),
+                provenance,
+                domain,
+                tags: req.tags,
+                payload: req.payload,
+                schema_ref: req.schema_ref,
+                governance: None,
+            };
+            state.store.add_knowledge_entry(&entry)?;
+            Ok((
+                StatusCode::CREATED,
+                Json(serde_json::to_value(&entry).unwrap_or(Value::Null)),
+            ))
+        }
+        DatasetKind::RuleSet => {
+            let req: AddEntryReq = serde_json::from_value(body)
+                .map_err(|e| ApiError::bad_request(format!(
+                    "rule_set 数据集条目须为 {{entry_id, version, rule_body, ...}}: {e}"
+                )))?;
+            let domain = req.domain.unwrap_or_else(|| {
+                ds.domain.first().cloned().unwrap_or_else(|| "general".to_string())
+            });
+            let provenance = req.provenance.unwrap_or_else(|| Provenance {
+                source: "API 收录".into(),
+                clause: None,
+                document_id: None,
+                effective_from: None,
+                effective_to: None,
+                last_verified: None,
+                verified_by: None,
+            });
+            let entry = RuleEntry {
+                entry_id: req.entry_id,
+                dataset_id: id.clone(),
+                version: req.version,
+                status: Some(LifecycleStatus::Draft),
+                provenance,
+                domain,
+                tags: req.tags,
+                data_source_binding: vec![],
+                consumed_inputs: req.consumed_inputs,
+                rule_body: req.rule_body,
+                governance: None,
+            };
+            state.store.add_entry(&entry)?;
+            Ok((
+                StatusCode::CREATED,
+                Json(serde_json::to_value(&entry).unwrap_or(Value::Null)),
+            ))
+        }
+    }
 }
 
 // ----------------------------------------------------------------------

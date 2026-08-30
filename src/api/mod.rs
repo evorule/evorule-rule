@@ -1832,6 +1832,7 @@ mod tests {
             dataset_id: "ds-pay-01".into(),
             name: "工资合规".into(),
             description: None,
+            dataset_kind: Default::default(),
             domain: vec!["payroll".into()],
             tags: vec!["合规".into()],
             tenant_id: "tenant_a".into(),

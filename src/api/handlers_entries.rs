@@ -19,20 +19,24 @@ use crate::model::dependency::SourceBinding;
 use crate::model::entry::RuleEntry;
 use crate::model::lifecycle::LifecycleStatus;
 use crate::model::provenance::Provenance;
+use crate::store::AnyEntry;
 
-/// 顶层条目路由：租户内定位条目，校验租户归属
+/// 顶层条目路由：租户内定位条目（Q12 R4：规则表与 knowledge 平行表均参与），校验租户归属
 fn locate_entry(
     state: &AppState,
     tenant_id: &str,
     entry_id: &str,
-) -> Result<(String, RuleEntry), ApiError> {
+) -> Result<(String, AnyEntry), ApiError> {
     state
         .store
         .find_entry_in_tenant(tenant_id, entry_id)?
         .ok_or_else(|| ApiError::not_found(format!("条目 `{entry_id}` 不存在")))
 }
 
-/// PATCH /entries/{id} —— 编辑草稿（rule_body/标签/溯源/绑定；frozen 拒绝原地修改）
+/// PATCH /entries/{id} —— 编辑草稿（frozen 拒绝原地修改）
+///
+/// Q12 R4 分流：规则条目改 rule_body/绑定；数据条目改 payload/schema_ref。
+/// 字段与条目类型不符 → 显式 400（不静默忽略）。
 #[derive(Deserialize)]
 pub struct PatchEntryReq {
     #[serde(default)]
@@ -45,6 +49,12 @@ pub struct PatchEntryReq {
     pub data_source_binding: Option<Vec<SourceBinding>>,
     #[serde(default)]
     pub consumed_inputs: Option<Vec<String>>,
+    /// knowledge 条目：领域结构化数据本体
+    #[serde(default)]
+    pub payload: Option<Value>,
+    /// knowledge 条目：领域 JSON Schema 引用
+    #[serde(default)]
+    pub schema_ref: Option<String>,
 }
 
 pub async fn patch_entry(
@@ -52,42 +62,71 @@ pub async fn patch_entry(
     Extension(ctx): Extension<AuthContext>,
     Path(entry_id): Path<String>,
     Json(req): Json<PatchEntryReq>,
-) -> Result<Json<RuleEntry>, ApiError> {
+) -> Result<Json<Value>, ApiError> {
     if !can(ctx.role, Action::Edit) {
         return Err(ApiError::forbidden("需要规则工程师及以上角色"));
     }
-    let (dataset_id, mut entry) = locate_entry(&state, &ctx.tenant_id, &entry_id)?;
-    if let Some(b) = req.rule_body {
-        if let Err(errors) = validate_rule_structure(&b) {
-            return Err(ApiError::bad_request(format!(
-                "规则体结构校验失败: {}",
-                errors.join("; ")
-            )));
+    let (_dataset_id, entry) = locate_entry(&state, &ctx.tenant_id, &entry_id)?;
+    match entry {
+        AnyEntry::Rule(mut e) => {
+            if req.payload.is_some() || req.schema_ref.is_some() {
+                return Err(ApiError::bad_request(
+                    "rule_set 条目不接受 payload/schema_ref 字段（数据条目字段仅限 knowledge 数据集）",
+                ));
+            }
+            if let Some(b) = req.rule_body {
+                if let Err(errors) = validate_rule_structure(&b) {
+                    return Err(ApiError::bad_request(format!(
+                        "规则体结构校验失败: {}",
+                        errors.join("; ")
+                    )));
+                }
+                e.rule_body = b;
+            }
+            if let Some(t) = req.tags {
+                e.tags = t;
+            }
+            if let Some(p) = req.provenance {
+                e.provenance = p;
+            }
+            if let Some(b) = req.data_source_binding {
+                e.data_source_binding = b;
+            }
+            if let Some(c) = req.consumed_inputs {
+                e.consumed_inputs = c;
+            }
+            state.store.update_draft_entry(&e)?;
         }
-        entry.rule_body = b;
+        AnyEntry::Knowledge(mut e) => {
+            if req.rule_body.is_some()
+                || req.data_source_binding.is_some()
+                || req.consumed_inputs.is_some()
+            {
+                return Err(ApiError::bad_request(
+                    "knowledge 条目不接受 rule_body/data_source_binding/consumed_inputs 字段（规则条目字段仅限 rule_set 数据集）",
+                ));
+            }
+            if let Some(p) = req.payload {
+                e.payload = p;
+            }
+            if let Some(s) = req.schema_ref {
+                e.schema_ref = s;
+            }
+            if let Some(t) = req.tags {
+                e.tags = t;
+            }
+            if let Some(p) = req.provenance {
+                e.provenance = p;
+            }
+            state.store.update_draft_knowledge_entry(&e)?;
+        }
     }
-    if let Some(t) = req.tags {
-        entry.tags = t;
-    }
-    if let Some(p) = req.provenance {
-        entry.provenance = p;
-    }
-    if let Some(b) = req.data_source_binding {
-        entry.data_source_binding = b;
-    }
-    if let Some(c) = req.consumed_inputs {
-        entry.consumed_inputs = c;
-    }
-    state.store.update_draft_entry(&entry)?;
     // 回读最新状态
-    let updated = state
-        .store
-        .get_latest_entry(&dataset_id, &entry_id)?
-        .ok_or_else(|| ApiError::not_found("条目不存在"))?;
-    Ok(Json(updated))
+    let (_, updated) = locate_entry(&state, &ctx.tenant_id, &entry_id)?;
+    Ok(Json(updated.to_json()))
 }
 
-/// DELETE /entries/{id} —— 删除草稿（仅 Draft）
+/// DELETE /entries/{id} —— 删除草稿（仅 Draft；Q12 R4 分流平行表）
 pub async fn delete_entry(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
@@ -96,8 +135,11 @@ pub async fn delete_entry(
     if !can(ctx.role, Action::Edit) {
         return Err(ApiError::forbidden("需要规则工程师及以上角色"));
     }
-    let (dataset_id, _) = locate_entry(&state, &ctx.tenant_id, &entry_id)?;
-    state.store.delete_entry(&dataset_id, &entry_id)?;
+    let (dataset_id, entry) = locate_entry(&state, &ctx.tenant_id, &entry_id)?;
+    match entry {
+        AnyEntry::Rule(_) => state.store.delete_entry(&dataset_id, &entry_id)?,
+        AnyEntry::Knowledge(_) => state.store.delete_knowledge_entry(&dataset_id, &entry_id)?,
+    }
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -113,24 +155,40 @@ pub async fn submit_candidate(
     Extension(ctx): Extension<AuthContext>,
     Path(entry_id): Path<String>,
     Json(req): Json<SubmitCandidateReq>,
-) -> Result<Json<RuleEntry>, ApiError> {
+) -> Result<Json<Value>, ApiError> {
     if !can(ctx.role, Action::Edit) {
         return Err(ApiError::forbidden("需要规则工程师及以上角色"));
     }
     let (dataset_id, _) = locate_entry(&state, &ctx.tenant_id, &entry_id)?;
-    state.store.transition_entry_status(
-        &dataset_id,
-        &entry_id,
-        LifecycleStatus::Candidate,
-        &ctx.user_id,
-        &now_iso(),
-        &format!("闸门一通过，沙箱报告 {}", req.sandbox_report_id),
+    transition_any(&state, &dataset_id, &entry_id, LifecycleStatus::Candidate, &ctx.user_id,
+        &format!("闸门一通过，沙箱报告 {}", req.sandbox_report_id))?;
+    let (_, updated) = locate_entry(&state, &ctx.tenant_id, &entry_id)?;
+    Ok(Json(updated.to_json()))
+}
+
+/// 条目状态迁移分流（Q12 R4：规则/知识平行表同口径迁移）
+fn transition_any(
+    state: &AppState,
+    dataset_id: &str,
+    entry_id: &str,
+    to: LifecycleStatus,
+    user_id: &str,
+    cause: &str,
+) -> Result<(), ApiError> {
+    let rule_err = match state.store.transition_entry_status(
+        dataset_id, entry_id, to, user_id, &now_iso(), cause,
+    ) {
+        Ok(()) => return Ok(()),
+        Err(e) => e,
+    };
+    // 规则表未命中 → knowledge 平行表重试；规则表的其余错误（状态机/LLM 边界）直接上抛
+    if !matches!(rule_err, crate::store::StoreError::EntryNotFound { .. }) {
+        return Err(rule_err.into());
+    }
+    state.store.transition_knowledge_entry_status(
+        dataset_id, entry_id, to, user_id, &now_iso(), cause,
     )?;
-    let updated = state
-        .store
-        .get_latest_entry(&dataset_id, &entry_id)?
-        .ok_or_else(|| ApiError::not_found("条目不存在"))?;
-    Ok(Json(updated))
+    Ok(())
 }
 
 /// POST /entries/{id}/approve —— 闸门二：Candidate → Active（审批者角色）
@@ -138,24 +196,15 @@ pub async fn approve(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
     Path(entry_id): Path<String>,
-) -> Result<Json<RuleEntry>, ApiError> {
+) -> Result<Json<Value>, ApiError> {
     if !can(ctx.role, Action::Approve) {
         return Err(ApiError::forbidden("审批需审批者及以上角色"));
     }
     let (dataset_id, _) = locate_entry(&state, &ctx.tenant_id, &entry_id)?;
-    state.store.transition_entry_status(
-        &dataset_id,
-        &entry_id,
-        LifecycleStatus::Active,
-        &ctx.user_id,
-        &now_iso(),
-        "闸门二审批通过（Candidate→Active）",
-    )?;
-    let updated = state
-        .store
-        .get_latest_entry(&dataset_id, &entry_id)?
-        .ok_or_else(|| ApiError::not_found("条目不存在"))?;
-    Ok(Json(updated))
+    transition_any(&state, &dataset_id, &entry_id, LifecycleStatus::Active, &ctx.user_id,
+        "闸门二审批通过（Candidate→Active）")?;
+    let (_, updated) = locate_entry(&state, &ctx.tenant_id, &entry_id)?;
+    Ok(Json(updated.to_json()))
 }
 
 /// GET /entries/{id}/history —— 条目状态迁移历史（only-append）
@@ -165,7 +214,11 @@ pub async fn history(
     Path(entry_id): Path<String>,
 ) -> Result<Json<Vec<crate::model::lifecycle::StateChange>>, ApiError> {
     let (dataset_id, _) = locate_entry(&state, &ctx.tenant_id, &entry_id)?;
-    let hist = state.store.get_entry_state_history(&dataset_id, &entry_id)?;
+    // Q12 R4：先查规则表历史，空则查 knowledge 平行表
+    let mut hist = state.store.get_entry_state_history(&dataset_id, &entry_id)?;
+    if hist.is_empty() {
+        hist = state.store.get_knowledge_entry_state_history(&dataset_id, &entry_id)?;
+    }
     Ok(Json(hist))
 }
 
@@ -176,7 +229,11 @@ pub async fn deps(
     Path(entry_id): Path<String>,
 ) -> Result<Json<Vec<SourceBinding>>, ApiError> {
     let (_, entry) = locate_entry(&state, &ctx.tenant_id, &entry_id)?;
-    Ok(Json(entry.data_source_binding))
+    match entry {
+        AnyEntry::Rule(e) => Ok(Json(e.data_source_binding)),
+        // 数据条目不消费服务（D1：不进 TCB，不经 io_request）；空 = 无绑定（显式语义）
+        AnyEntry::Knowledge(_) => Ok(Json(vec![])),
+    }
 }
 
 // ----------------------------------------------------------------------
@@ -193,16 +250,16 @@ pub struct EntryListQuery {
     pub offset: Option<usize>,
 }
 
-/// GET /entries —— 租户内条目列表（可选 ?dataset_id= 过滤）
+/// GET /entries —— 租户内条目列表（可选 ?dataset_id= 过滤；Q12 R4：含 knowledge 数据条目）
 pub async fn list_entries_all(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
     Query(query): Query<EntryListQuery>,
-) -> Result<Json<Page<RuleEntry>>, ApiError> {
+) -> Result<Json<Page<Value>>, ApiError> {
     if !can(ctx.role, Action::View) {
         return Err(ApiError::forbidden("无查看权限"));
     }
-    let entries = state.store.search_entries(
+    let rules = state.store.search_entries(
         &ctx.tenant_id,
         query.dataset_id.as_deref(),
         None,
@@ -210,7 +267,22 @@ pub async fn list_entries_all(
         &[],
         None,
     )?;
-    Ok(paginate(entries, query.limit, query.offset))
+    let mut items: Vec<Value> = rules
+        .iter()
+        .map(|e| serde_json::to_value(e).unwrap_or(Value::Null))
+        .collect();
+    // knowledge 平行表合并（同租户；dataset_id 过滤条件同样生效）
+    for ds in state.store.list_datasets(&ctx.tenant_id)? {
+        if let Some(did) = &query.dataset_id {
+            if ds.dataset_id != *did {
+                continue;
+            }
+        }
+        for e in state.store.list_knowledge_entries(&ds.dataset_id, None)? {
+            items.push(serde_json::to_value(e).unwrap_or(Value::Null));
+        }
+    }
+    Ok(paginate(items, query.limit, query.offset))
 }
 
 /// GET /entries/{id} —— 条目详情（租户内定位）
@@ -218,9 +290,9 @@ pub async fn get_entry(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
     Path(entry_id): Path<String>,
-) -> Result<Json<RuleEntry>, ApiError> {
+) -> Result<Json<Value>, ApiError> {
     let (_, entry) = locate_entry(&state, &ctx.tenant_id, &entry_id)?;
-    Ok(Json(entry))
+    Ok(Json(entry.to_json()))
 }
 
 /// GET /entries/{id}/versions —— 条目版本历史（C1，33 号 §6 历史可回查）
@@ -232,18 +304,34 @@ pub async fn entry_versions(
     if !can(ctx.role, Action::View) {
         return Err(ApiError::forbidden("无查看权限"));
     }
-    let (dataset_id, _) = locate_entry(&state, &ctx.tenant_id, &entry_id)?;
-    let versions = state.store.list_entry_versions(&dataset_id, &entry_id)?;
-    let summary: Vec<Value> = versions
-        .iter()
-        .map(|e| {
-            serde_json::json!({
-                "version": e.version,
-                "status": e.status,
-                "content_hash": e.content_hash(),
+    let (dataset_id, entry) = locate_entry(&state, &ctx.tenant_id, &entry_id)?;
+    // Q12 R4 分流：摘要字段同构（version/status/content_hash），载荷类型不影响版本链视图
+    let summary: Vec<Value> = match entry {
+        AnyEntry::Rule(_) => state
+            .store
+            .list_entry_versions(&dataset_id, &entry_id)?
+            .iter()
+            .map(|e| {
+                serde_json::json!({
+                    "version": e.version,
+                    "status": e.status,
+                    "content_hash": e.content_hash(),
+                })
             })
-        })
-        .collect();
+            .collect(),
+        AnyEntry::Knowledge(_) => state
+            .store
+            .list_knowledge_entry_versions(&dataset_id, &entry_id)?
+            .iter()
+            .map(|e| {
+                serde_json::json!({
+                    "version": e.version,
+                    "status": e.status,
+                    "content_hash": e.content_hash(),
+                })
+            })
+            .collect(),
+    };
     Ok(Json(serde_json::json!({
         "dataset_id": dataset_id,
         "entry_id": entry_id,
@@ -267,11 +355,18 @@ pub async fn entry_diff(
     if !can(ctx.role, Action::View) {
         return Err(ApiError::forbidden("无查看权限"));
     }
-    let (dataset_id, _) = locate_entry(&state, &ctx.tenant_id, &entry_id)?;
-    let out = state
-        .store
-        .entry_content_diff(&dataset_id, &entry_id, query.from, query.to)
-        .map_err(map_store_err)?;
+    let (dataset_id, entry) = locate_entry(&state, &ctx.tenant_id, &entry_id)?;
+    // Q12 R4 分流：载荷类型不影响内容级 diff 语义（content_hash 刻定内容）
+    let out = match entry {
+        AnyEntry::Rule(_) => state
+            .store
+            .entry_content_diff(&dataset_id, &entry_id, query.from, query.to)
+            .map_err(map_store_err)?,
+        AnyEntry::Knowledge(_) => state
+            .store
+            .knowledge_entry_content_diff(&dataset_id, &entry_id, query.from, query.to)
+            .map_err(map_store_err)?,
+    };
     Ok(Json(out))
 }
 

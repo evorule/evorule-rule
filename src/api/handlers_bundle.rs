@@ -186,14 +186,16 @@ pub async fn import_bundle(
 
 /// POST /bundles/import/dry-run —— 导入预检（校验链全跑，不落库）
 pub async fn import_dry_run(
-    State(_state): State<AppState>,
+    State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
     Json(req): Json<ImportReq>,
 ) -> Result<Json<Value>, ApiError> {
     if ctx.role != Role::Admin {
         return Err(ApiError::forbidden("导入预检需管理员角色"));
     }
-    let result = BundleImporter::validate(&req.bundle).map_err(|e| {
+    // D3 领域 schema resolver 与入库同源（store 领域目录），knowledge 条目预检口径一致
+    let resolver = |uri: &str| state.store.lookup_domain_schema(uri);
+    let result = BundleImporter::validate(&req.bundle, &resolver).map_err(|e| {
         ApiError::bad_request(format!("导入预检未通过（不静默）: {e}"))
     })?;
     Ok(Json(serde_json::json!({

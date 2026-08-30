@@ -12,6 +12,7 @@ pub mod dataset;
 pub mod dependency;
 pub mod entry;
 pub mod governance;
+pub mod knowledge;
 pub mod lifecycle;
 pub mod llm_audit;
 pub mod provenance;
@@ -22,12 +23,13 @@ pub mod writeback;
 
 pub use auth::{Action, ApiKey, AuthAudit, Role, Tenant, TokenClaims, User, can};
 
-pub use dataset::{Meta, RuleDataset, Visibility};
+pub use dataset::{DatasetKind, Meta, RuleDataset, Visibility};
 pub use dependency::{
     DataDependencies, InputDecl, IoContract, ServiceDecl, ServiceTemplate, ServiceTemplateRecord,
     SourceBinding,
 };
 pub use entry::RuleEntry;
+pub use knowledge::KnowledgeEntry;
 pub use governance::{Governance, LifecycleTimestamps, LlmGenerated};
 pub use lifecycle::{Lifecycle, LifecycleStatus, StateChange};
 pub use llm_audit::{LlmAuditFilter, LlmAuditStats, LlmOpAudit, OperationStat};

@@ -8,7 +8,8 @@
 
 pub use evorule_bundle::{
     BundleAudit, BundleDatasetMeta, BundleEntry, BundleError, BundleImporter, BundleTests,
-    BundleTrimmer, DatasetBundle, ImportResult, TestVerdict, ViewRef, BUNDLE_SCHEMA_VERSION,
+    BundleTrimmer, DatasetBundle, DomainSchemaResolver, EntryKind, ImportResult, TestVerdict,
+    ViewRef, BUNDLE_SCHEMA_VERSION,
 };
 
 use crate::model::dataset::RuleDataset;
@@ -30,6 +31,59 @@ impl BundleExporter {
     pub fn export(
         dataset: &RuleDataset,
         entries: &[RuleEntry],
+        tests: &BundleTests,
+        by: &str,
+        at: &str,
+        instance_id: &str,
+        catalog: &std::collections::BTreeMap<String, ServiceCatalogEntry>,
+    ) -> DatasetBundle {
+        let bundle_entries = entries
+            .iter()
+            .map(|e| BundleEntry {
+                entry_id: e.entry_id.clone(),
+                entry_kind: EntryKind::Rule,
+                rule_body: e.rule_body.clone(),
+                schema_ref: None,
+                provenance: e.provenance.clone(),
+                domain: e.domain.clone(),
+                tags: e.tags.clone(),
+                dependencies: e.data_source_binding.clone(),
+            })
+            .collect();
+        Self::finish(dataset, bundle_entries, tests, by, at, instance_id, catalog)
+    }
+
+    /// knowledge 数据集导出（Q12 数据资产化 R5）：数据条目 → `entry_kind=Knowledge` bundle。
+    /// `rule_body` 字段承载领域 payload（零转译条目体，见 evorule-bundle `EntryKind`）。
+    pub fn export_knowledge(
+        dataset: &RuleDataset,
+        entries: &[crate::model::knowledge::KnowledgeEntry],
+        tests: &BundleTests,
+        by: &str,
+        at: &str,
+        instance_id: &str,
+        catalog: &std::collections::BTreeMap<String, ServiceCatalogEntry>,
+    ) -> DatasetBundle {
+        let bundle_entries = entries
+            .iter()
+            .map(|e| BundleEntry {
+                entry_id: e.entry_id.clone(),
+                entry_kind: EntryKind::Knowledge,
+                rule_body: e.payload.clone(),
+                schema_ref: Some(e.schema_ref.clone()),
+                provenance: e.provenance.clone(),
+                domain: e.domain.clone(),
+                tags: e.tags.clone(),
+                dependencies: vec![],
+            })
+            .collect();
+        Self::finish(dataset, bundle_entries, tests, by, at, instance_id, catalog)
+    }
+
+    /// 公共收尾：服务契约下沉补齐 + 哈希覆盖（规则/数据导出共用，防逻辑漂移）
+    fn finish(
+        dataset: &RuleDataset,
+        entries: Vec<BundleEntry>,
         tests: &BundleTests,
         by: &str,
         at: &str,
@@ -69,17 +123,7 @@ impl BundleExporter {
                 law_ref: dataset.law_ref.clone(),
                 view_of: None,
             },
-            entries: entries
-                .iter()
-                .map(|e| BundleEntry {
-                    entry_id: e.entry_id.clone(),
-                    rule_body: e.rule_body.clone(),
-                    provenance: e.provenance.clone(),
-                    domain: e.domain.clone(),
-                    tags: e.tags.clone(),
-                    dependencies: e.data_source_binding.clone(),
-                })
-                .collect(),
+            entries,
             data_dependencies: enriched_deps,
             tests: tests.clone(),
             audit: BundleAudit {

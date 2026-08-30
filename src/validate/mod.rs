@@ -226,6 +226,7 @@ mod tests {
             dataset_id: "ds-tax-2024".into(),
             name: "t".into(),
             description: None,
+            dataset_kind: Default::default(),
             domain: vec![],
             tags: vec![],
             tenant_id: "org".into(),

@@ -15,13 +15,14 @@ pub mod pg;
 
 use crate::bundle::{
     BundleEntry, BundleError, BundleExporter, BundleImporter, BundleTests, DatasetBundle,
-    ImportResult,
+    EntryKind, ImportResult,
 };
 use crate::model::auth::{ApiKey, AuthAudit, Role, Tenant, User};
-use crate::model::dataset::{Meta, RuleDataset, Visibility};
+use crate::model::dataset::{DatasetKind, Meta, RuleDataset, Visibility};
 use crate::model::dependency::{DataDependencies, ServiceTemplateRecord};
 use crate::model::entry::RuleEntry;
 use crate::model::governance::Governance;
+use crate::model::knowledge::KnowledgeEntry;
 use crate::model::lifecycle::{Lifecycle, LifecycleStatus, StateChange};
 use crate::model::llm_audit::{LlmAuditFilter, LlmAuditStats, LlmOpAudit, OperationStat};
 use crate::model::service_catalog::{
@@ -92,12 +93,79 @@ pub enum StoreError {
 
     #[error("角色 `{0}` 非法")]
     InvalidRole(String),
+
+    #[error("数据集 `{dataset}` 类型为 {actual}，不接受{expected}条目（数据集类型创建后不可变更）")]
+    DatasetKindMismatch {
+        dataset: String,
+        expected: &'static str,
+        actual: &'static str,
+    },
+
+    #[error("快照包 `{0}` 混含规则条目与数据条目：MVP 数据集类型单一（rule_set 或 knowledge 二选一），混合包请拆分")]
+    MixedBundleKinds(String),
+
+    #[error("数据条目 `{entry}` 的 schema_ref 缺失或为空")]
+    KnowledgeMissingSchemaRef { entry: String },
+}
+
+/// 条目二态视图（Q12 R4）：顶层 `/entries/{id}` 路由跨表（规则/知识平行表）定位后的统一返回
+#[derive(Debug, Clone)]
+pub enum AnyEntry {
+    Rule(RuleEntry),
+    Knowledge(KnowledgeEntry),
+}
+
+impl AnyEntry {
+    pub fn to_json(&self) -> serde_json::Value {
+        match self {
+            AnyEntry::Rule(e) => serde_json::to_value(e).unwrap_or(serde_json::Value::Null),
+            AnyEntry::Knowledge(e) => serde_json::to_value(e).unwrap_or(serde_json::Value::Null),
+        }
+    }
+
+    pub fn is_frozen(&self) -> bool {
+        match self {
+            AnyEntry::Rule(e) => e.is_frozen(),
+            AnyEntry::Knowledge(e) => e.is_frozen(),
+        }
+    }
+
+    pub fn is_llm_generated(&self) -> bool {
+        match self {
+            AnyEntry::Rule(e) => e
+                .governance
+                .as_ref()
+                .map(|g| g.is_llm_generated())
+                .unwrap_or(false),
+            AnyEntry::Knowledge(e) => e.is_llm_generated(),
+        }
+    }
+
+    pub fn entry_id(&self) -> &str {
+        match self {
+            AnyEntry::Rule(e) => &e.entry_id,
+            AnyEntry::Knowledge(e) => &e.entry_id,
+        }
+    }
+
+    pub fn dataset_id(&self) -> &str {
+        match self {
+            AnyEntry::Rule(e) => &e.dataset_id,
+            AnyEntry::Knowledge(e) => &e.dataset_id,
+        }
+    }
 }
 
 /// 规则存储
 pub struct RuleStore {
     /// rusqlite `Connection` 为 Send 但非 Sync，axum 跨线程共享需 `Mutex` 包裹
     conn: std::sync::Mutex<Connection>,
+    /// 领域 schema 目录（Q12 D3）：`{db 同级}/domain_schemas/` 下 *.json，
+    /// 以 schema `$id`（缺省取文件名）为 `schema_ref` URI 索引。bundle 仓不内置领域，宿主注入。
+    domain_schema_dir: Option<std::path::PathBuf>,
+    /// 领域 schema 缓存（懒加载一次；新增 schema 需重启生效——MVP 如实标注）
+    domain_schema_cache:
+        std::sync::Mutex<Option<std::collections::BTreeMap<String, serde_json::Value>>>,
 }
 
 /// service_templates 行原始列（rusqlite 闭包只读原始列，JSON 反序列化移到闭包外）
@@ -131,10 +199,17 @@ type ServiceCatalogRow = (
 
 impl RuleStore {
     /// 打开（或创建）数据库文件
+    ///
+    /// 领域 schema 目录（Q12 D3）：与 db 文件同级的 `domain_schemas/`（内存库无目录，resolver 未命中 = 拒绝）。
     pub fn open(path: &str) -> Result<Self, StoreError> {
         let conn = Connection::open(path)?;
+        let domain_schema_dir = std::path::Path::new(path)
+            .parent()
+            .map(|p| p.join("domain_schemas"));
         let store = Self {
             conn: std::sync::Mutex::new(conn),
+            domain_schema_dir,
+            domain_schema_cache: std::sync::Mutex::new(None),
         };
         store.init_schema()?;
         Ok(store)
@@ -145,9 +220,61 @@ impl RuleStore {
         let conn = Connection::open_in_memory()?;
         let store = Self {
             conn: std::sync::Mutex::new(conn),
+            domain_schema_dir: None,
+            domain_schema_cache: std::sync::Mutex::new(None),
         };
         store.init_schema()?;
         Ok(store)
+    }
+
+    /// 领域 schema 解析（Q12 D3，bundle SSOT 门禁注入点）：
+    /// 按目录索引查 `schema_ref` URI；未命中返回 None（门禁显式拒绝，不静默放行）。
+    ///
+    /// 索引键：schema 的 `$id` 字段（**必须是合法 URI**，jsonschema 校验器强制——裸词如
+    /// `rpsm-body` 会导致 payload 校验报"领域 schema 本身非法"）；无 `$id` 时回退文件名
+    /// （此时 schema 本身可过校验，但建议统一写 `$id`）。
+    ///
+    /// 用法（`DomainSchemaResolver = &dyn Fn`，闭包须由调用方局部绑定后取引用）：
+    /// `let resolver = |uri: &str| store.lookup_domain_schema(uri);`
+    pub fn lookup_domain_schema(&self, uri: &str) -> Option<serde_json::Value> {
+        {
+            let cache = self.domain_schema_cache.lock().unwrap();
+            if let Some(map) = cache.as_ref() {
+                return map.get(uri).cloned();
+            }
+        }
+        let dir = self.domain_schema_dir.as_ref()?;
+        let mut map = std::collections::BTreeMap::new();
+        let Ok(dirs) = std::fs::read_dir(dir) else {
+            return None;
+        };
+        for e in dirs.flatten() {
+            let p = e.path();
+            if p.extension().and_then(|x| x.to_str()) != Some("json") {
+                continue;
+            }
+            let Ok(text) = std::fs::read_to_string(&p) else {
+                continue;
+            };
+            let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) else {
+                continue;
+            };
+            let key = v
+                .get("$id")
+                .and_then(|i| i.as_str())
+                .map(str::to_string)
+                .unwrap_or_else(|| {
+                    p.file_stem()
+                        .map(|s| s.to_string_lossy().into_owned())
+                        .unwrap_or_default()
+                });
+            if !key.is_empty() {
+                map.insert(key, v);
+            }
+        }
+        let mut cache = self.domain_schema_cache.lock().unwrap();
+        *cache = Some(map);
+        cache.as_ref().unwrap().get(uri).cloned()
     }
 
     fn init_schema(&self) -> Result<(), StoreError> {
@@ -347,6 +474,54 @@ impl RuleStore {
         // 轻量迁移：若旧库 entries 表缺 35 号新增的 consumed_inputs 列，则补齐
         // （CREATE TABLE IF NOT EXISTS 不会为已存在表加列，需显式 ALTER）
         let _ = conn.execute("ALTER TABLE entries ADD COLUMN consumed_inputs TEXT NOT NULL DEFAULT '[]'", []);
+        // Q12 数据资产化 R1：datasets 表补 dataset_kind 列（存量默认 rule_set，零迁移成本）
+        let _ = conn.execute("ALTER TABLE datasets ADD COLUMN dataset_kind TEXT NOT NULL DEFAULT 'rule_set'", []);
+        // Q12 数据资产化 R3：knowledge 条目平行表（方案 D 定案：rule 查询热路径零扰动）
+        conn.execute_batch(
+            r#"
+            CREATE TABLE IF NOT EXISTS knowledge_entries (
+                dataset_id   TEXT NOT NULL,
+                entry_id     TEXT NOT NULL,
+                version      INTEGER NOT NULL,
+                status       TEXT,
+                provenance   TEXT NOT NULL,          -- JSON
+                domain       TEXT NOT NULL,
+                tags         TEXT NOT NULL DEFAULT '[]',  -- JSON array
+                payload      TEXT NOT NULL,          -- 领域结构化 JSON（content_hash 的内容源，零转译）
+                schema_ref   TEXT NOT NULL,          -- 领域 JSON Schema 引用 URI（D3）
+                governance   TEXT,                   -- JSON nullable
+                content_hash TEXT NOT NULL,
+                PRIMARY KEY (dataset_id, entry_id, version),
+                FOREIGN KEY (dataset_id) REFERENCES datasets(dataset_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_kentry_ds ON knowledge_entries(dataset_id);
+
+            -- knowledge 条目状态迁移审计（only-append；独立于 entry_state_history，FK 指向平行表）
+            CREATE TABLE IF NOT EXISTS knowledge_state_history (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                dataset_id TEXT NOT NULL,
+                entry_id   TEXT NOT NULL,
+                version    INTEGER NOT NULL,
+                from_state TEXT,
+                to_state   TEXT NOT NULL,
+                at         TEXT NOT NULL,
+                by         TEXT NOT NULL,
+                cause      TEXT NOT NULL,
+                FOREIGN KEY (dataset_id, entry_id, version)
+                    REFERENCES knowledge_entries(dataset_id, entry_id, version)
+            );
+
+            -- knowledge 内容寻址快照去重（33 号 §6 同语义）
+            CREATE TABLE IF NOT EXISTS knowledge_snapshots (
+                dataset_id   TEXT NOT NULL,
+                content_hash TEXT NOT NULL,
+                payload      TEXT NOT NULL,
+                created_at   TEXT NOT NULL,
+                PRIMARY KEY (dataset_id, content_hash),
+                FOREIGN KEY (dataset_id) REFERENCES datasets(dataset_id)
+            );
+            "#,
+        )?;
         Ok(())
     }
 
@@ -359,14 +534,15 @@ impl RuleStore {
         let conn = self.conn.lock().unwrap();
         conn.execute(
             "INSERT INTO datasets
-               (dataset_id, tenant_id, name, description, domain, tags, visibility,
+               (dataset_id, tenant_id, name, description, dataset_kind, domain, tags, visibility,
                 lifecycle, versioning, law_ref, version_selection, data_dependencies, meta)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
             params![
                 ds.dataset_id,
                 ds.tenant_id,
                 ds.name,
                 ds.description,
+                ds.dataset_kind.as_str(),
                 serde_json::to_string(&ds.domain)?,
                 serde_json::to_string(&ds.tags)?,
                 serde_json::to_string(&ds.visibility)?,
@@ -391,14 +567,14 @@ impl RuleStore {
     pub fn get_dataset(&self, dataset_id: &str) -> Result<Option<RuleDataset>, StoreError> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT dataset_id, tenant_id, name, description, domain, tags, visibility,
+            "SELECT dataset_id, tenant_id, name, description, dataset_kind, domain, tags, visibility,
                     lifecycle, versioning, law_ref, version_selection, data_dependencies, meta
              FROM datasets WHERE dataset_id = ?1",
         )?;
         let mut rows = stmt.query_map(params![dataset_id], |r| {
-            let lifecycle: String = r.get(7)?;
-            let versioning: String = r.get(8)?;
-            let meta: String = r.get(12)?;
+            let lifecycle: String = r.get(8)?;
+            let versioning: String = r.get(9)?;
+            let meta: String = r.get(13)?;
             Ok((
                 r.get::<_, String>(0)?,
                 r.get::<_, String>(1)?,
@@ -407,11 +583,12 @@ impl RuleStore {
                 r.get::<_, String>(4)?,
                 r.get::<_, String>(5)?,
                 r.get::<_, String>(6)?,
+                r.get::<_, String>(7)?,
                 lifecycle,
                 versioning,
-                r.get::<_, Option<String>>(9)?,
                 r.get::<_, Option<String>>(10)?,
                 r.get::<_, Option<String>>(11)?,
+                r.get::<_, Option<String>>(12)?,
                 meta,
             ))
         })?;
@@ -424,6 +601,7 @@ impl RuleStore {
             tenant_id,
             name,
             description,
+            dataset_kind,
             domain,
             tags,
             visibility,
@@ -440,6 +618,7 @@ impl RuleStore {
             tenant_id,
             name,
             description,
+            dataset_kind: DatasetKind::parse(&dataset_kind).unwrap_or_default(),
             domain: serde_json::from_str(&domain)?,
             tags: serde_json::from_str(&tags)?,
             visibility: serde_json::from_str(&visibility)?,
@@ -505,12 +684,24 @@ impl RuleStore {
             });
         }
         let conn = self.conn.lock().unwrap();
-        // 外键依赖顺序：entry_state_history → entries → datasets
+        // 外键依赖顺序：state_history → entries（含 knowledge 平行表）→ datasets
         conn.execute(
             "DELETE FROM entry_state_history WHERE dataset_id=?1",
             params![dataset_id],
         )?;
         conn.execute("DELETE FROM entries WHERE dataset_id=?1", params![dataset_id])?;
+        conn.execute(
+            "DELETE FROM knowledge_state_history WHERE dataset_id=?1",
+            params![dataset_id],
+        )?;
+        conn.execute(
+            "DELETE FROM knowledge_snapshots WHERE dataset_id=?1",
+            params![dataset_id],
+        )?;
+        conn.execute(
+            "DELETE FROM knowledge_entries WHERE dataset_id=?1",
+            params![dataset_id],
+        )?;
         conn.execute("DELETE FROM datasets WHERE dataset_id=?1", params![dataset_id])?;
         Ok(())
     }
@@ -612,9 +803,12 @@ impl RuleStore {
         )?;
         // 内容归因落库（45 号批次1）：记录"旧版本含哪些条目快照"（POST-bump 前当前 entries = 旧版本内容）。
         // 跨版本未变内容复用同一 snapshot，归因行按 (version, content_hash) 唯一，可在多版本出现。
+        // Q12 R3：union 规则条目与数据条目两表（平行表归因口径一致）。
         let rows: Vec<(String, String)> = conn
             .prepare(
                 "SELECT entry_id, content_hash FROM entries WHERE dataset_id=?1
+                 UNION ALL
+                 SELECT entry_id, content_hash FROM knowledge_entries WHERE dataset_id=?1
                  ORDER BY entry_id",
             )?
             .query_map(params![dataset_id], |r| {
@@ -637,12 +831,19 @@ impl RuleStore {
     // 条目 CRUD
     // ------------------------------------------------------------------
 
-    /// 新增条目：校验（数据集存在 + 符号三方一致 + LLM 边界 + 唯一性）
+    /// 新增条目：校验（数据集存在 + 类型匹配 + 符号三方一致 + LLM 边界 + 唯一性）
     pub fn add_entry(&self, entry: &RuleEntry) -> Result<(), StoreError> {
-        // 1) 数据集存在
+        // 1) 数据集存在 + 类型匹配（Q12 R4：规则条目只进 rule_set 数据集）
         let ds = self
             .get_dataset(&entry.dataset_id)?
             .ok_or_else(|| StoreError::DatasetNotFound(entry.dataset_id.clone()))?;
+        if ds.dataset_kind != DatasetKind::RuleSet {
+            return Err(StoreError::DatasetKindMismatch {
+                dataset: ds.dataset_id.clone(),
+                expected: "规则（rule）",
+                actual: ds.dataset_kind.as_str(),
+            });
+        }
         // 2) 符号三方一致
         Validator::validate_symbol_consistency(&ds, entry)?;
         // 3) LLM 边界
@@ -656,13 +857,16 @@ impl RuleStore {
             .unwrap_or_default();
         let bundle_entry = BundleEntry {
             entry_id: entry.entry_id.clone(),
+            entry_kind: EntryKind::Rule,
             rule_body: entry.rule_body.clone(),
+            schema_ref: None,
             provenance: entry.provenance.clone(),
             domain: entry.domain.clone(),
             tags: entry.tags.clone(),
             dependencies: entry.data_source_binding.clone(),
         };
-        BundleImporter::validate_entry(&bundle_entry, &declared_services)?;
+        let resolver = |uri: &str| self.lookup_domain_schema(uri);
+        BundleImporter::validate_entry(&bundle_entry, &declared_services, &resolver)?;
         // 4) 唯一性（entry_id + version 已由主键保证，此处显式检查以便友好报错）
         let conn = self.conn.lock().unwrap();
         let exists: bool = conn.query_row(
@@ -711,6 +915,456 @@ impl RuleStore {
             ],
         )?;
         Ok(())
+    }
+
+    // ------------------------------------------------------------------
+    // Knowledge 条目 CRUD 与生命周期（Q12 数据资产化 R3，方案 D：平行表 + 治理链复用）
+    // ------------------------------------------------------------------
+
+    /// 新增 knowledge 条目：校验（数据集存在且为 knowledge 类型 + D3 领域 schema 强校验
+    /// 经 BundleImporter::validate_entry 同一 SSOT 门禁 + 唯一性），写入平行表。
+    pub fn add_knowledge_entry(&self, entry: &KnowledgeEntry) -> Result<(), StoreError> {
+        // 1) 数据集存在 + 类型匹配（数据条目只进 knowledge 数据集）
+        let ds = self
+            .get_dataset(&entry.dataset_id)?
+            .ok_or_else(|| StoreError::DatasetNotFound(entry.dataset_id.clone()))?;
+        if ds.dataset_kind != DatasetKind::Knowledge {
+            return Err(StoreError::DatasetKindMismatch {
+                dataset: ds.dataset_id.clone(),
+                expected: "数据（knowledge）",
+                actual: ds.dataset_kind.as_str(),
+            });
+        }
+        // 2) schema_ref 必填（store 层兜底；bundle 门禁内同样拒绝，双层防御）
+        if entry.schema_ref.trim().is_empty() {
+            return Err(StoreError::KnowledgeMissingSchemaRef {
+                entry: entry.entry_id.clone(),
+            });
+        }
+        // 3) LLM 边界（37 号强约束同口径：LLM 产出只能停留 Draft）
+        if entry.is_llm_generated() && entry.status != Some(LifecycleStatus::Draft) {
+            return Err(StoreError::Validation(
+                ValidationError::LlmGeneratedNotDraft {
+                    entry: entry.entry_id.clone(),
+                    status: entry.status.unwrap_or(LifecycleStatus::Active),
+                },
+            ));
+        }
+        // 4) D3 门禁（SSOT）：payload 过领域 jsonschema 校验；resolver 未命中 = 拒绝
+        let bundle_entry = BundleEntry {
+            entry_id: entry.entry_id.clone(),
+            entry_kind: EntryKind::Knowledge,
+            rule_body: entry.payload.clone(),
+            schema_ref: Some(entry.schema_ref.clone()),
+            provenance: entry.provenance.clone(),
+            domain: entry.domain.clone(),
+            tags: entry.tags.clone(),
+            dependencies: vec![],
+        };
+        let resolver = |uri: &str| self.lookup_domain_schema(uri);
+        BundleImporter::validate_entry(&bundle_entry, &[], &resolver)?;
+        // 5) 唯一性（主键保证，此处显式检查以便友好报错）
+        let conn = self.conn.lock().unwrap();
+        let exists: bool = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM knowledge_entries WHERE dataset_id=?1 AND entry_id=?2 AND version=?3)",
+            params![entry.dataset_id, entry.entry_id, entry.version],
+            |r| r.get(0),
+        )?;
+        if exists {
+            return Err(StoreError::EntryExists {
+                dataset: entry.dataset_id.clone(),
+                entry: entry.entry_id.clone(),
+                version: entry.version,
+            });
+        }
+        // 6) 写入（内容寻址快照去重落库，33 号 §6/C1 同语义）
+        conn.execute(
+            "INSERT INTO knowledge_snapshots(dataset_id, content_hash, payload, created_at)
+             VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(dataset_id, content_hash) DO NOTHING",
+            params![
+                entry.dataset_id,
+                entry.content_hash(),
+                serde_json::to_string(&entry.payload)?,
+                epoch_ms_now(),
+            ],
+        )?;
+        conn.execute(
+            "INSERT INTO knowledge_entries
+               (dataset_id, entry_id, version, status, provenance, domain, tags,
+                payload, schema_ref, governance, content_hash)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            params![
+                entry.dataset_id,
+                entry.entry_id,
+                entry.version,
+                entry.status.map(|s| serde_json::to_string(&s)).transpose()?,
+                serde_json::to_string(&entry.provenance)?,
+                entry.domain,
+                serde_json::to_string(&entry.tags)?,
+                serde_json::to_string(&entry.payload)?,
+                entry.schema_ref,
+                entry.governance.as_ref().map(serde_json::to_string).transpose()?,
+                entry.content_hash(),
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// 取 knowledge 条目（指定版本）
+    pub fn get_knowledge_entry(
+        &self,
+        dataset_id: &str,
+        entry_id: &str,
+        version: u32,
+    ) -> Result<Option<KnowledgeEntry>, StoreError> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT entry_id, dataset_id, version, status, provenance, domain, tags,
+                    payload, schema_ref, governance
+             FROM knowledge_entries WHERE dataset_id=?1 AND entry_id=?2 AND version=?3",
+        )?;
+        let mut rows = stmt.query_map(params![dataset_id, entry_id, version], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, u32>(2)?,
+                r.get::<_, Option<String>>(3)?,
+                r.get::<_, String>(4)?,
+                r.get::<_, String>(5)?,
+                r.get::<_, String>(6)?,
+                r.get::<_, String>(7)?,
+                r.get::<_, String>(8)?,
+                r.get::<_, Option<String>>(9)?,
+            ))
+        })?;
+        let Some(row) = rows.next() else {
+            return Ok(None);
+        };
+        let (
+            entry_id,
+            dataset_id,
+            version,
+            status,
+            provenance,
+            domain,
+            tags,
+            payload,
+            schema_ref,
+            governance,
+        ) = row?;
+        Ok(Some(KnowledgeEntry {
+            entry_id,
+            dataset_id,
+            version,
+            status: status
+                .map(|s| serde_json::from_str(&s))
+                .transpose()?,
+            provenance: serde_json::from_str(&provenance)?,
+            domain,
+            tags: serde_json::from_str(&tags)?,
+            payload: serde_json::from_str(&payload)?,
+            schema_ref,
+            governance: governance
+                .map(|s| serde_json::from_str(&s))
+                .transpose()?,
+        }))
+    }
+
+    /// 取 knowledge 条目最新版本
+    pub fn get_latest_knowledge_entry(
+        &self,
+        dataset_id: &str,
+        entry_id: &str,
+    ) -> Result<Option<KnowledgeEntry>, StoreError> {
+        let version: Option<u32> = self
+            .conn
+            .lock()
+            .unwrap()
+            .query_row(
+                "SELECT MAX(version) FROM knowledge_entries WHERE dataset_id=?1 AND entry_id=?2",
+                params![dataset_id, entry_id],
+                |r| r.get(0),
+            )
+            .ok();
+        let Some(v) = version else {
+            return Ok(None);
+        };
+        self.get_knowledge_entry(dataset_id, entry_id, v)
+    }
+
+    /// 列出 knowledge 数据集下某版本的全部数据条目（None = 各 entry_id 取最新版本）
+    pub fn list_knowledge_entries(
+        &self,
+        dataset_id: &str,
+        version: Option<u32>,
+    ) -> Result<Vec<KnowledgeEntry>, StoreError> {
+        let version = match version {
+            Some(v) => v,
+            None => {
+                let entry_ids: Vec<String> = {
+                    let conn = self.conn.lock().unwrap();
+                    let ids: Vec<String> = conn
+                        .prepare(
+                            "SELECT DISTINCT entry_id FROM knowledge_entries WHERE dataset_id = ?1",
+                        )?
+                        .query_map(params![dataset_id], |r| r.get(0))?
+                        .collect::<Result<_, _>>()?;
+                    ids
+                };
+                let mut out = Vec::new();
+                for id in entry_ids {
+                    if let Some(e) = self.get_latest_knowledge_entry(dataset_id, &id)? {
+                        out.push(e);
+                    }
+                }
+                return Ok(out);
+            }
+        };
+        let entry_ids: Vec<String> = {
+            let conn = self.conn.lock().unwrap();
+            let ids: Vec<String> = conn
+                .prepare(
+                    "SELECT entry_id FROM knowledge_entries WHERE dataset_id=?1 AND version=?2",
+                )?
+                .query_map(params![dataset_id, version], |r| r.get(0))?
+                .collect::<Result<_, _>>()?;
+            ids
+        };
+        entry_ids
+            .iter()
+            .map(|id| {
+                self.get_knowledge_entry(dataset_id, id, version)?
+                    .ok_or_else(|| StoreError::EntryNotFound {
+                        dataset: dataset_id.into(),
+                        entry: id.clone(),
+                    })
+            })
+            .collect()
+    }
+
+    /// knowledge 条目版本历史（升序返回全部版本，同 list_entry_versions 语义）
+    pub fn list_knowledge_entry_versions(
+        &self,
+        dataset_id: &str,
+        entry_id: &str,
+    ) -> Result<Vec<KnowledgeEntry>, StoreError> {
+        let mut out = Vec::new();
+        let versions: Vec<u32> = {
+            let conn = self.conn.lock().unwrap();
+            let vs: Vec<u32> = conn
+                .prepare(
+                    "SELECT version FROM knowledge_entries WHERE dataset_id=?1 AND entry_id=?2 ORDER BY version",
+                )?
+                .query_map(params![dataset_id, entry_id], |r| r.get(0))?
+                .collect::<Result<_, _>>()?;
+            vs
+        };
+        for v in versions {
+            if let Some(e) = self.get_knowledge_entry(dataset_id, entry_id, v)? {
+                out.push(e);
+            }
+        }
+        Ok(out)
+    }
+
+    /// 更新 knowledge 草稿条目（frozen 拒绝原地修改，§9-2 快照模式；无符号三方一致——数据条目不进 TCB）
+    pub fn update_draft_knowledge_entry(&self, entry: &KnowledgeEntry) -> Result<(), StoreError> {
+        if entry.is_frozen() {
+            return Err(StoreError::EntryFrozen {
+                dataset: entry.dataset_id.clone(),
+                entry: entry.entry_id.clone(),
+            });
+        }
+        if entry.schema_ref.trim().is_empty() {
+            return Err(StoreError::KnowledgeMissingSchemaRef {
+                entry: entry.entry_id.clone(),
+            });
+        }
+        // D3 门禁（SSOT）复检：payload 过领域 schema
+        let bundle_entry = BundleEntry {
+            entry_id: entry.entry_id.clone(),
+            entry_kind: EntryKind::Knowledge,
+            rule_body: entry.payload.clone(),
+            schema_ref: Some(entry.schema_ref.clone()),
+            provenance: entry.provenance.clone(),
+            domain: entry.domain.clone(),
+            tags: entry.tags.clone(),
+            dependencies: vec![],
+        };
+        let resolver = |uri: &str| self.lookup_domain_schema(uri);
+        BundleImporter::validate_entry(&bundle_entry, &[], &resolver)?;
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO knowledge_snapshots(dataset_id, content_hash, payload, created_at)
+             VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(dataset_id, content_hash) DO NOTHING",
+            params![
+                entry.dataset_id,
+                entry.content_hash(),
+                serde_json::to_string(&entry.payload)?,
+                epoch_ms_now(),
+            ],
+        )?;
+        let n = conn.execute(
+            "UPDATE knowledge_entries SET status=?3, provenance=?4, domain=?5, tags=?6,
+                    payload=?7, schema_ref=?8, governance=?9, content_hash=?10
+             WHERE dataset_id=?1 AND entry_id=?2 AND version=?11",
+            params![
+                entry.dataset_id,
+                entry.entry_id,
+                entry.status.map(|s| serde_json::to_string(&s)).transpose()?,
+                serde_json::to_string(&entry.provenance)?,
+                entry.domain,
+                serde_json::to_string(&entry.tags)?,
+                serde_json::to_string(&entry.payload)?,
+                entry.schema_ref,
+                entry.governance.as_ref().map(serde_json::to_string).transpose()?,
+                entry.content_hash(),
+                entry.version,
+            ],
+        )?;
+        if n == 0 {
+            return Err(StoreError::EntryNotFound {
+                dataset: entry.dataset_id.clone(),
+                entry: entry.entry_id.clone(),
+            });
+        }
+        Ok(())
+    }
+
+    /// 删除 knowledge 条目（仅 Draft 态）
+    pub fn delete_knowledge_entry(
+        &self,
+        dataset_id: &str,
+        entry_id: &str,
+    ) -> Result<(), StoreError> {
+        let Some(entry) = self.get_latest_knowledge_entry(dataset_id, entry_id)? else {
+            return Err(StoreError::EntryNotFound {
+                dataset: dataset_id.into(),
+                entry: entry_id.into(),
+            });
+        };
+        if entry.status.unwrap_or(LifecycleStatus::Active) != LifecycleStatus::Draft {
+            return Err(StoreError::EntryNotDeletable {
+                dataset: dataset_id.into(),
+                entry: entry_id.into(),
+                status: entry.status,
+            });
+        }
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "DELETE FROM knowledge_state_history WHERE dataset_id=?1 AND entry_id=?2",
+            params![dataset_id, entry_id],
+        )?;
+        conn.execute(
+            "DELETE FROM knowledge_entries WHERE dataset_id=?1 AND entry_id=?2",
+            params![dataset_id, entry_id],
+        )?;
+        Ok(())
+    }
+
+    /// knowledge 条目级状态迁移（44 号 §5 同口径：闸门一/闸门二/拒绝；only-append 审计）
+    pub fn transition_knowledge_entry_status(
+        &self,
+        dataset_id: &str,
+        entry_id: &str,
+        to: LifecycleStatus,
+        by: &str,
+        at: &str,
+        cause: &str,
+    ) -> Result<(), StoreError> {
+        let Some(mut entry) = self.get_latest_knowledge_entry(dataset_id, entry_id)? else {
+            return Err(StoreError::EntryNotFound {
+                dataset: dataset_id.into(),
+                entry: entry_id.into(),
+            });
+        };
+        let from = entry.status.unwrap_or(LifecycleStatus::Active);
+        // LLM 产出只能停留 Draft（37 号强约束，同 RuleEntry 口径）
+        if entry.is_llm_generated() && to != LifecycleStatus::Draft {
+            return Err(StoreError::Validation(
+                ValidationError::LlmGeneratedNotDraft {
+                    entry: entry_id.into(),
+                    status: to,
+                },
+            ));
+        }
+        let valid = matches!(
+            (from, to),
+            (LifecycleStatus::Draft, LifecycleStatus::Candidate)
+                | (LifecycleStatus::Candidate, LifecycleStatus::Active)
+                | (LifecycleStatus::Candidate, LifecycleStatus::Rejected)
+                | (LifecycleStatus::Draft, LifecycleStatus::Rejected)
+        );
+        if !valid {
+            return Err(StoreError::IllegalTransition {
+                from: Some(from),
+                to,
+            });
+        }
+        entry.status = Some(to);
+        let mut gov = entry.governance.clone().unwrap_or_default();
+        let mut ts = gov.lifecycle_timestamps.clone().unwrap_or_default();
+        match to {
+            LifecycleStatus::Candidate => ts.candidate_at = Some(at.into()),
+            LifecycleStatus::Active => ts.active_at = Some(at.into()),
+            _ => {}
+        }
+        gov.lifecycle_timestamps = Some(ts);
+        entry.governance = Some(gov);
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "UPDATE knowledge_entries SET status=?1, governance=?2
+             WHERE dataset_id=?3 AND entry_id=?4 AND version=?5",
+            params![
+                serde_json::to_string(&entry.status)?,
+                serde_json::to_string(&entry.governance)?,
+                dataset_id,
+                entry_id,
+                entry.version,
+            ],
+        )?;
+        conn.execute(
+            "INSERT INTO knowledge_state_history
+                (dataset_id, entry_id, version, from_state, to_state, at, by, cause)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![
+                dataset_id,
+                entry_id,
+                entry.version,
+                format!("{:?}", from),
+                format!("{:?}", to),
+                at,
+                by,
+                cause,
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// knowledge 条目状态迁移历史（only-append 只读）
+    pub fn get_knowledge_entry_state_history(
+        &self,
+        dataset_id: &str,
+        entry_id: &str,
+    ) -> Result<Vec<StateChange>, StoreError> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT from_state, to_state, at, by, cause FROM knowledge_state_history
+             WHERE dataset_id=?1 AND entry_id=?2 ORDER BY id",
+        )?;
+        let rows = stmt.query_map(params![dataset_id, entry_id], |r| {
+            Ok(StateChange {
+                from: r.get::<_, Option<String>>(0)?.unwrap_or_default(),
+                to: r.get(1)?,
+                at: r.get(2)?,
+                by: r.get(3)?,
+                cause: r.get(4)?,
+                published_as: None,
+            })
+        })?;
+        rows.collect::<Result<_, _>>().map_err(Into::into)
     }
 
     /// 取条目（指定版本）
@@ -912,6 +1566,53 @@ impl RuleStore {
         });
         if from_hash != to_hash {
             let (added, removed, changed) = json_keywise_diff(&from.rule_body, &to.rule_body);
+            result["keys"] = serde_json::json!({ "added": added, "removed": removed, "changed": changed });
+        }
+        Ok(result)
+    }
+
+    /// knowledge 条目内容级 diff（Q12 R4，与 entry_content_diff 同语义：payload 刻定内容）
+    pub fn knowledge_entry_content_diff(
+        &self,
+        dataset_id: &str,
+        entry_id: &str,
+        from_version: u32,
+        to_version: u32,
+    ) -> Result<serde_json::Value, StoreError> {
+        if to_version <= from_version {
+            return Err(StoreError::InvalidDiffRange {
+                from: from_version.to_string(),
+                to: to_version.to_string(),
+            });
+        }
+        let from = self
+            .get_knowledge_entry(dataset_id, entry_id, from_version)?
+            .ok_or_else(|| StoreError::EntryVersionNotFound {
+                dataset: dataset_id.into(),
+                entry: entry_id.into(),
+                version: from_version,
+            })?;
+        let to = self
+            .get_knowledge_entry(dataset_id, entry_id, to_version)?
+            .ok_or_else(|| StoreError::EntryVersionNotFound {
+                dataset: dataset_id.into(),
+                entry: entry_id.into(),
+                version: to_version,
+            })?;
+        let from_hash = from.content_hash();
+        let to_hash = to.content_hash();
+        let mut result = serde_json::json!({
+            "dataset_id": dataset_id,
+            "entry_id": entry_id,
+            "from": from_version,
+            "to": to_version,
+            "from_content_hash": from_hash,
+            "to_content_hash": to_hash,
+            "changed": from_hash != to_hash,
+            "note": "内容级 diff：content_hash 刻定 payload 内容；跨版本共享同一快照行（33 号 §6）",
+        });
+        if from_hash != to_hash {
+            let (added, removed, changed) = json_keywise_diff(&from.payload, &to.payload);
             result["keys"] = serde_json::json!({ "added": added, "removed": removed, "changed": changed });
         }
         Ok(result)
@@ -1262,6 +1963,13 @@ impl RuleStore {
                 texts.push(serde_json::to_string(g)?);
             }
         }
+        // Q12 R3：knowledge 条目 payload 同样纳入扫描（数据资产同样不得携带凭据）
+        for entry in self.list_knowledge_entries(dataset_id, None)? {
+            texts.push(serde_json::to_string(&entry.payload)?);
+            if let Some(g) = &entry.governance {
+                texts.push(serde_json::to_string(g)?);
+            }
+        }
         let mut hits = Vec::new();
         for t in &texts {
             hits.extend(scan_credentials(t));
@@ -1336,22 +2044,39 @@ impl RuleStore {
     ) -> Result<DatasetBundle, StoreError> {
         let ds = self.get_dataset(dataset_id)?
             .ok_or_else(|| StoreError::DatasetNotFound(dataset_id.into()))?;
-        let entries = self.list_entries(dataset_id, None)?;
         // C3/C4/C6：服务契约 SSOT 下沉 —— 从服务目录（平台 + 本租户）构建补齐映射
         let catalog: std::collections::BTreeMap<String, ServiceCatalogEntry> = self
             .list_services(&ds.tenant_id)?
             .into_iter()
             .map(|e| (e.service_name.clone(), e))
             .collect();
-        Ok(BundleExporter::export(
-            &ds,
-            &entries,
-            tests,
-            by,
-            at,
-            instance_id,
-            &catalog,
-        ))
+        // Q12 R5：按数据集类型分流导出（knowledge 数据集 → Knowledge 条目 bundle，同一 SSOT）
+        match ds.dataset_kind {
+            DatasetKind::RuleSet => {
+                let entries = self.list_entries(dataset_id, None)?;
+                Ok(BundleExporter::export(
+                    &ds,
+                    &entries,
+                    tests,
+                    by,
+                    at,
+                    instance_id,
+                    &catalog,
+                ))
+            }
+            DatasetKind::Knowledge => {
+                let entries = self.list_knowledge_entries(dataset_id, None)?;
+                Ok(BundleExporter::export_knowledge(
+                    &ds,
+                    &entries,
+                    tests,
+                    by,
+                    at,
+                    instance_id,
+                    &catalog,
+                ))
+            }
+        }
     }
 
     // ------------------------------------------------------------------
@@ -1497,15 +2222,18 @@ impl RuleStore {
     }
 
     /// 租户内定位条目（44 号 §5 顶层 `/entries/{id}` 路由用；entry_id 仅数据集内唯一，
-    /// 故在租户各数据集最新版中查找首个匹配）
+    /// 故在租户各数据集最新版中查找首个匹配。Q12 R4：规则表与 knowledge 平行表均参与定位）
     pub fn find_entry_in_tenant(
         &self,
         tenant_id: &str,
         entry_id: &str,
-    ) -> Result<Option<(String, RuleEntry)>, StoreError> {
+    ) -> Result<Option<(String, AnyEntry)>, StoreError> {
         for ds in self.list_datasets(tenant_id)? {
             if let Some(e) = self.get_latest_entry(&ds.dataset_id, entry_id)? {
-                return Ok(Some((ds.dataset_id, e)));
+                return Ok(Some((ds.dataset_id, AnyEntry::Rule(e))));
+            }
+            if let Some(e) = self.get_latest_knowledge_entry(&ds.dataset_id, entry_id)? {
+                return Ok(Some((ds.dataset_id, AnyEntry::Knowledge(e))));
             }
         }
         Ok(None)
@@ -2070,10 +2798,12 @@ impl RuleStore {
     // 快照包导入（44 号 §6 bundles/import；36 号 5 步校验链）
     // ------------------------------------------------------------------
 
-    /// 导入快照包：`BundleImporter::validate`（schema→防篡改→符号三方一致→版本解析→闸门一）通过后落库。
+    /// 导入快照包：`BundleImporter::validate`（schema→防篡改→符号三方一致/数据条目 D3→版本解析→闸门一）通过后落库。
     ///
     /// - 数据集：不存在则新建（tenant=导入方），已存在则覆盖其版本链/依赖/锚；
-    /// - 条目：BundleEntry → RuleEntry（治理版本=1，状态 Active），先清空旧条目再写入（可重试幂等）；
+    /// - 条目：按 `entry_kind` 分流——Rule → RuleEntry（entries 表）、Knowledge → KnowledgeEntry
+    ///   （knowledge 平行表），治理版本=1，状态 Active；先清空旧条目再写入（可重试幂等）；
+    /// - 混合 kind 的包显式拒绝（MVP 数据集类型单一，不静默混装）；
     /// - 校验链任一失败 → 显式错误（35 号 §9 硬失败，不静默降级）。
     pub fn import_bundle(
         &self,
@@ -2083,7 +2813,22 @@ impl RuleStore {
         at: &str,
         instance_id: &str,
     ) -> Result<ImportResult, StoreError> {
-        let result = BundleImporter::validate(bundle)?;
+        let resolver = |uri: &str| self.lookup_domain_schema(uri);
+        let result = BundleImporter::validate(bundle, &resolver)?;
+        // Q12 R5：混合 kind 拒绝（数据集类型单一）
+        let has_rule = bundle.entries.iter().any(|e| e.entry_kind == EntryKind::Rule);
+        let has_knowledge = bundle
+            .entries
+            .iter()
+            .any(|e| e.entry_kind == EntryKind::Knowledge);
+        if has_rule && has_knowledge {
+            return Err(StoreError::MixedBundleKinds(bundle.bundle_id.clone()));
+        }
+        let dataset_kind = if has_knowledge {
+            DatasetKind::Knowledge
+        } else {
+            DatasetKind::RuleSet
+        };
         let did = &bundle.dataset.dataset_id;
         let existing = self.get_dataset(did)?;
         let mut ds = match existing {
@@ -2113,6 +2858,7 @@ impl RuleStore {
                 dataset_id: did.clone(),
                 name: bundle.dataset.name.clone(),
                 description: Some(format!("由快照包 {} 导入", bundle.bundle_id)),
+                dataset_kind,
                 domain: bundle
                     .entries
                     .iter()
@@ -2145,27 +2891,57 @@ impl RuleStore {
             },
         };
         self.update_dataset_or_create(&mut ds)?;
-        // 条目落库
+        // 条目落库（Q12 R5：按 entry_kind 分流入对应平行表）
         for be in &bundle.entries {
-            let entry = RuleEntry {
-                entry_id: be.entry_id.clone(),
-                dataset_id: did.clone(),
-                version: 1,
-                status: Some(LifecycleStatus::Active),
-                provenance: be.provenance.clone(),
-                domain: be.domain.clone(),
-                tags: be.tags.clone(),
-                data_source_binding: be.dependencies.clone(),
-                consumed_inputs: vec![],
-                rule_body: be.rule_body.clone(),
-                governance: Some(Governance {
-                    author: Some(by.into()),
-                    updater: None,
-                    llm_generated: None,
-                    lifecycle_timestamps: None,
-                }),
-            };
-            self.add_entry(&entry)?;
+            match be.entry_kind {
+                EntryKind::Rule => {
+                    let entry = RuleEntry {
+                        entry_id: be.entry_id.clone(),
+                        dataset_id: did.clone(),
+                        version: 1,
+                        status: Some(LifecycleStatus::Active),
+                        provenance: be.provenance.clone(),
+                        domain: be.domain.clone(),
+                        tags: be.tags.clone(),
+                        data_source_binding: be.dependencies.clone(),
+                        consumed_inputs: vec![],
+                        rule_body: be.rule_body.clone(),
+                        governance: Some(Governance {
+                            author: Some(by.into()),
+                            updater: None,
+                            llm_generated: None,
+                            lifecycle_timestamps: None,
+                        }),
+                    };
+                    self.add_entry(&entry)?;
+                }
+                EntryKind::Knowledge => {
+                    // validate 链已保证 schema_ref 存在且 payload 过领域 schema（D3）
+                    let schema_ref = be.schema_ref.clone().ok_or_else(|| {
+                        StoreError::KnowledgeMissingSchemaRef {
+                            entry: be.entry_id.clone(),
+                        }
+                    })?;
+                    let entry = KnowledgeEntry {
+                        entry_id: be.entry_id.clone(),
+                        dataset_id: did.clone(),
+                        version: 1,
+                        status: Some(LifecycleStatus::Active),
+                        provenance: be.provenance.clone(),
+                        domain: be.domain.clone(),
+                        tags: be.tags.clone(),
+                        payload: be.rule_body.clone(),
+                        schema_ref,
+                        governance: Some(Governance {
+                            author: Some(by.into()),
+                            updater: None,
+                            llm_generated: None,
+                            lifecycle_timestamps: None,
+                        }),
+                    };
+                    self.add_knowledge_entry(&entry)?;
+                }
+            }
         }
         Ok(result)
     }
@@ -2186,6 +2962,15 @@ impl RuleStore {
             params![dataset_id],
         )?;
         conn.execute("DELETE FROM entries WHERE dataset_id=?1", params![dataset_id])?;
+        // Q12 R5：knowledge 平行表同步清空（导入可重试幂等，两表口径一致）
+        conn.execute(
+            "DELETE FROM knowledge_state_history WHERE dataset_id=?1",
+            params![dataset_id],
+        )?;
+        conn.execute(
+            "DELETE FROM knowledge_entries WHERE dataset_id=?1",
+            params![dataset_id],
+        )?;
         Ok(())
     }
 
@@ -2563,6 +3348,7 @@ mod tests {
             dataset_id: "ds-tax-2024".into(),
             name: "税务合规".into(),
             description: None,
+            dataset_kind: Default::default(),
             domain: vec!["tax".into()],
             tags: vec![],
             tenant_id: "org-evorule".into(),
@@ -3044,8 +3830,9 @@ mod tests {
         assert_eq!(bundle.audit.source_version, "v1");
         assert_eq!(bundle.entries.len(), 1);
         assert_eq!(bundle.dataset.instance_id, "org-evorule");
-        // 导出包可导入校验通过（快照包消费闭环）
-        let r = BundleImporter::validate(&bundle).unwrap();
+        // 导出包可导入校验通过（快照包消费闭环；纯规则包 resolver 不命中任何领域 schema）
+        let no_schema = |_uri: &str| None;
+        let r = BundleImporter::validate(&bundle, &no_schema).unwrap();
         assert_eq!(r.entry_count, 1);
         assert_eq!(r.verdict, TestVerdict::Pass);
         // 缺失数据集
@@ -3351,5 +4138,245 @@ mod tests {
         assert_eq!(stats.failed, 0);
         assert_eq!(stats.avg_duration_ms, 0);
         assert!(stats.by_operation.is_empty());
+    }
+
+    // ---------- Q12 数据资产化（R6）：knowledge 数据集 store 层专项 ----------
+
+    /// 文件库 + 领域 schema 目录（D3 resolver 真实命中路径；in_memory 无目录 = resolver 未命中）
+    /// 目录名带原子计数：cargo test 同进程多线程并行，须保证各测试目录互不冲突
+    fn file_store_with_body_schema() -> (RuleStore, std::path::PathBuf) {
+        static SEQ: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let n = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!(
+            "q12-store-test-{}-{n}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("domain_schemas")).unwrap();
+        std::fs::write(
+            dir.join("domain_schemas").join("rpsm-body.json"),
+            r#"{"$id":"https://evorule.dev/domain/rpsm-body.json","type":"object","required":["mass"],"properties":{"mass":{"type":"number"}},"additionalProperties":false}"#,
+        )
+        .unwrap();
+        let store = RuleStore::open(dir.join("db.sqlite").to_str().unwrap()).unwrap();
+        (store, dir)
+    }
+
+    fn knowledge_dataset() -> RuleDataset {
+        RuleDataset {
+            dataset_id: "ds-rpsm-assets".into(),
+            name: "RPSM 数据资产".into(),
+            description: None,
+            dataset_kind: crate::model::DatasetKind::Knowledge,
+            domain: vec!["rpsm".into()],
+            tags: vec![],
+            tenant_id: "org-evorule".into(),
+            visibility: Visibility::Private,
+            lifecycle: Lifecycle::default(),
+            versioning: Default::default(),
+            law_ref: None,
+            version_selection: None,
+            data_dependencies: None,
+            meta: crate::model::Meta {
+                created_at: "t".into(),
+                created_by: "u".into(),
+                updated_at: None,
+                updated_by: None,
+            },
+        }
+    }
+
+    fn knowledge_entry() -> crate::model::knowledge::KnowledgeEntry {
+        crate::model::knowledge::KnowledgeEntry {
+            entry_id: "body-001".into(),
+            dataset_id: "ds-rpsm-assets".into(),
+            version: 1,
+            status: Some(LifecycleStatus::Draft),
+            provenance: Provenance {
+                source: "RPSM 实验记录".into(),
+                clause: None,
+                document_id: None,
+                effective_from: None,
+                effective_to: None,
+                last_verified: None,
+                verified_by: None,
+            },
+            domain: "rpsm".into(),
+            tags: vec![],
+            payload: serde_json::json!({ "mass": 1.5 }),
+            schema_ref: "https://evorule.dev/domain/rpsm-body.json".into(),
+            governance: None,
+        }
+    }
+
+    #[test]
+    fn test_knowledge_entry_lifecycle_chain() {
+        let (store, dir) = file_store_with_body_schema();
+        store.create_dataset(&knowledge_dataset()).unwrap();
+        let e = knowledge_entry();
+        store.add_knowledge_entry(&e).unwrap();
+        // Draft → Candidate → Active（5 态状态机同 RuleEntry 口径）
+        store
+            .transition_knowledge_entry_status(
+                "ds-rpsm-assets", "body-001", LifecycleStatus::Candidate, "eng", "t", "评审通过",
+            )
+            .unwrap();
+        store
+            .transition_knowledge_entry_status(
+                "ds-rpsm-assets", "body-001", LifecycleStatus::Active, "eng", "t2", "生效",
+            )
+            .unwrap();
+        let got = store
+            .get_latest_knowledge_entry("ds-rpsm-assets", "body-001")
+            .unwrap()
+            .unwrap();
+        assert_eq!(got.status, Some(LifecycleStatus::Active));
+        // 非法迁移：Active → Draft 拒绝
+        let err = store
+            .transition_knowledge_entry_status(
+                "ds-rpsm-assets", "body-001", LifecycleStatus::Draft, "eng", "t3", "回退",
+            )
+            .unwrap_err();
+        assert!(matches!(err, StoreError::IllegalTransition { .. }));
+        // Active = frozen：草稿编辑拒绝（快照模式）
+        let mut frozen = got.clone();
+        frozen.payload = serde_json::json!({ "mass": 9.9 });
+        let err = store.update_draft_knowledge_entry(&frozen).unwrap_err();
+        assert!(matches!(err, StoreError::EntryFrozen { .. }));
+        // 状态迁移历史留痕（只追加）
+        let hist = store
+            .get_knowledge_entry_state_history("ds-rpsm-assets", "body-001")
+            .unwrap();
+        assert_eq!(hist.len(), 2);
+        assert_eq!(hist[0].from, "Draft");
+        assert_eq!(hist[0].to, "Candidate");
+        assert_eq!(hist[1].to, "Active");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_knowledge_entry_rejects_bad_payload() {
+        let (store, dir) = file_store_with_body_schema();
+        store.create_dataset(&knowledge_dataset()).unwrap();
+        // 坏 payload：mass 为字符串，不过领域 schema → 显式拒绝
+        let mut bad = knowledge_entry();
+        bad.payload = serde_json::json!({ "mass": "heavy" });
+        let err = store.add_knowledge_entry(&bad).unwrap_err();
+        assert!(matches!(
+            err,
+            StoreError::Bundle(BundleError::PayloadSchemaViolation { .. })
+        ));
+        // 未知字段（additionalProperties=false）→ 拒绝
+        let mut extra = knowledge_entry();
+        extra.payload = serde_json::json!({ "mass": 1.5, "bogus": 1 });
+        let err = store.add_knowledge_entry(&extra).unwrap_err();
+        assert!(matches!(
+            err,
+            StoreError::Bundle(BundleError::PayloadSchemaViolation { .. })
+        ));
+        // resolver 未命中（schema_ref 指向未注册领域）→ 拒绝，不静默放行
+        let mut unknown = knowledge_entry();
+        unknown.schema_ref = "no-such-schema".into();
+        let err = store.add_knowledge_entry(&unknown).unwrap_err();
+        assert!(matches!(
+            err,
+            StoreError::Bundle(BundleError::SchemaNotResolved { .. })
+        ));
+        // schema_ref 缺失 → store 层兜底拒绝
+        let mut missing = knowledge_entry();
+        missing.schema_ref = "  ".into();
+        let err = store.add_knowledge_entry(&missing).unwrap_err();
+        assert!(matches!(err, StoreError::KnowledgeMissingSchemaRef { .. }));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_knowledge_entry_kind_mismatch() {
+        let store = RuleStore::in_memory().unwrap();
+        // 数据条目进 rule_set 数据集 → 拒绝
+        store.create_dataset(&tax_dataset()).unwrap();
+        let mut e = knowledge_entry();
+        e.dataset_id = "ds-tax-2024".into();
+        let err = store.add_knowledge_entry(&e).unwrap_err();
+        assert!(matches!(err, StoreError::DatasetKindMismatch { .. }));
+        // 规则条目进 knowledge 数据集 → 拒绝
+        store.create_dataset(&knowledge_dataset()).unwrap();
+        let mut r = draft_entry();
+        r.dataset_id = "ds-rpsm-assets".into();
+        let err = store.add_entry(&r).unwrap_err();
+        assert!(matches!(err, StoreError::DatasetKindMismatch { .. }));
+    }
+
+    #[test]
+    fn test_knowledge_entry_version_history() {
+        let (store, dir) = file_store_with_body_schema();
+        store.create_dataset(&knowledge_dataset()).unwrap();
+        let v1 = knowledge_entry();
+        store.add_knowledge_entry(&v1).unwrap();
+        // v2：同 entry_id 新版本（快照模式，内容变更不改历史）
+        let mut v2 = knowledge_entry();
+        v2.version = 2;
+        v2.payload = serde_json::json!({ "mass": 2.5 });
+        store.add_knowledge_entry(&v2).unwrap();
+        // 同版本重复添加 → 唯一性拒绝
+        let err = store.add_knowledge_entry(&v2).unwrap_err();
+        assert!(matches!(err, StoreError::EntryExists { .. }));
+        // 版本历史升序完整
+        let all = store
+            .list_knowledge_entry_versions("ds-rpsm-assets", "body-001")
+            .unwrap();
+        assert_eq!(all.len(), 2);
+        assert_eq!(all[0].version, 1);
+        assert_eq!(all[1].version, 2);
+        assert_eq!(all[1].payload, serde_json::json!({ "mass": 2.5 }));
+        // 最新版本
+        let latest = store
+            .get_latest_knowledge_entry("ds-rpsm-assets", "body-001")
+            .unwrap()
+            .unwrap();
+        assert_eq!(latest.version, 2);
+        // 数据集级列表（None = 各条目取最新）
+        let listed = store.list_knowledge_entries("ds-rpsm-assets", None).unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].version, 2);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_knowledge_entry_llm_draft_boundary() {
+        let (store, dir) = file_store_with_body_schema();
+        store.create_dataset(&knowledge_dataset()).unwrap();
+        // LLM 产出直接进 Active → 拒绝（37 号强约束同口径）
+        let mut e = knowledge_entry();
+        e.status = Some(LifecycleStatus::Active);
+        e.governance = Some(crate::model::Governance {
+            llm_generated: Some(crate::model::LlmGenerated {
+                flag: true,
+                model: Some("deepseek-v4".into()),
+                op: Some("draft_rule".into()),
+                timestamp: None,
+            }),
+            ..Default::default()
+        });
+        let err = store.add_knowledge_entry(&e).unwrap_err();
+        assert!(matches!(
+            err,
+            StoreError::Validation(ValidationError::LlmGeneratedNotDraft { .. })
+        ));
+        // LLM 产出停留 Draft → 放行
+        let mut ok = knowledge_entry();
+        ok.governance = e.governance.clone();
+        store.add_knowledge_entry(&ok).unwrap();
+        // LLM 产出 Draft → Candidate 也拒绝（只能停留 Draft）
+        let err = store
+            .transition_knowledge_entry_status(
+                "ds-rpsm-assets", "body-001", LifecycleStatus::Candidate, "llm", "t", "越权推进",
+            )
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            StoreError::Validation(ValidationError::LlmGeneratedNotDraft { .. })
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

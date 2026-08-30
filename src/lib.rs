@@ -26,11 +26,13 @@ pub use auth::{
 };
 pub use bundle::{
     BundleEntry, BundleError, BundleExporter, BundleImporter, BundleTests, BundleTrimmer,
-    DatasetBundle, ImportResult, TestVerdict, ViewRef, BUNDLE_SCHEMA_VERSION,
+    DatasetBundle, DomainSchemaResolver, EntryKind, ImportResult, TestVerdict, ViewRef,
+    BUNDLE_SCHEMA_VERSION,
 };
 pub use model::auth::{Action, AuthAudit, Role, Tenant, TokenClaims, User, can};
-pub use model::dataset::RuleDataset;
+pub use model::dataset::{DatasetKind, RuleDataset};
 pub use model::entry::RuleEntry;
+pub use model::knowledge::KnowledgeEntry;
 pub use model::lifecycle::LifecycleStatus;
 pub use model::llm_audit::{LlmAuditFilter, LlmAuditStats, LlmOpAudit, OperationStat};
 pub use model::provenance::Provenance;
