@@ -564,6 +564,10 @@ pub fn router(state: AppState) -> Router {
         .route("/entries/{id}/history", get(handlers_entries::history))
         .route("/entries/{id}/deps", get(handlers_entries::deps))
         .route("/entries/{id}/versions", get(handlers_entries::entry_versions))
+        .route(
+            "/entries/{id}/versions/{version}",
+            get(handlers_entries::entry_version_payload),
+        )
         .route("/entries/{id}/diff", get(handlers_entries::entry_diff))
         .route("/datasets/{id}/snapshots/stats", get(handlers_datasets::snapshot_stats))
         .route(
@@ -1306,6 +1310,19 @@ mod tests {
         let (status, body) = send(app.clone(), "GET", "/v1/entries/rule-a/diff?from=1&to=2", Some(&token), None).await;
         assert_eq!(status, StatusCode::OK, "{body}");
         assert_eq!(body["changed"], true);
+
+        // 逐版本载荷回查（D-B③）：历史版本完整载荷可得，rule_body 含各版差异
+        let (status, body) = send(app.clone(), "GET", "/v1/entries/rule-a/versions/1", Some(&token), None).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["dataset_id"], "ds-tax-02");
+        assert_eq!(body["version"], 1);
+        assert_eq!(body["entry"]["rule_body"]["description"], "初版");
+        let (status, body) = send(app.clone(), "GET", "/v1/entries/rule-a/versions/2", Some(&token), None).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["entry"]["rule_body"]["description"], "改版");
+        // 不存在的版本 → 显式 404（不静默）
+        let (status, _) = send(app.clone(), "GET", "/v1/entries/rule-a/versions/9", Some(&token), None).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
 
         // 内容去重统计（C1）
         let (status, body) = send(app.clone(), "GET", "/v1/datasets/ds-tax-02/snapshots/stats", Some(&token), None).await;

@@ -383,6 +383,41 @@ pub async fn entry_versions(
     })))
 }
 
+/// GET /entries/{id}/versions/{version} —— 指定版本完整载荷（条目 diff 工具 D-B③，历史版本载荷回查）
+///
+/// 版本链端点仅给摘要（version/status/content_hash）；本端点补齐逐版本载荷。
+/// store 层 entries/knowledge_entries 均按 PK=(dataset_id, entry_id, version) 全版本留痕
+/// （33 号 §6），历史载荷可回查；规则/知识平行表分流取数。
+pub async fn entry_version_payload(
+    State(state): State<AppState>,
+    Extension(ctx): Extension<AuthContext>,
+    Path((entry_id, version)): Path<(String, u32)>,
+) -> Result<Json<Value>, ApiError> {
+    if !can(ctx.role, Action::View) {
+        return Err(ApiError::forbidden("无查看权限"));
+    }
+    let (dataset_id, _) = locate_entry(&state, &ctx.tenant_id, &entry_id)?;
+    let payload = match state.store.get_entry(&dataset_id, &entry_id, version)? {
+        Some(e) => serde_json::to_value(e).unwrap_or(Value::Null),
+        None => {
+            match state.store.get_knowledge_entry(&dataset_id, &entry_id, version)? {
+                Some(e) => serde_json::to_value(e).unwrap_or(Value::Null),
+                None => {
+                    return Err(ApiError::not_found(format!(
+                        "条目 `{entry_id}` 版本 v{version} 不存在"
+                    )))
+                }
+            }
+        }
+    };
+    Ok(Json(serde_json::json!({
+        "dataset_id": dataset_id,
+        "entry_id": entry_id,
+        "version": version,
+        "entry": payload,
+    })))
+}
+
 /// GET /entries/{id}/diff?from=..&to=.. —— 条目内容级 diff（C2，44 号 §9 / 33 号）
 #[derive(Deserialize)]
 pub struct EntryDiffQuery {
