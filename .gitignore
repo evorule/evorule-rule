@@ -31,6 +31,7 @@ desktop.ini
 **/book/
 **/docs/book/
 
-# 本地工具临时目录
+# 鍐呴儴宸ヤ綔涓存椂鐩綍
 .workbuddy/
 logs/
+.trae/
