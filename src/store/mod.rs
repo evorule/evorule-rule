@@ -2678,6 +2678,61 @@ impl RuleStore {
         Ok(out)
     }
 
+    /// knowledge 数据条目检索（Q12 段2 P3）：与 [`Self::search_entries`] 同语义同过滤口径，
+    /// 消除"rule 有过滤、knowledge 无过滤"的不对称。
+    ///
+    /// 实现采用与规则侧一致的内存过滤模式（规则侧亦为内存过滤，保持对称；
+    /// 数据量级小，不单独加 SQL 索引）。q 匹配域：entry_id/provenance/payload。
+    pub fn search_knowledge_entries(
+        &self,
+        tenant_id: &str,
+        dataset_id: Option<&str>,
+        domain: Option<&str>,
+        q: Option<&str>,
+        tags: &[String],
+        status: Option<LifecycleStatus>,
+    ) -> Result<Vec<KnowledgeEntry>, StoreError> {
+        let mut out = Vec::new();
+        let lower_q = q.map(|s| s.to_lowercase());
+        for ds in self.list_datasets(tenant_id)? {
+            if let Some(did) = dataset_id {
+                if ds.dataset_id != did {
+                    continue;
+                }
+            }
+            for e in self.list_knowledge_entries(&ds.dataset_id, None)? {
+                if let Some(d) = domain {
+                    if !e.domain.eq_ignore_ascii_case(d) {
+                        continue;
+                    }
+                }
+                if let Some(st) = status {
+                    if e.status != Some(st) {
+                        continue;
+                    }
+                }
+                if let Some(lq) = &lower_q {
+                    let hay = format!(
+                        "{} {} {} {}",
+                        e.entry_id,
+                        e.provenance.source,
+                        e.provenance.clause.as_deref().unwrap_or(""),
+                        e.payload
+                    )
+                    .to_lowercase();
+                    if !hay.contains(lq) {
+                        continue;
+                    }
+                }
+                if !tags.is_empty() && !tags.iter().any(|t| e.tags.contains(t)) {
+                    continue;
+                }
+                out.push(e);
+            }
+        }
+        Ok(out)
+    }
+
     /// 版本 diff（44 号 §9 `GET /search/datasets/{id}/diff`，33 号内容哈希语义）。
     ///
     /// - **结构级**（版本链增量 + 当前条目清单）始终返回；

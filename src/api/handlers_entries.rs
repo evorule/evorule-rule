@@ -244,13 +244,39 @@ pub async fn deps(
 pub struct EntryListQuery {
     #[serde(default)]
     pub dataset_id: Option<String>,
+    /// 领域过滤（Q12 段2 P3：rule/knowledge 同口径）
+    #[serde(default)]
+    pub domain: Option<String>,
+    /// 逗号分隔标签（任一命中）
+    #[serde(default)]
+    pub tags: Option<String>,
+    /// 包含匹配（entry_id/provenance/rule_body|payload）
+    #[serde(default)]
+    pub q: Option<String>,
     #[serde(default)]
     pub limit: Option<usize>,
     #[serde(default)]
     pub offset: Option<usize>,
 }
 
+impl EntryListQuery {
+    /// 解析 tags 查询参数（逗号分隔）
+    fn tag_list(&self) -> Vec<String> {
+        self.tags
+            .as_deref()
+            .unwrap_or("")
+            .split(',')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(String::from)
+            .collect()
+    }
+}
+
 /// GET /entries —— 租户内条目列表（可选 ?dataset_id= 过滤；Q12 R4：含 knowledge 数据条目）
+///
+/// Q12 段2：domain/tags/q 过滤对 rule/knowledge 同口径（P3）；
+/// `?dataset_id=` 指向他租户 **Public+Published** 数据集时条目只读可见（P4/V2，34 号 §3 双条件）。
 pub async fn list_entries_all(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
@@ -259,27 +285,45 @@ pub async fn list_entries_all(
     if !can(ctx.role, Action::View) {
         return Err(ApiError::forbidden("无查看权限"));
     }
-    let rules = state.store.search_entries(
-        &ctx.tenant_id,
-        query.dataset_id.as_deref(),
-        None,
-        None,
-        &[],
-        None,
-    )?;
-    let mut items: Vec<Value> = rules
+    let tags = query.tag_list();
+    let mut items: Vec<Value> = state
+        .store
+        .search_entries(
+            &ctx.tenant_id,
+            query.dataset_id.as_deref(),
+            query.domain.as_deref(),
+            query.q.as_deref(),
+            &tags,
+            None,
+        )?
         .iter()
         .map(|e| serde_json::to_value(e).unwrap_or(Value::Null))
         .collect();
-    // knowledge 平行表合并（同租户；dataset_id 过滤条件同样生效）
-    for ds in state.store.list_datasets(&ctx.tenant_id)? {
-        if let Some(did) = &query.dataset_id {
-            if ds.dataset_id != *did {
-                continue;
+    // knowledge 平行表合并（同租户；domain/tags/q 过滤同口径）
+    for e in state.store.search_knowledge_entries(
+        &ctx.tenant_id,
+        query.dataset_id.as_deref(),
+        query.domain.as_deref(),
+        query.q.as_deref(),
+        &tags,
+        None,
+    )? {
+        items.push(serde_json::to_value(&e).unwrap_or(Value::Null));
+    }
+    // V2：跨租户 Public+Published 数据集条目只读可见（仅 dataset_id 直达，不枚举扩散）
+    if let Some(did) = &query.dataset_id {
+        let cross_public = state
+            .store
+            .get_dataset(did)?
+            .map(|ds| ds.tenant_id != ctx.tenant_id && state.store.is_publicly_pullable(did).unwrap_or(false))
+            .unwrap_or(false);
+        if cross_public {
+            for e in state.store.list_entries(did, None)? {
+                items.push(serde_json::to_value(e).unwrap_or(Value::Null));
             }
-        }
-        for e in state.store.list_knowledge_entries(&ds.dataset_id, None)? {
-            items.push(serde_json::to_value(e).unwrap_or(Value::Null));
+            for e in state.store.list_knowledge_entries(did, None)? {
+                items.push(serde_json::to_value(e).unwrap_or(Value::Null));
+            }
         }
     }
     Ok(paginate(items, query.limit, query.offset))

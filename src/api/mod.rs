@@ -1930,5 +1930,511 @@ mod tests {
         assert_eq!(status, StatusCode::OK, "{body}");
         assert_eq!(body["data_dependencies"]["services"][0]["service_name"], "payroll_svc");
     }
+
+    // ===== Q12 段2 测试（P2 裁剪 / P3 检索 / P4 可见性）=====
+
+    /// 带领域 schema 目录的测试 app（D3 resolver 真实命中路径；in_memory 无目录 = knowledge 条目一律拒绝）
+    fn build_app_with_domain_schema() -> (Router, AppState) {
+        static SEQ: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let n = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!(
+            "q12-api-test-{}-{n}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("domain_schemas")).unwrap();
+        std::fs::write(
+            dir.join("domain_schemas").join("scenario.json"),
+            r#"{"$id":"https://rpsm.example/schemas/scenario/v1.0.json","type":"object","required":["scenario_id"],"properties":{"scenario_id":{"type":"string"},"gravity":{"type":"number"}},"additionalProperties":false}"#,
+        )
+        .unwrap();
+        let store = RuleStore::open(dir.join("db.sqlite").to_str().unwrap()).unwrap();
+        store
+            .ensure_default_tenant("tenant_a", "示例组织", "inst-001", "2026-08-22T00:00:00Z")
+            .expect("tenant_a");
+        store
+            .ensure_default_tenant("tenant_b", "第二组织", "inst-001", "2026-08-22T00:00:00Z")
+            .expect("tenant_b");
+        let state = AppState::new(store, "test-secret", "inst-001", "http://127.0.0.1:9");
+        let app = router(state.clone());
+        (app, state)
+    }
+
+    fn ds_fixture(
+        id: &str,
+        tenant: &str,
+        kind: crate::model::dataset::DatasetKind,
+        vis: crate::model::dataset::Visibility,
+    ) -> crate::model::dataset::RuleDataset {
+        crate::model::dataset::RuleDataset {
+            dataset_id: id.into(),
+            name: format!("数据集 {id}"),
+            description: None,
+            dataset_kind: kind,
+            domain: vec!["physics".into(), "chem".into()],
+            tags: vec![],
+            tenant_id: tenant.into(),
+            visibility: vis,
+            lifecycle: crate::model::lifecycle::Lifecycle::default(),
+            versioning: crate::model::version::Versioning::default(),
+            law_ref: None,
+            version_selection: None,
+            data_dependencies: None,
+            meta: crate::model::dataset::Meta {
+                created_at: "2026-08-30T00:00:00Z".into(),
+                created_by: "test".into(),
+                updated_at: None,
+                updated_by: None,
+            },
+        }
+    }
+
+    fn rule_fixture(ds_id: &str, id: &str, domain: &str, tags: &[&str]) -> crate::model::entry::RuleEntry {
+        crate::model::entry::RuleEntry {
+            entry_id: id.into(),
+            dataset_id: ds_id.into(),
+            version: 1,
+            status: Some(crate::model::lifecycle::LifecycleStatus::Draft),
+            provenance: crate::model::provenance::Provenance {
+                source: "测试".into(),
+                clause: None,
+                document_id: None,
+                effective_from: None,
+                effective_to: None,
+                last_verified: None,
+                verified_by: None,
+            },
+            domain: domain.into(),
+            tags: tags.iter().map(|s| s.to_string()).collect(),
+            data_source_binding: vec![],
+            consumed_inputs: vec![],
+            rule_body: serde_json::json!({
+                "rule_id": id,
+                "transform": [{ "type": "set", "params": { "attr": "x", "operation": "set", "value": 1 } }]
+            }),
+            governance: None,
+        }
+    }
+
+    fn knowledge_fixture(
+        ds_id: &str,
+        id: &str,
+        domain: &str,
+        tags: &[&str],
+        scenario: &str,
+    ) -> crate::model::knowledge::KnowledgeEntry {
+        crate::model::knowledge::KnowledgeEntry {
+            entry_id: id.into(),
+            dataset_id: ds_id.into(),
+            version: 1,
+            status: Some(crate::model::lifecycle::LifecycleStatus::Draft),
+            provenance: crate::model::provenance::Provenance {
+                source: "测试".into(),
+                clause: None,
+                document_id: None,
+                effective_from: None,
+                effective_to: None,
+                last_verified: None,
+                verified_by: None,
+            },
+            domain: domain.into(),
+            tags: tags.iter().map(|s| s.to_string()).collect(),
+            payload: serde_json::json!({ "scenario_id": scenario, "gravity": 9.8 }),
+            schema_ref: "https://rpsm.example/schemas/scenario/v1.0.json".into(),
+            governance: None,
+        }
+    }
+
+    fn entry_ids(body: &serde_json::Value) -> Vec<&str> {
+        body["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|x| x["entry_id"].as_str().unwrap())
+            .collect()
+    }
+
+    /// P3：GET /entries 的 domain/tags/q 过滤对 rule 与 knowledge 条目同口径
+    #[tokio::test]
+    async fn test_entries_filter_covers_knowledge_same_semantics() {
+        let (app, state) = build_app_with_domain_schema();
+        let token = register_login(&app).await;
+
+        state
+            .store
+            .create_dataset(&ds_fixture(
+                "ds-rules",
+                "tenant_a",
+                crate::model::dataset::DatasetKind::RuleSet,
+                crate::model::dataset::Visibility::Private,
+            ))
+            .unwrap();
+        state
+            .store
+            .add_entry(&rule_fixture("ds-rules", "e1", "physics", &["core"]))
+            .unwrap();
+        state
+            .store
+            .add_entry(&rule_fixture("ds-rules", "e2", "chem", &["aux"]))
+            .unwrap();
+        state
+            .store
+            .create_dataset(&ds_fixture(
+                "ds-data",
+                "tenant_a",
+                crate::model::dataset::DatasetKind::Knowledge,
+                crate::model::dataset::Visibility::Private,
+            ))
+            .unwrap();
+        state
+            .store
+            .add_knowledge_entry(&knowledge_fixture(
+                "ds-data",
+                "k1",
+                "physics",
+                &["core"],
+                "free-fall-01",
+            ))
+            .unwrap();
+        state
+            .store
+            .add_knowledge_entry(&knowledge_fixture(
+                "ds-data",
+                "k2",
+                "chem",
+                &["aux"],
+                "titration-01",
+            ))
+            .unwrap();
+
+        // 无过滤：rule 2 + knowledge 2
+        let (status, body) = send(app.clone(), "GET", "/v1/entries", Some(&token), None).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(entry_ids(&body).len(), 4, "{body}");
+
+        // domain 同口径：physics → e1 + k1
+        let (status, body) = send(
+            app.clone(),
+            "GET",
+            "/v1/entries?domain=physics",
+            Some(&token),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(entry_ids(&body), vec!["e1", "k1"], "{body}");
+
+        // tags 同口径：core → e1 + k1
+        let (status, body) = send(
+            app.clone(),
+            "GET",
+            "/v1/entries?tags=core",
+            Some(&token),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(entry_ids(&body), vec!["e1", "k1"], "{body}");
+
+        // q 命中 payload → 仅 knowledge 条目；q 命中 entry_id → 仅规则条目
+        let (status, body) = send(
+            app.clone(),
+            "GET",
+            "/v1/entries?q=titration",
+            Some(&token),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(entry_ids(&body), vec!["k2"], "{body}");
+        let (status, body) = send(
+            app.clone(),
+            "GET",
+            "/v1/entries?q=e1",
+            Some(&token),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(entry_ids(&body), vec!["e1"], "{body}");
+
+        // 组合：domain=physics&tags=aux → 空
+        let (status, body) = send(
+            app.clone(),
+            "GET",
+            "/v1/entries?domain=physics&tags=aux",
+            Some(&token),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert!(entry_ids(&body).is_empty(), "{body}");
+    }
+
+    /// P4：跨租户 Public+Published（34 号 §3 双条件）只读可见；Private/未发布不可见；列表不扩散
+    #[tokio::test]
+    async fn test_cross_tenant_public_published_readonly_visible() {
+        let (app, state) = build_app_with_domain_schema();
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/auth/register",
+            None,
+            Some(json!({
+                "tenant_id": "tenant_b",
+                "username": "bob",
+                "password": "password123",
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "{body}");
+        let bob = body["access_token"].as_str().unwrap().to_string();
+
+        state
+            .store
+            .create_dataset(&ds_fixture(
+                "ds-cross",
+                "tenant_a",
+                crate::model::dataset::DatasetKind::RuleSet,
+                crate::model::dataset::Visibility::Private,
+            ))
+            .unwrap();
+        state
+            .store
+            .add_entry(&rule_fixture("ds-cross", "pub-1", "physics", &[]))
+            .unwrap();
+
+        // Private 跨租户 → 404
+        let (status, _) = send(app.clone(), "GET", "/v1/datasets/ds-cross", Some(&bob), None).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+
+        // 仅 Public 未发布 → 仍 404（双条件缺一）
+        let mut d = state.store.get_dataset("ds-cross").unwrap().unwrap();
+        d.visibility = crate::model::dataset::Visibility::Public;
+        state.store.update_dataset(&d).unwrap();
+        let (status, _) = send(app.clone(), "GET", "/v1/datasets/ds-cross", Some(&bob), None).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+
+        // Public + Published → 200 只读
+        state
+            .store
+            .transition_dataset_status(
+                "ds-cross",
+                crate::model::lifecycle::LifecycleStatus::Candidate,
+                "alice",
+                "测试提交",
+                "2026-08-30T00:00:00Z",
+            )
+            .unwrap();
+        state
+            .store
+            .transition_dataset_status(
+                "ds-cross",
+                crate::model::lifecycle::LifecycleStatus::Active,
+                "alice",
+                "测试激活",
+                "2026-08-30T00:00:00Z",
+            )
+            .unwrap();
+        state
+            .store
+            .publish_dataset("ds-cross", "alice", "2026-08-30T00:00:00Z", "inst-001")
+            .unwrap();
+        let (status, body) = send(app.clone(), "GET", "/v1/datasets/ds-cross", Some(&bob), None).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["visibility"], "public");
+
+        // 条目只读可见（dataset_id 直达）
+        let (status, body) = send(
+            app.clone(),
+            "GET",
+            "/v1/entries?dataset_id=ds-cross",
+            Some(&bob),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(entry_ids(&body), vec!["pub-1"], "{body}");
+
+        // V3：列表不扩散（bob 的数据集列表不含他租户 Public）
+        let (status, body) = send(app.clone(), "GET", "/v1/datasets", Some(&bob), None).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert!(entry_ids_dataset_list(&body).is_empty(), "{body}");
+
+        // 写拒绝：bob 向他租户数据集加条目 → 404（租户隔离）
+        let (status, _) = send(
+            app.clone(),
+            "POST",
+            "/v1/datasets/ds-cross/entries",
+            Some(&bob),
+            Some(json!({
+                "entry_id": "hack-1",
+                "version": 1,
+                "rule_body": { "rule_id": "hack-1", "transform": [{ "type": "set", "params": { "attr": "x", "operation": "set", "value": 1 } }] }
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+    }
+
+    fn entry_ids_dataset_list(body: &serde_json::Value) -> Vec<&str> {
+        body["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|x| x["dataset_id"].as_str().unwrap())
+            .collect()
+    }
+
+    /// P2：导出裁剪 subset 扩展 `ids:` 语法（D3 定案）——单用、组合交集、非法段 400、knowledge 条目 entry_kind 保留
+    #[tokio::test]
+    async fn test_export_trim_subset_ids_and_combination() {
+        let (app, state) = build_app_with_domain_schema();
+        let token = register_login(&app).await;
+
+        state
+            .store
+            .create_dataset(&ds_fixture(
+                "ds-trim",
+                "tenant_a",
+                crate::model::dataset::DatasetKind::RuleSet,
+                crate::model::dataset::Visibility::Private,
+            ))
+            .unwrap();
+        state
+            .store
+            .add_entry(&rule_fixture("ds-trim", "a", "physics", &["core"]))
+            .unwrap();
+        state
+            .store
+            .add_entry(&rule_fixture("ds-trim", "b", "physics", &["core"]))
+            .unwrap();
+        state
+            .store
+            .add_entry(&rule_fixture("ds-trim", "c", "chem", &["other"]))
+            .unwrap();
+
+        let base = "/v1/bundles/datasets/ds-trim/versions/v1";
+
+        // 无 subset：3 条
+        let (status, body) = send(app.clone(), "GET", base, Some(&token), None).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["entries"].as_array().unwrap().len(), 3);
+
+        // ids:a,c → 2 条 + view_of 指向原版本（不新造版本链）
+        let (status, body) = send(
+            app.clone(),
+            "GET",
+            &format!("{base}?subset=ids:a,c"),
+            Some(&token),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        let ids: Vec<&str> = body["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|x| x["entry_id"].as_str().unwrap())
+            .collect();
+        assert_eq!(ids, vec!["a", "c"], "{body}");
+        assert_eq!(body["dataset"]["view_of"]["original_dataset_id"], "ds-trim");
+        assert_eq!(body["dataset"]["view_of"]["view_of_version"], "v1");
+
+        // 组合交集：ids:a,b,c;tag:core → a,b
+        let (status, body) = send(
+            app.clone(),
+            "GET",
+            &format!("{base}?subset=ids:a,b,c;tag:core"),
+            Some(&token),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        let ids: Vec<&str> = body["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|x| x["entry_id"].as_str().unwrap())
+            .collect();
+        assert_eq!(ids, vec!["a", "b"], "{body}");
+
+        // 非法维度 → 400；空 ids → 400；空裁剪结果 → 400
+        let (status, _) = send(
+            app.clone(),
+            "GET",
+            &format!("{base}?subset=bogus:x"),
+            Some(&token),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        let (status, _) = send(
+            app.clone(),
+            "GET",
+            &format!("{base}?subset=ids:"),
+            Some(&token),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        let (status, _) = send(
+            app.clone(),
+            "GET",
+            &format!("{base}?subset=ids:nope"),
+            Some(&token),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+
+        // knowledge 数据集裁剪：entry_kind/schema_ref 保留（T2）
+        state
+            .store
+            .create_dataset(&ds_fixture(
+                "ds-kdata",
+                "tenant_a",
+                crate::model::dataset::DatasetKind::Knowledge,
+                crate::model::dataset::Visibility::Private,
+            ))
+            .unwrap();
+        state
+            .store
+            .add_knowledge_entry(&knowledge_fixture(
+                "ds-kdata",
+                "k1",
+                "physics",
+                &[],
+                "free-fall-01",
+            ))
+            .unwrap();
+        state
+            .store
+            .add_knowledge_entry(&knowledge_fixture(
+                "ds-kdata",
+                "k2",
+                "physics",
+                &[],
+                "titration-01",
+            ))
+            .unwrap();
+        let (status, body) = send(
+            app.clone(),
+            "GET",
+            "/v1/bundles/datasets/ds-kdata/versions/v1?subset=ids:k1",
+            Some(&token),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        let entries = body["entries"].as_array().unwrap();
+        assert_eq!(entries.len(), 1, "{body}");
+        assert_eq!(entries[0]["entry_id"], "k1");
+        assert_eq!(entries[0]["entry_kind"], "knowledge");
+        assert_eq!(
+            entries[0]["schema_ref"],
+            "https://rpsm.example/schemas/scenario/v1.0.json"
+        );
+    }
 }
 

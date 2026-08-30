@@ -18,7 +18,7 @@ use crate::store::StoreError;
 
 #[derive(Deserialize)]
 pub struct ExportQuery {
-    /// 裁剪视图语法：`tag:core` / `domain:tax`（36 号 §5；不新造版本链）
+    /// 裁剪视图语法：`tag:core` / `domain:tax` / `ids:id1,id2`（多段以 ; 分隔，交集；36 号 §5；不新造版本链）
     #[serde(default)]
     pub subset: Option<String>,
 }
@@ -75,7 +75,7 @@ pub struct ExportReq {
     pub version: String,
     /// 真实沙箱验证证据（闸门一产出，测试工作台跑完直接带入；不新增治理存储模型）
     pub tests: BundleTests,
-    /// 裁剪视图语法（可选）：`tag:core` / `domain:tax`
+    /// 裁剪视图语法（可选）：`tag:core` / `domain:tax` / `ids:id1,id2`（多段以 ; 分隔，交集）
     #[serde(default)]
     pub subset: Option<String>,
 }
@@ -119,26 +119,55 @@ pub async fn export_with_tests(
     }
 }
 
-/// 裁剪视图：解析 `tag:core` / `domain:tax` 语法
+/// 裁剪视图：解析 `tag:core` / `domain:tax` / `ids:id1,id2` 语法（Q12 段2 P2，D3 定案）
+///
+/// - 顶层以 `;` 分隔多段，依次应用（交集语义）：如 `?subset=ids:a,b;tag:core`；
+/// - `ids:` 值为逗号分隔 entry_id 列表（trim_by_ids，view_of 指向原版本）；
+/// - 非法段显式 400，不静默忽略；空裁剪结果由 BundleTrimmer 拒绝。
 fn trim(
     bundle: &DatasetBundle,
     spec: &str,
     by: &str,
 ) -> Result<Json<DatasetBundle>, ApiError> {
-    let (kind, value) = spec
-        .split_once(':')
-        .ok_or_else(|| ApiError::bad_request("subset 语法须为 tag:xxx 或 domain:xxx"))?;
     let at = iso_from_unix(unix_now());
-    let view = match kind {
-        "tag" => crate::bundle::BundleTrimmer::trim_by_filter(bundle, None, &[value], by, &at),
-        "domain" => crate::bundle::BundleTrimmer::trim_by_filter(bundle, Some(value), &[], by, &at),
-        other => {
-            return Err(ApiError::bad_request(format!(
-                "不支持的裁剪维度 `{other}`（tag|domain）"
-            )))
+    let mut view: Option<DatasetBundle> = None;
+    for seg in spec.split(';') {
+        let seg = seg.trim();
+        if seg.is_empty() {
+            continue;
         }
+        let (kind, value) = seg.split_once(':').ok_or_else(|| {
+            ApiError::bad_request(
+                "subset 语法须为 tag:xxx / domain:xxx / ids:id1,id2（多段以 ; 分隔）",
+            )
+        })?;
+        let current = view.as_ref().unwrap_or(bundle);
+        view = Some(match kind {
+            "tag" => crate::bundle::BundleTrimmer::trim_by_filter(current, None, &[value], by, &at),
+            "domain" => {
+                crate::bundle::BundleTrimmer::trim_by_filter(current, Some(value), &[], by, &at)
+            }
+            "ids" => {
+                let keep: Vec<String> = value
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .map(String::from)
+                    .collect();
+                if keep.is_empty() {
+                    return Err(ApiError::bad_request("ids: 列表为空"));
+                }
+                crate::bundle::BundleTrimmer::trim_by_ids(current, &keep, by, &at)
+            }
+            other => {
+                return Err(ApiError::bad_request(format!(
+                    "不支持的裁剪维度 `{other}`（tag|domain|ids）"
+                )))
+            }
+        }
+        .map_err(|e| ApiError::bad_request(format!("裁剪失败: {e}")))?);
     }
-    .map_err(|e| ApiError::bad_request(format!("裁剪失败: {e}")))?;
+    let view = view.ok_or_else(|| ApiError::bad_request("subset 为空"))?;
     Ok(Json(view))
 }
 

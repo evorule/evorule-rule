@@ -117,8 +117,9 @@ pub async fn get_dataset(
         .store
         .get_dataset(&id)?
         .ok_or_else(|| ApiError::not_found("数据集不存在"))?;
-    // 数据隔离（⑧）：仅本租户可见（public 拉取走 bundle 端点，对外双条件）
-    if ds.tenant_id != ctx.tenant_id {
+    // 数据隔离（⑧）：本租户可见；跨租户 **Public+Published**（34 号 §3 双条件）只读可见
+    // （Q12 段2 P4/V1：与 search_datasets 跨租户检索口径一致；写操作仍被租户+角色拦截）
+    if ds.tenant_id != ctx.tenant_id && !state.store.is_publicly_pullable(&id)? {
         return Err(ApiError::not_found("数据集不存在"));
     }
     Ok(Json(ds))
