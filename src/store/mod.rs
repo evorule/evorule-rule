@@ -520,6 +520,36 @@ impl RuleStore {
                 PRIMARY KEY (dataset_id, content_hash),
                 FOREIGN KEY (dataset_id) REFERENCES datasets(dataset_id)
             );
+
+            -- Q12 交付边界收口 B：knowledge_entries 全文索引（FTS5 trigram，中文 3-gram 可命中）
+            -- 索引文本与 search_knowledge_entries 的 q 匹配域逐字段一致：
+            -- entry_id + provenance.source + provenance.clause + payload（非整段 provenance JSON）
+            CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_fts USING fts5(text, tokenize='trigram');
+            CREATE TRIGGER IF NOT EXISTS knowledge_fts_ins AFTER INSERT ON knowledge_entries BEGIN
+                INSERT INTO knowledge_fts(rowid, text) VALUES (
+                    new.rowid,
+                    new.entry_id || ' ' || COALESCE(json_extract(new.provenance, '$.source'), '') || ' ' ||
+                    COALESCE(json_extract(new.provenance, '$.clause'), '') || ' ' || new.payload
+                );
+            END;
+            CREATE TRIGGER IF NOT EXISTS knowledge_fts_del AFTER DELETE ON knowledge_entries BEGIN
+                DELETE FROM knowledge_fts WHERE rowid = old.rowid;
+            END;
+            CREATE TRIGGER IF NOT EXISTS knowledge_fts_upd AFTER UPDATE ON knowledge_entries BEGIN
+                DELETE FROM knowledge_fts WHERE rowid = old.rowid;
+                INSERT INTO knowledge_fts(rowid, text) VALUES (
+                    new.rowid,
+                    new.entry_id || ' ' || COALESCE(json_extract(new.provenance, '$.source'), '') || ' ' ||
+                    COALESCE(json_extract(new.provenance, '$.clause'), '') || ' ' || new.payload
+                );
+            END;
+            -- 存量库回填（幂等：FTS 已有 rowid 不重插；每次 init 执行，防旧库升级漏数据）
+            INSERT INTO knowledge_fts(rowid, text)
+                SELECT rowid,
+                       entry_id || ' ' || COALESCE(json_extract(provenance, '$.source'), '') || ' ' ||
+                       COALESCE(json_extract(provenance, '$.clause'), '') || ' ' || payload
+                FROM knowledge_entries
+                WHERE rowid NOT IN (SELECT rowid FROM knowledge_fts);
             "#,
         )?;
         Ok(())
@@ -747,6 +777,40 @@ impl RuleStore {
                     .ok_or_else(|| StoreError::DatasetNotFound(id.clone()))
             })
             .collect()
+    }
+
+    /// 浏览口径列表（Q12 交付边界收口 A，V3 反转）：本租户全部 + 他租户 Public+Published。
+    ///
+    /// 与 [`Self::list_datasets`]（租户内严格口径，供检索/内部迭代）不同，本方法面向
+    /// `GET /datasets` 浏览端点：他租户数据集仅在 `visibility=public` **且**
+    /// `lifecycle.status=published` 时混入 —— 与 V1 详情端点双条件口径一致，列表→详情不出现断链。
+    /// 条目级只读边界与写拒绝由各端点既有租户校验承接（不变）。
+    pub fn list_datasets_browsable(&self, tenant_id: &str) -> Result<Vec<RuleDataset>, StoreError> {
+        // visibility 列以 serde_json::to_string 存储（带引号，如 "public"），匹配须用同一序列化口径
+        let public_flag = serde_json::to_string(&crate::model::dataset::Visibility::Public)?;
+        let ids: Vec<String> = {
+            let conn = self.conn.lock().unwrap();
+            let ids = conn
+                .prepare(
+                    "SELECT dataset_id FROM datasets WHERE tenant_id = ?1 OR visibility = ?2",
+                )?
+                .query_map(params![tenant_id, public_flag], |r| r.get::<_, String>(0))?
+                .collect::<Result<_, _>>()?;
+            ids
+        };
+        let mut out = Vec::new();
+        for id in &ids {
+            let Some(ds) = self.get_dataset(id)? else {
+                return Err(StoreError::DatasetNotFound(id.clone()));
+            };
+            if ds.tenant_id == tenant_id
+                || (ds.visibility == crate::model::dataset::Visibility::Public
+                    && ds.lifecycle.status == crate::model::lifecycle::LifecycleStatus::Published)
+            {
+                out.push(ds);
+            }
+        }
+        Ok(out)
     }
 
     // ------------------------------------------------------------------
@@ -2679,10 +2743,13 @@ impl RuleStore {
     }
 
     /// knowledge 数据条目检索（Q12 段2 P3）：与 [`Self::search_entries`] 同语义同过滤口径，
-    /// 消除"rule 有过滤、knowledge 无过滤"的不对称。
+    /// 消除"rule 有过滤、knowledge 无过滤"的不对称。q 匹配域：entry_id/provenance/payload。
     ///
-    /// 实现采用与规则侧一致的内存过滤模式（规则侧亦为内存过滤，保持对称；
-    /// 数据量级小，不单独加 SQL 索引）。q 匹配域：entry_id/provenance/payload。
+    /// q 匹配两段式（Q12 交付边界收口 B，FTS5 trigram 全文索引，中文 3-gram 可命中）：
+    /// - q ≥3 字符：走 `knowledge_fts` 索引（trigram 对 ASCII 大小写不敏感、中文按 3-gram 子串命中）；
+    /// - q <3 字符：trigram 无法索引，退回进程内 contains 扫描（匹配域一致，口径不变）。
+    /// FTS 命中按 (dataset_id, entry_id) 归并且仅取最新版本行 —— 与条目迭代（每条目最新版）口径一致，
+    /// 避免"旧版本命中、最新版已不含 q"的幽灵结果。FTS 不可用即报错（fail-fast），不做静默降级。
     pub fn search_knowledge_entries(
         &self,
         tenant_id: &str,
@@ -2692,6 +2759,28 @@ impl RuleStore {
         tags: &[String],
         status: Option<LifecycleStatus>,
     ) -> Result<Vec<KnowledgeEntry>, StoreError> {
+        // 全文命中集（q ≥3 字符；整串引号包裹成 phrase，内部双引号翻倍防注入/语法干扰）
+        let fts_hits: Option<std::collections::HashSet<(String, String)>> = match q {
+            Some(qs) if qs.chars().count() >= 3 => {
+                let pattern = format!("\"{}\"", qs.replace('"', "\"\""));
+                let conn = self.conn.lock().unwrap();
+                let mut stmt = conn.prepare(
+                    "SELECT k.dataset_id, k.entry_id FROM knowledge_fts f \
+                     JOIN knowledge_entries k ON k.rowid = f.rowid \
+                     WHERE knowledge_fts MATCH ?1 \
+                     GROUP BY k.dataset_id, k.entry_id \
+                     HAVING k.version = (SELECT MAX(version) FROM knowledge_entries k2 \
+                                          WHERE k2.dataset_id = k.dataset_id AND k2.entry_id = k.entry_id)",
+                )?;
+                let hits = stmt
+                    .query_map(params![pattern], |r| {
+                        Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+                    })?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Some(hits.into_iter().collect())
+            }
+            _ => None,
+        };
         let mut out = Vec::new();
         let lower_q = q.map(|s| s.to_lowercase());
         for ds in self.list_datasets(tenant_id)? {
@@ -2712,16 +2801,22 @@ impl RuleStore {
                     }
                 }
                 if let Some(lq) = &lower_q {
-                    let hay = format!(
-                        "{} {} {} {}",
-                        e.entry_id,
-                        e.provenance.source,
-                        e.provenance.clause.as_deref().unwrap_or(""),
-                        e.payload
-                    )
-                    .to_lowercase();
-                    if !hay.contains(lq) {
-                        continue;
+                    if let Some(hits) = &fts_hits {
+                        if !hits.contains(&(ds.dataset_id.clone(), e.entry_id.clone())) {
+                            continue;
+                        }
+                    } else {
+                        let hay = format!(
+                            "{} {} {} {}",
+                            e.entry_id,
+                            e.provenance.source,
+                            e.provenance.clause.as_deref().unwrap_or(""),
+                            e.payload
+                        )
+                        .to_lowercase();
+                        if !hay.contains(lq) {
+                            continue;
+                        }
                     }
                 }
                 if !tags.is_empty() && !tags.iter().any(|t| e.tags.contains(t)) {
@@ -4433,5 +4528,183 @@ mod tests {
             StoreError::Validation(ValidationError::LlmGeneratedNotDraft { .. })
         ));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ---- Q12 交付边界收口 A/B（2026-08-30）----
+
+    #[test]
+    fn test_knowledge_fts_search_and_sync() {
+        let (store, dir) = file_store_with_body_schema();
+        store.create_dataset(&knowledge_dataset()).unwrap();
+        // 检索文本放 provenance.source（rpsm-body schema 强校验 payload 只认 mass 字段）
+        let mut e = knowledge_entry();
+        e.provenance.source = "纳税人年度申报操作指引".into();
+        store.add_knowledge_entry(&e).unwrap();
+        // 中文 trigram 命中
+        let hits = store
+            .search_knowledge_entries("org-evorule", None, None, Some("年度申报"), &[], None)
+            .unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].entry_id, "body-001");
+        // ASCII 大小写不敏感命中
+        let mut e2 = knowledge_entry();
+        e2.entry_id = "body-002".into();
+        e2.provenance.source = "Salary Ledger Record".into();
+        store.add_knowledge_entry(&e2).unwrap();
+        let hits = store
+            .search_knowledge_entries("org-evorule", None, None, Some("SALARY"), &[], None)
+            .unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].entry_id, "body-002");
+        // q <3 字符 → contains 兜底路径（trigram 无法索引短串），口径一致
+        let hits = store
+            .search_knowledge_entries("org-evorule", None, None, Some("年"), &[], None)
+            .unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].entry_id, "body-001");
+        // Draft 原地更新（UPDATE 触发器同步 FTS）：新词命中、旧词不再命中
+        let mut draft = store
+            .get_latest_knowledge_entry("ds-rpsm-assets", "body-001")
+            .unwrap()
+            .unwrap();
+        draft.provenance.source = "增值税留抵退税指引".into();
+        store.update_draft_knowledge_entry(&draft).unwrap();
+        let hits = store
+            .search_knowledge_entries("org-evorule", None, None, Some("增值税"), &[], None)
+            .unwrap();
+        assert_eq!(hits.len(), 1);
+        let hits = store
+            .search_knowledge_entries("org-evorule", None, None, Some("年度申报"), &[], None)
+            .unwrap();
+        assert!(hits.is_empty(), "旧词不应再命中: {hits:?}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_knowledge_fts_hits_latest_version_only() {
+        let (store, dir) = file_store_with_body_schema();
+        store.create_dataset(&knowledge_dataset()).unwrap();
+        let mut v1 = knowledge_entry();
+        v1.provenance.source = "旧版含磁悬浮参数记录".into();
+        store.add_knowledge_entry(&v1).unwrap();
+        let mut v2 = knowledge_entry();
+        v2.version = 2;
+        v2.provenance.source = "新版仅含高铁参数记录".into();
+        store.add_knowledge_entry(&v2).unwrap();
+        // 旧版本含 q、最新版不含 → 不命中（每条目仅最新版参与检索）
+        let hits = store
+            .search_knowledge_entries("org-evorule", None, None, Some("磁悬浮"), &[], None)
+            .unwrap();
+        assert!(hits.is_empty(), "旧版本命中不应泄漏: {hits:?}");
+        let hits = store
+            .search_knowledge_entries("org-evorule", None, None, Some("高铁参数"), &[], None)
+            .unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].version, 2);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_knowledge_fts_backfill_on_existing_db() {
+        // 模拟存量库：裸 rusqlite 建 datasets + knowledge_entries（无 FTS 表），再 RuleStore::open
+        let dir = std::env::temp_dir().join(format!("evorule-fts-backfill-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let db_path = dir.join("db.sqlite3");
+        let raw = rusqlite::Connection::open(&db_path).unwrap();
+        raw.execute_batch(
+            "CREATE TABLE datasets (
+                dataset_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, name TEXT NOT NULL,
+                description TEXT, domain TEXT NOT NULL DEFAULT '[]', tags TEXT NOT NULL DEFAULT '[]',
+                visibility TEXT NOT NULL DEFAULT 'private', lifecycle TEXT NOT NULL,
+                versioning TEXT NOT NULL, law_ref TEXT, version_selection TEXT,
+                data_dependencies TEXT, meta TEXT NOT NULL);
+            CREATE TABLE knowledge_entries (
+                dataset_id TEXT NOT NULL, entry_id TEXT NOT NULL, version INTEGER NOT NULL,
+                status TEXT, provenance TEXT NOT NULL, domain TEXT NOT NULL,
+                tags TEXT NOT NULL DEFAULT '[]', payload TEXT NOT NULL, schema_ref TEXT NOT NULL,
+                governance TEXT, content_hash TEXT NOT NULL,
+                PRIMARY KEY (dataset_id, entry_id, version));",
+        )
+        .unwrap();
+        let ds = knowledge_dataset();
+        raw.execute(
+            "INSERT INTO datasets VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+            rusqlite::params![
+                ds.dataset_id,
+                ds.tenant_id,
+                ds.name,
+                ds.description,
+                serde_json::to_string(&ds.domain).unwrap(),
+                serde_json::to_string(&ds.tags).unwrap(),
+                "\"private\"",
+                serde_json::to_string(&ds.lifecycle).unwrap(),
+                serde_json::to_string(&ds.versioning).unwrap(),
+                Option::<String>::None,
+                Option::<String>::None,
+                Option::<String>::None,
+                serde_json::to_string(&ds.meta).unwrap(),
+            ],
+        )
+        .unwrap();
+        raw.execute(
+            "INSERT INTO knowledge_entries VALUES ('ds-rpsm-assets', 'old-001', 1, '\"Draft\"', \
+             '{\"source\":\"旧库实验记录\"}', 'rpsm', '[]', \
+             '{\"note\":\"存量数据回填检索样本\"}', 'https://evorule.dev/domain/rpsm-body.json', NULL, 'hash')",
+            [],
+        )
+        .unwrap();
+        drop(raw);
+        // open → init_schema 建 FTS + 幂等回填 → 检索命中存量行
+        let store = RuleStore::open(db_path.to_str().unwrap()).unwrap();
+        let hits = store
+            .search_knowledge_entries(&ds.tenant_id, None, None, Some("回填检索"), &[], None)
+            .unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].entry_id, "old-001");
+        // 再开一次（幂等：回填不重插、不报错）
+        drop(store);
+        let store = RuleStore::open(db_path.to_str().unwrap()).unwrap();
+        let hits = store
+            .search_knowledge_entries(&ds.tenant_id, None, None, Some("回填检索"), &[], None)
+            .unwrap();
+        assert_eq!(hits.len(), 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_list_datasets_browsable_merges_public_published() {
+        let store = RuleStore::in_memory().unwrap();
+        store.create_dataset(&tax_dataset()).unwrap();
+        // 他租户 Private → 不混入
+        let mut other_priv = tax_dataset();
+        other_priv.dataset_id = "ds-other-private".into();
+        other_priv.tenant_id = "org-other".into();
+        store.create_dataset(&other_priv).unwrap();
+        // 他租户 Public 未发布 → 不混入（与 V1 详情双条件一致）
+        let mut other_pub = tax_dataset();
+        other_pub.dataset_id = "ds-other-public".into();
+        other_pub.tenant_id = "org-other".into();
+        other_pub.visibility = crate::model::dataset::Visibility::Public;
+        store.create_dataset(&other_pub).unwrap();
+        // 推进到 Published → 混入
+        store
+            .transition_dataset_status("ds-other-public", LifecycleStatus::Candidate, "o", "t", "提交")
+            .unwrap();
+        store
+            .transition_dataset_status("ds-other-public", LifecycleStatus::Active, "o", "t2", "激活")
+            .unwrap();
+        store
+            .publish_dataset("ds-other-public", "o", "t3", "inst-001")
+            .unwrap();
+        let browsable = store.list_datasets_browsable("org-evorule").unwrap();
+        let ids: Vec<&str> = browsable.iter().map(|d| d.dataset_id.as_str()).collect();
+        assert!(ids.contains(&"ds-tax-2024"), "{ids:?}");
+        assert!(ids.contains(&"ds-other-public"), "{ids:?}");
+        assert!(!ids.contains(&"ds-other-private"), "{ids:?}");
+        // 内部口径不变：list_datasets 仍仅本租户（检索/内部迭代不扩散）
+        let strict = store.list_datasets("org-evorule").unwrap();
+        assert_eq!(strict.len(), 1);
+        assert_eq!(strict[0].dataset_id, "ds-tax-2024");
     }
 }

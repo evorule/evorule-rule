@@ -51,7 +51,8 @@ pub async fn list_datasets(
     if !can(ctx.role, Action::View) {
         return Err(ApiError::forbidden("无查看权限"));
     }
-    let ds = state.store.list_datasets(&ctx.tenant_id)?;
+    // 浏览口径（Q12 交付边界收口 A，V3 反转）：本租户全部 + 他租户 Public+Published
+    let ds = state.store.list_datasets_browsable(&ctx.tenant_id)?;
     Ok(paginate(ds, page.limit, page.offset))
 }
 

@@ -2225,6 +2225,11 @@ mod tests {
         let (status, _) = send(app.clone(), "GET", "/v1/datasets/ds-cross", Some(&bob), None).await;
         assert_eq!(status, StatusCode::NOT_FOUND);
 
+        // 交付边界收口 A：Private/未发布数据集不进浏览列表（V3 反转只放行 Public+Published）
+        let (status, body) = send(app.clone(), "GET", "/v1/datasets", Some(&bob), None).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert!(entry_ids_dataset_list(&body).is_empty(), "{body}");
+
         // 仅 Public 未发布 → 仍 404（双条件缺一）
         let mut d = state.store.get_dataset("ds-cross").unwrap().unwrap();
         d.visibility = crate::model::dataset::Visibility::Public;
@@ -2273,10 +2278,10 @@ mod tests {
         assert_eq!(status, StatusCode::OK, "{body}");
         assert_eq!(entry_ids(&body), vec!["pub-1"], "{body}");
 
-        // V3：列表不扩散（bob 的数据集列表不含他租户 Public）
+        // V3 反转（Q12 交付边界收口 A）：浏览列表混入他租户 Public+Published 数据集
         let (status, body) = send(app.clone(), "GET", "/v1/datasets", Some(&bob), None).await;
         assert_eq!(status, StatusCode::OK, "{body}");
-        assert!(entry_ids_dataset_list(&body).is_empty(), "{body}");
+        assert_eq!(entry_ids_dataset_list(&body), vec!["ds-cross"], "{body}");
 
         // 写拒绝：bob 向他租户数据集加条目 → 404（租户隔离）
         let (status, _) = send(
