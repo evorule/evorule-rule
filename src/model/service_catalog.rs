@@ -55,41 +55,66 @@ fn default_version() -> String {
     "1.0.0".into()
 }
 
-/// 官方预置原生服务种子（UV-029 声明文件化）。
+/// 嵌入副本登记表（UV-035 泛化）：新增插件 = 在此追加一项
+/// `(插件 id, include_str! 嵌入副本)`，聚合函数与守卫测试零改动
+/// （副本由 evorule-server `scripts/sync-native-services.ps1` 同步）。
+/// 声明序 = 聚合序，与执行侧挂载链声明序一致。
+const EMBEDDED_SERVICE_FILES: &[(&str, &str)] = &[
+    (
+        "demo-services",
+        include_str!("official_native_services.demo-services.embedded.json"),
+    ),
+    (
+        "physics-services",
+        include_str!("official_native_services.physics-services.embedded.json"),
+    ),
+];
+
+/// 官方预置原生服务种子（UV-029 声明文件化；UV-035 泛化至多插件聚合）。
 ///
-/// SSOT = evorule-server 仓 `plugins/demo-services/official_native_services.json`；
-/// 本仓持有嵌入副本 `official_native_services.embedded.json`（由 evorule-server
-/// `scripts/sync-native-services.ps1` 从源仓同步），守卫测试锁定副本合法性与顺序。
-/// 返回 `(service_name, sensitive, description)`；副本损坏即 fail-fast
+/// SSOT = evorule-server 仓各插件目录 `plugins/<id>/official_native_services.json`；
+/// 本仓持有各插件嵌入副本（由 evorule-server `scripts/sync-native-services.ps1`
+/// 从源仓同步），守卫测试锁定副本合法性与顺序。聚合序 = [`EMBEDDED_SERVICE_FILES`]
+/// 声明序（与执行侧挂载链声明序一致）；跨插件服务名全局唯一，冲突即 fail-fast
 /// （嵌入副本属仓内完整性问题，如实报错、不静默跳过）。
+/// 返回 `(service_name, sensitive, description)`。
 pub fn official_native_services() -> Vec<(String, bool, String)> {
-    let raw = include_str!("official_native_services.embedded.json");
-    let file: serde_json::Value = serde_json::from_str(raw)
-        .expect("official_native_services.embedded.json 非法 JSON — 请在 evorule-server 仓运行 scripts/sync-native-services.ps1 重新同步");
-    let services = file
-        .get("services")
-        .and_then(|v| v.as_array())
-        .expect("嵌入副本缺 services 数组 — 请重新同步嵌入副本");
-    services
-        .iter()
-        .map(|s| {
+    let mut all: Vec<(String, bool, String)> = Vec::new();
+    for (plugin_id, raw) in EMBEDDED_SERVICE_FILES {
+        let file: serde_json::Value = serde_json::from_str(raw)
+            .unwrap_or_else(|e| {
+                panic!(
+                    "official_native_services.{plugin_id}.embedded.json 非法 JSON: {e} — \
+                     请在 evorule-server 仓运行 scripts/sync-native-services.ps1 重新同步"
+                )
+            });
+        let services = file.get("services").and_then(|v| v.as_array())
+            .unwrap_or_else(|| panic!("official_native_services.{plugin_id}.embedded.json 缺 services 数组 — 请重新同步嵌入副本"));
+        for s in services {
             let name = s
                 .get("name")
                 .and_then(|v| v.as_str())
-                .expect("嵌入副本条目缺 name — 请重新同步嵌入副本")
+                .unwrap_or_else(|| panic!("official_native_services.{plugin_id}.embedded.json 条目缺 name — 请重新同步嵌入副本"))
                 .to_string();
             let sensitive = s
                 .get("sensitive")
                 .and_then(|v| v.as_bool())
-                .expect("嵌入副本条目缺 sensitive — 请重新同步嵌入副本");
+                .unwrap_or_else(|| panic!("official_native_services.{plugin_id}.embedded.json 条目缺 sensitive — 请重新同步嵌入副本"));
             let description = s
                 .get("description")
                 .and_then(|v| v.as_str())
-                .expect("嵌入副本条目缺 description — 请重新同步嵌入副本")
+                .unwrap_or_else(|| panic!("official_native_services.{plugin_id}.embedded.json 条目缺 description — 请重新同步嵌入副本"))
                 .to_string();
-            (name, sensitive, description)
-        })
-        .collect()
+            if all.iter().any(|(n, _, _)| *n == name) {
+                panic!(
+                    "服务名 {name} 跨插件重复（plugin_id={plugin_id}）— \
+                     全局服务名必须唯一，请修正源仓声明文件后重新同步"
+                );
+            }
+            all.push((name, sensitive, description));
+        }
+    }
+    all
 }
 
 /// 由官方种子生成目录条目（version=1.0.0，binding_hint=Native，宽松契约摘要）
@@ -115,13 +140,14 @@ pub fn official_entry(name: &str, sensitive: bool, description: &str, now: &str)
 mod tests {
     use super::*;
 
-    /// UV-029 嵌入副本守卫：副本可解析且 schema 合法（字段齐全、非空、name 唯一、
-    /// 顺序稳定 = SSOT 文件序）。与源仓 SSOT 的内容一致性由同步脚本
+    /// UV-029 嵌入副本守卫（UV-035 泛化至多插件聚合）：各副本可解析且 schema
+    /// 合法（字段齐全、非空、name 全局唯一、聚合序 = 登记表声明序）。
+    /// 与源仓 SSOT 的内容一致性由同步脚本
     /// （evorule-server `scripts/sync-native-services.ps1`：复制 + 双侧守卫）保证。
     #[test]
     fn test_embedded_native_services_copy_valid() {
         let seed = official_native_services();
-        assert!(!seed.is_empty(), "嵌入副本不应为空");
+        assert!(!seed.is_empty(), "聚合种子不应为空");
         let mut names: Vec<String> = Vec::new();
         for (name, _, description) in &seed {
             assert!(!name.is_empty(), "存在空 name 条目");
@@ -134,11 +160,21 @@ mod tests {
             names.len(),
             "服务名重复 — 嵌入副本与 SSOT 漂移,请重新同步"
         );
-        // 顺序锁定:首项必须是声明表首服务(路由查找序与目录种子序同源)
-        assert_eq!(
-            names.first().map(String::as_str),
-            Some("inverse_kinematics_solver"),
-            "嵌入副本顺序漂移,请重新同步"
-        );
+        // 顺序锁定:聚合种子必须含各插件声明表首服务,且按登记表声明序排列
+        // (demo-services 先于 physics-services,与执行侧挂载链同源)。
+        let expect_heads = ["inverse_kinematics_solver", "physics_simulate"];
+        let mut pos = 0usize;
+        for head in expect_heads {
+            let found = names[pos..]
+                .iter()
+                .position(|n| n == head)
+                .unwrap_or_else(|| panic!("聚合种子缺插件首服务 {head} — 嵌入副本漂移,请重新同步"));
+            pos += found;
+            assert_eq!(
+                names[pos], head,
+                "聚合序漂移: {head} 应按登记表声明序出现,请重新同步"
+            );
+            pos += 1;
+        }
     }
 }

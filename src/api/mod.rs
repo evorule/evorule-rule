@@ -1765,20 +1765,22 @@ mod tests {
             "应显式提示注册路径: {body}"
         );
 
-        // 平台官方目录 seed（模拟 main.rs 启动预置 7 原生服务）
+        // 平台官方目录 seed（模拟 main.rs 启动预置全部插件原生服务；
+        // UV-035 聚合后数量随嵌入副本联动,防硬编码漂移）
+        let official_count = crate::model::service_catalog::official_native_services().len();
         let seeded = state
             .store
             .seed_official_services_if_empty("2026-08-25T00:00:00Z")
             .unwrap();
-        assert_eq!(seeded, 7, "官方原生服务应预置 7 个");
+        assert_eq!(seeded, official_count, "官方原生服务应全量预置");
 
         let admin = admin_token(&state).await;
 
-        // GET /v1/services：平台官方 7 + 本租户自定义
+        // GET /v1/services：平台官方全部插件服务 + 本租户自定义
         let (status, body) = send(app.clone(), "GET", "/v1/services", Some(&admin), None).await;
         assert_eq!(status, StatusCode::OK, "{body}");
         let list = body.as_array().expect("services 应为数组");
-        assert!(list.len() >= 7, "官方目录至少 7 个: {body}");
+        assert!(list.len() >= official_count, "官方目录至少 {official_count} 个: {body}");
         assert!(
             list.iter().any(|s| s["service_name"] == "llm_advisor" && s["sensitive"] == true),
             "llm_advisor 应标记 sensitive=true（C6）"

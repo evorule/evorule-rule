@@ -3908,13 +3908,15 @@ mod tests {
         use crate::model::service_catalog::BindingHint;
 
         let store = RuleStore::in_memory().unwrap();
-        // 官方 seed：预置 7 个原生服务；重复 seed 幂等
-        assert_eq!(store.seed_official_services_if_empty("t").unwrap(), 7);
+        // 官方 seed：预置全部插件原生服务（UV-035 聚合,数量随嵌入副本联动,防硬编码漂移）;重复 seed 幂等
+        let official_count = official_native_services().len();
+        assert!(official_count >= 7, "官方原生服务种子不应少于 7");
+        assert_eq!(store.seed_official_services_if_empty("t").unwrap(), official_count);
         assert_eq!(store.seed_official_services_if_empty("t").unwrap(), 0, "重复 seed 应幂等");
 
         // 平台官方目录对任意租户可见
         let platform = store.list_services("tenant_a").unwrap();
-        assert_eq!(platform.len(), 7);
+        assert_eq!(platform.len(), official_count);
         let llm = store.get_service("llm_advisor").unwrap().unwrap();
         assert!(llm.sensitive, "llm_advisor 应标记 sensitive（C6）");
         assert_eq!(llm.scope, "platform");
@@ -3939,9 +3941,12 @@ mod tests {
         assert_eq!(got.version, "1.2.0");
         assert!(got.sensitive);
 
-        // 租户可见范围 = 官方 7 + 本租户 1；其他租户看不到租户自定义
-        assert_eq!(store.list_services("tenant_a").unwrap().len(), 8);
-        assert_eq!(store.list_services("tenant_b").unwrap().len(), 7);
+        // 租户可见范围 = 官方全量 + 本租户 1；其他租户看不到租户自定义
+        assert_eq!(
+            store.list_services("tenant_a").unwrap().len(),
+            official_count + 1
+        );
+        assert_eq!(store.list_services("tenant_b").unwrap().len(), official_count);
 
         // 平台官方条目可被运维更新（seed 只在空目录时补齐，不覆盖既有）
         let mut e = store.get_service("llm_advisor").unwrap().unwrap();
