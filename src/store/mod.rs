@@ -76,6 +76,9 @@ pub enum StoreError {
     #[error("版本 diff 区间非法: from=`{from}` to=`{to}`（需均存在于版本链且 from 先于 to）")]
     InvalidDiffRange { from: String, to: String },
 
+    #[error("历史版本 `{version}` 无内容快照（B4 快照落库启用前升版产生的存量版本，当时内容未留档，显式拒绝不伪造）")]
+    VersionSnapshotMissing { dataset: String, version: String },
+
     #[error("条目版本不存在: dataset=`{dataset}` entry=`{entry}` version=`{version}`")]
     EntryVersionNotFound { dataset: String, entry: String, version: u32 },
 
@@ -360,6 +363,27 @@ impl RuleStore {
                 FOREIGN KEY (dataset_id) REFERENCES datasets(dataset_id)
             );
             CREATE INDEX IF NOT EXISTS idx_dsver_ds ON dataset_versions(dataset_id, version);
+
+            -- B4（段B 14 号）：版本级全量条目快照 —— 历史版本导出的内容源。
+            -- 与 entry_snapshots(C1，仅 rule_body)/dataset_versions(仅归因哈希) 互补：
+            -- 存完整条目 JSON，足以重建导出所需的 provenance/domain/tags/绑定治理上下文。
+            -- 实施计划（14 号 B4）原命名 entry_snapshots 与 C1 去重表重名，故定名 dataset_version_snapshots。
+            -- 幂等：同 (dataset, version, entry) 覆盖不重复（重复推进不重复存储）。
+            -- 磁盘占用说明：每行 ≈ 条目 JSON 体积；跨版本未变条目按条目仍各留一行（归因清晰优先于
+            -- 物理去重，物理去重由 C1 entry_snapshots 承担；存储层后续项再收敛），O(版本数 × 条目数)。
+            CREATE TABLE IF NOT EXISTS dataset_version_snapshots (
+                dataset_id   TEXT NOT NULL,
+                version      TEXT NOT NULL,               -- 数据集版本号（升版时刻的旧版本 = 留档对象）
+                entry_id     TEXT NOT NULL,
+                kind         TEXT NOT NULL,               -- rule | knowledge
+                content_hash TEXT NOT NULL,               -- 与 dataset_versions.entry_hash 同源（BLAKE3）
+                content_json TEXT NOT NULL,               -- 完整条目 JSON（RuleEntry / KnowledgeEntry）
+                created_by   TEXT NOT NULL,
+                created_at   TEXT NOT NULL,
+                PRIMARY KEY (dataset_id, version, entry_id),
+                FOREIGN KEY (dataset_id) REFERENCES datasets(dataset_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_dvsnap_ver ON dataset_version_snapshots(dataset_id, version);
 
             -- 37 号 §8：LLM 命名操作审计（"LLM 每步可审计"）
             CREATE TABLE IF NOT EXISTS llm_op_audit (
@@ -887,6 +911,10 @@ impl RuleStore {
         // 元数据更新时间
         ds.meta.updated_at = Some(at.into());
         ds.meta.updated_by = Some(by.into());
+        // 内容归因落库（45 号批次1）+ 版本级全量条目快照落库（B4 段B：解锁历史版本导出）。
+        // POST-bump 前当前 entries = 旧版本内容；先收集（list_* 内部自行加锁）再持锁写库。
+        let rule_entries = self.list_entries(dataset_id, None)?;
+        let knowledge_entries = self.list_knowledge_entries(dataset_id, None)?;
         let conn = self.conn.lock().unwrap();
         conn.execute(
             "UPDATE datasets SET versioning=?1, lifecycle=?2, meta=?3 WHERE dataset_id=?4",
@@ -897,27 +925,53 @@ impl RuleStore {
                 dataset_id,
             ],
         )?;
-        // 内容归因落库（45 号批次1）：记录"旧版本含哪些条目快照"（POST-bump 前当前 entries = 旧版本内容）。
-        // 跨版本未变内容复用同一 snapshot，归因行按 (version, content_hash) 唯一，可在多版本出现。
-        // Q12 R3：union 规则条目与数据条目两表（平行表归因口径一致）。
-        let rows: Vec<(String, String)> = conn
-            .prepare(
-                "SELECT entry_id, content_hash FROM entries WHERE dataset_id=?1
-                 UNION ALL
-                 SELECT entry_id, content_hash FROM knowledge_entries WHERE dataset_id=?1
-                 ORDER BY entry_id",
-            )?
-            .query_map(params![dataset_id], |r| {
-                Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
-            })?
-            .collect::<Result<_, _>>()?;
+        // 归因行（45 号批次1）：记录"旧版本含哪些条目快照"；跨版本未变内容复用同哈希，
+        // 归因行按 (version, content_hash) 唯一（与 pg.rs 幂等口径一致）。
         {
             let mut stmt = conn.prepare(
                 "INSERT INTO dataset_versions (dataset_id, version, entry_hash, entry_id, created_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                 VALUES (?1, ?2, ?3, ?4, ?5)
+                 ON CONFLICT(dataset_id, version, entry_hash) DO NOTHING",
             )?;
-            for (entry_id, content_hash) in rows {
-                stmt.execute(params![dataset_id, old_version, content_hash, entry_id, at])?;
+            for e in &rule_entries {
+                stmt.execute(params![dataset_id, old_version, e.content_hash(), e.entry_id, at])?;
+            }
+            for e in &knowledge_entries {
+                stmt.execute(params![dataset_id, old_version, e.content_hash(), e.entry_id, at])?;
+            }
+        }
+        // 全量条目快照（B4）：完整条目 JSON 落库（含 provenance/domain/tags/绑定），
+        // 历史版本导出据此重建；同 (dataset, version, entry) 幂等，重复推进不重复存储。
+        {
+            let mut stmt = conn.prepare(
+                "INSERT INTO dataset_version_snapshots
+                    (dataset_id, version, entry_id, kind, content_hash, content_json, created_by, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+                 ON CONFLICT(dataset_id, version, entry_id) DO NOTHING",
+            )?;
+            for e in &rule_entries {
+                stmt.execute(params![
+                    dataset_id,
+                    old_version,
+                    e.entry_id,
+                    "rule",
+                    e.content_hash(),
+                    serde_json::to_string(e)?,
+                    by,
+                    at,
+                ])?;
+            }
+            for e in &knowledge_entries {
+                stmt.execute(params![
+                    dataset_id,
+                    old_version,
+                    e.entry_id,
+                    "knowledge",
+                    e.content_hash(),
+                    serde_json::to_string(e)?,
+                    by,
+                    at,
+                ])?;
             }
         }
         Ok(new_version)
@@ -2173,6 +2227,81 @@ impl RuleStore {
                 ))
             }
         }
+    }
+
+    /// 按任意链内版本导出快照包（B4 段B：解除"MVP 仅当前版本"限制）。
+    ///
+    /// - 当前版本 → 活条目导出（同 [`Self::export_bundle`]）；
+    /// - 历史版本 → `dataset_version_snapshots` 全量快照重建（升版时刻留档，与当时内容一致）；
+    /// - 版本不在链中 → `DatasetNotFound` 语义不适用，走 `VersionSnapshotMissing` 前先校验链；
+    /// - 历史版本无快照（B4 启用前升版的存量库）→ `VersionSnapshotMissing` 显式拒绝，不伪造。
+    pub fn export_bundle_at(
+        &self,
+        dataset_id: &str,
+        version: &str,
+        tests: &BundleTests,
+        by: &str,
+        at: &str,
+        instance_id: &str,
+    ) -> Result<DatasetBundle, StoreError> {
+        let ds = self.get_dataset(dataset_id)?
+            .ok_or_else(|| StoreError::DatasetNotFound(dataset_id.into()))?;
+        if !ds.versioning.chain.iter().any(|v| v == version) {
+            return Err(StoreError::VersionSnapshotMissing {
+                dataset: dataset_id.into(),
+                version: version.into(),
+            });
+        }
+        if ds.versioning.current == version {
+            return self.export_bundle(dataset_id, tests, by, at, instance_id);
+        }
+        let mut rules = Vec::new();
+        let mut knowledges = Vec::new();
+        {
+            let conn = self.conn.lock().unwrap();
+            let mut stmt = conn.prepare(
+                "SELECT kind, content_json FROM dataset_version_snapshots
+                 WHERE dataset_id=?1 AND version=?2 ORDER BY entry_id",
+            )?;
+            let rows = stmt
+                .query_map(params![dataset_id, version], |r| {
+                    Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            for (kind, json) in rows {
+                match kind.as_str() {
+                    "rule" => rules.push(serde_json::from_str::<RuleEntry>(&json)?),
+                    "knowledge" => knowledges.push(serde_json::from_str::<KnowledgeEntry>(&json)?),
+                    other => {
+                        return Err(StoreError::Validation(ValidationError::Message(format!(
+                            "快照条目类型非法: {other}"
+                        ))))
+                    }
+                }
+            }
+        }
+        let empty = rules.is_empty() && knowledges.is_empty();
+        if empty {
+            return Err(StoreError::VersionSnapshotMissing {
+                dataset: dataset_id.into(),
+                version: version.into(),
+            });
+        }
+        // 导出面以历史版本为 source_version（发布单位 = 数据集版本，决策点②）；
+        // 生命周期/元数据为只读映射，不回写。
+        let mut ds_hist = ds;
+        ds_hist.versioning.current = version.to_string();
+        let catalog: std::collections::BTreeMap<String, ServiceCatalogEntry> = self
+            .list_services(&ds_hist.tenant_id)?
+            .into_iter()
+            .map(|e| (e.service_name.clone(), e))
+            .collect();
+        Ok(match ds_hist.dataset_kind {
+            DatasetKind::RuleSet => BundleExporter::export(&ds_hist, &rules, tests, by, at, instance_id, &catalog),
+            DatasetKind::Knowledge => {
+                BundleExporter::export_knowledge(&ds_hist, &knowledges, tests, by, at, instance_id, &catalog)
+            }
+        })
     }
 
     // ------------------------------------------------------------------
@@ -4261,6 +4390,109 @@ mod tests {
             err,
             StoreError::Version(VersionError::ChainTailMismatch { .. })
         ));
+    }
+
+    // B4（段B 14 号）：版本级全量条目快照落库 + 历史版本导出
+
+    #[test]
+    fn test_b4_snapshot_written_at_bump_and_historical_export() {
+        use crate::bundle::BundleTests;
+        let store = RuleStore::in_memory().unwrap();
+        store.create_dataset(&tax_dataset()).unwrap();
+        let entry = draft_entry();
+        store.add_entry(&entry).unwrap();
+        // 当前版本（v1）活条目导出基线
+        let live = store
+            .export_bundle("ds-tax-2024", &BundleTests::unverified(), "u", "t", "inst")
+            .unwrap();
+        // 升版 v1 → v2：v1 内容留档
+        store
+            .create_dataset_version("ds-tax-2024", BumpKind::Major, "eng", "t")
+            .unwrap();
+        // 快照落库：v1 含 1 条 rule 快照，content_hash 与活条目同源
+        let (count, hash): (i64, String) = store
+            .conn
+            .lock()
+            .unwrap()
+            .query_row(
+                "SELECT COUNT(*), MAX(content_hash) FROM dataset_version_snapshots
+                 WHERE dataset_id=?1 AND version='v1'",
+                params!["ds-tax-2024"],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+        assert_eq!(hash, entry.content_hash());
+        // v2 加新条目后再升版：重复推进不重复存储（幂等）
+        let mut e2 = draft_entry();
+        e2.entry_id = "tax-002".into();
+        store.add_entry(&e2).unwrap();
+        store
+            .create_dataset_version("ds-tax-2024", BumpKind::Patch, "eng", "t")
+            .unwrap();
+        store
+            .create_dataset_version("ds-tax-2024", BumpKind::Patch, "eng", "t")
+            .unwrap();
+        let count: i64 = store
+            .conn
+            .lock()
+            .unwrap()
+            .query_row(
+                "SELECT COUNT(*) FROM dataset_version_snapshots WHERE dataset_id=?1 AND version='v1'",
+                params!["ds-tax-2024"],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1, "重复升版不得为 v1 重复落快照");
+        // 历史版本导出：source_version=v1、条目内容与当时逐字段一致
+        let hist = store
+            .export_bundle_at("ds-tax-2024", "v1", &BundleTests::unverified(), "u", "t", "inst")
+            .unwrap();
+        assert_eq!(hist.dataset.versioning.current, "v1");
+        assert_eq!(hist.entries.len(), 1);
+        assert_eq!(hist.entries[0].entry_id, entry.entry_id);
+        assert_eq!(hist.entries[0].rule_body, entry.rule_body);
+        assert_eq!(hist.entries[0].provenance, entry.provenance);
+        // 与活条目导出（升版前基线）条目集合逐字段一致（整包哈希不可比：版本链不同）
+        assert_eq!(hist.entries, live.entries);
+        // 当前版本导出仍走活条目路径
+        let cur = store
+            .export_bundle_at("ds-tax-2024", "v2.p1", &BundleTests::unverified(), "u", "t", "inst")
+            .unwrap();
+        assert_eq!(cur.entries.len(), 2);
+    }
+
+    #[test]
+    fn test_b4_legacy_version_without_snapshot_rejected_and_unknown_version() {
+        use crate::bundle::BundleTests;
+        let store = RuleStore::in_memory().unwrap();
+        store.create_dataset(&tax_dataset()).unwrap();
+        store.add_entry(&draft_entry()).unwrap();
+        store
+            .create_dataset_version("ds-tax-2024", BumpKind::Major, "eng", "t")
+            .unwrap();
+        // 模拟 B4 启用前的存量库：升版产生的快照行不存在 → 显式拒绝，不伪造
+        store
+            .conn
+            .lock()
+            .unwrap()
+            .execute(
+                "DELETE FROM dataset_version_snapshots WHERE dataset_id=?1 AND version='v1'",
+                params!["ds-tax-2024"],
+            )
+            .unwrap();
+        let err = store
+            .export_bundle_at("ds-tax-2024", "v1", &BundleTests::unverified(), "u", "t", "inst")
+            .unwrap_err();
+        assert!(
+            matches!(err, StoreError::VersionSnapshotMissing { .. }),
+            "{err}"
+        );
+        // 版本不在链中 → 同样显式拒绝
+        let err = store
+            .export_bundle_at("ds-tax-2024", "v9", &BundleTests::unverified(), "u", "t", "inst")
+            .unwrap_err();
+        assert!(matches!(err, StoreError::VersionSnapshotMissing { .. }));
     }
 
     #[test]

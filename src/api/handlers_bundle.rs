@@ -1,6 +1,7 @@
 //! 快照包端点（44 号 §6 bundles/；36 号 集成契约）
 //!
-//! - 导出：按版本导出（MVP 仅当前版本有内容，历史版本显式拒绝不伪造）+ 裁剪视图导出（36 号 §5）；
+//! - 导出：按版本导出（当前版本走活条目；历史版本走 B4 快照重建，无快照显式拒绝不伪造）
+//!   + 裁剪视图导出（36 号 §5）；
 //! - 导入：5 步校验链（schema→防篡改→符号三方一致→版本解析→闸门一），硬失败不静默（35 号 §9）；
 //! - 导入预检（dry-run，不落库）+ 导入状态（MVP 同步，状态端点如实标注）。
 
@@ -28,7 +29,8 @@ pub struct ExportQuery {
 /// - 无 subset：按版本导出快照包；
 /// - subset=tag:core：裁剪视图导出（仅保留命中条目 + 依赖收缩，view_of 指向原版本）。
 ///
-/// MVP 仅存当前版本条目内容：`ver != current` 显式拒绝，不伪造历史内容。
+/// 当前版本走活条目导出；历史版本走 B4 快照重建（`dataset_version_snapshots`），
+/// 无快照的存量历史版本显式拒绝，不伪造历史内容。
 ///
 /// **T0 决策（2026-08-24）**：GET 无法承载 tests 数组 → 无证据导出统一显式 `unverified()`（verdict=fail），
 /// 不默认 Pass；带真实沙箱证据的导出走 `POST /bundles/export`（T0 决策：矛盾 A 推荐方案）。
@@ -45,17 +47,9 @@ pub async fn export_version(
     if ds.tenant_id != ctx.tenant_id {
         return Err(ApiError::not_found("数据集不存在"));
     }
-    if !ds.versioning.chain.iter().any(|v| v == &ver) {
-        return Err(ApiError::not_found(format!("版本 `{ver}` 不在版本链中")));
-    }
-    if ds.versioning.current != ver {
-        return Err(ApiError::bad_request(format!(
-            "MVP 仅存当前版本 `{}` 条目内容，无法导出历史版本 `{ver}`（批次 1 快照落库后支持）",
-            ds.versioning.current
-        )));
-    }
-    let bundle = state.store.export_bundle(
+    let bundle = state.store.export_bundle_at(
         &id,
+        &ver,
         &BundleTests::unverified(),
         &ctx.user_id,
         &iso_from_unix(unix_now()),
@@ -71,7 +65,7 @@ pub async fn export_version(
 #[derive(Deserialize)]
 pub struct ExportReq {
     pub dataset_id: String,
-    /// 要导出的版本（MVP 仅当前版本有内容，历史版本显式拒绝）
+    /// 要导出的版本（当前版本走活条目；历史版本走 B4 快照重建）
     pub version: String,
     /// 真实沙箱验证证据（闸门一产出，测试工作台跑完直接带入；不新增治理存储模型）
     pub tests: BundleTests,
@@ -97,17 +91,9 @@ pub async fn export_with_tests(
     if ds.tenant_id != ctx.tenant_id {
         return Err(ApiError::not_found("数据集不存在"));
     }
-    if !ds.versioning.chain.iter().any(|v| v == &req.version) {
-        return Err(ApiError::not_found(format!("版本 `{}` 不在版本链中", req.version)));
-    }
-    if ds.versioning.current != req.version {
-        return Err(ApiError::bad_request(format!(
-            "MVP 仅存当前版本 `{}` 条目内容，无法导出历史版本 `{}`（批次 1 快照落库后支持）",
-            ds.versioning.current, req.version
-        )));
-    }
-    let bundle = state.store.export_bundle(
+    let bundle = state.store.export_bundle_at(
         &req.dataset_id,
+        &req.version,
         &req.tests,
         &ctx.user_id,
         &iso_from_unix(unix_now()),

@@ -9,7 +9,7 @@ use serde_json::Value;
 use crate::api::handlers_auth::now_iso;
 use crate::api::{paginate, AppState, ApiError, AuthContext, Page, PageQuery};
 use crate::llm_client::{LlmClient, LlmOpRequest, Operation};
-use crate::model::auth::{Action, Role, can, is_org_admin};
+use crate::model::auth::{Action, can, is_org_admin};
 use crate::model::llm_audit::{LlmAuditFilter, LlmAuditStats, LlmOpAudit};
 
 /// 解析路径中的操作名

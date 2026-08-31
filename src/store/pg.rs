@@ -684,6 +684,64 @@ impl PgStore {
         Ok(out)
     }
 
+    // ------------------------------------------------------------------
+    // B4 段B：版本级全量条目快照（dataset_version_snapshots，对齐 store/mod.rs 语义）。
+    // 建表归属 PG 迁移脚本（45 号 §5，治理数据 MVP 仍 SQLite），此处仅提供读写方法。
+    // ------------------------------------------------------------------
+
+    /// 写一批版本级全量条目快照（幂等：同 (dataset, version, entry) 覆盖不重复）。
+    #[allow(clippy::too_many_arguments)]
+    pub async fn record_version_snapshot_row(
+        &self,
+        dataset_id: &str,
+        version: &str,
+        entry_id: &str,
+        kind: &str,
+        content_hash: &str,
+        content_json: &str,
+        created_by: &str,
+        created_at: &str,
+    ) -> Result<(), PgError> {
+        sqlx::query(
+            "INSERT INTO dataset_version_snapshots
+                (dataset_id, version, entry_id, kind, content_hash, content_json, created_by, created_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+             ON CONFLICT (dataset_id, version, entry_id) DO NOTHING",
+        )
+        .bind(dataset_id)
+        .bind(version)
+        .bind(entry_id)
+        .bind(kind)
+        .bind(content_hash)
+        .bind(content_json)
+        .bind(created_by)
+        .bind(created_at)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// 读取某数据集某版本的全量条目快照（kind + 完整条目 JSON，entry_id 序）。
+    pub async fn get_version_snapshots(
+        &self,
+        dataset_id: &str,
+        version: &str,
+    ) -> Result<Vec<(String, String, String)>, PgError> {
+        let rows = sqlx::query(
+            "SELECT entry_id, kind, content_json FROM dataset_version_snapshots
+             WHERE dataset_id = $1 AND version = $2 ORDER BY entry_id",
+        )
+        .bind(dataset_id)
+        .bind(version)
+        .fetch_all(&self.pool)
+        .await?;
+        let mut out = Vec::with_capacity(rows.len());
+        for r in rows {
+            out.push((r.get("entry_id"), r.get("kind"), r.get("content_json")));
+        }
+        Ok(out)
+    }
+
     /// 记录条目状态迁移（only-append 审计，对齐 store/mod.rs 的 StateChange Debug 序列化）。
     pub async fn record_entry_state(
         &self,

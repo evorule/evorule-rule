@@ -33,6 +33,10 @@ pub enum ValidationError {
 
     #[error("发布前凭据静态扫描未通过：命中疑似凭据 {hits:?}（35 号 §6/§9-3：凭据永不入规则资产库）")]
     CredentialScanFailed { hits: Vec<String> },
+
+    /// 通用校验失败（自描述消息；供存储层零散校验点复用，避免为单一场景扩枚举）
+    #[error("{0}")]
+    Message(String),
 }
 
 /// 凭据静态扫描（35 号 §6/§9-3 强约束 MVP 手段）：

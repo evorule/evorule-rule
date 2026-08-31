@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::api::handlers_auth::now_iso;
 use crate::api::{paginate, AppState, ApiError, AuthContext, Page, PageQuery};
-use crate::model::auth::{ApiKey, Role, is_org_admin};
+use crate::model::auth::{ApiKey, is_org_admin};
 
 #[derive(Deserialize)]
 pub struct CreateKeyReq {
