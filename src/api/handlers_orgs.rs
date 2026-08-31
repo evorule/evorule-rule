@@ -47,11 +47,20 @@ pub async fn create_org(
         return Err(ApiError::bad_request("org_id 与 name 均不可为空"));
     }
     let org = Org {
-        org_id,
+        org_id: org_id.clone(),
         name: req.name.trim().to_string(),
         disabled: false,
         created_at: crate::api::handlers_auth::now_iso(),
     };
+    // 双层落地一致性：orgs 与 tenants 必须同建——登录前置校验查 tenants 表
+    // （缺 tenants 行 → TenantNotFound → 401"用户名或密码错误"，平台创建的组织
+    // 永远无法登录；总验收 E2E 实测发现的 B1 缺陷，2026-08-31 修复）
+    state.store.ensure_default_tenant(
+        &org.org_id,
+        &org.name,
+        &state.instance_id,
+        &org.created_at,
+    )?;
     state.store.create_org(&org)?;
     state.auth.record_audit(
         &state.store,
