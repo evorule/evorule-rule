@@ -1901,6 +1901,7 @@ mod tests {
                     template: None,
                 }],
             }),
+            event_schemas: vec![],
             meta: crate::model::dataset::Meta {
                 created_at: "2026-08-01T00:00:00Z".into(),
                 created_by: "eng".into(),
@@ -2030,6 +2031,7 @@ mod tests {
             law_ref: None,
             version_selection: None,
             data_dependencies: None,
+            event_schemas: vec![],
             meta: crate::model::dataset::Meta {
                 created_at: "2026-08-30T00:00:00Z".into(),
                 created_by: "test".into(),

@@ -532,6 +532,8 @@ impl RuleStore {
         let _ = conn.execute("ALTER TABLE entries ADD COLUMN consumed_inputs TEXT NOT NULL DEFAULT '[]'", []);
         // Q12 数据资产化 R1：datasets 表补 dataset_kind 列（存量默认 rule_set，零迁移成本）
         let _ = conn.execute("ALTER TABLE datasets ADD COLUMN dataset_kind TEXT NOT NULL DEFAULT 'rule_set'", []);
+        // B5（段B 14 号）：datasets 表补 event_schemas 列（JSON 数组，存量默认 '[]'，零迁移成本）
+        let _ = conn.execute("ALTER TABLE datasets ADD COLUMN event_schemas TEXT NOT NULL DEFAULT '[]'", []);
         // Q12 数据资产化 R3：knowledge 条目平行表（方案 D 定案：rule 查询热路径零扰动）
         conn.execute_batch(
             r#"
@@ -621,8 +623,8 @@ impl RuleStore {
         conn.execute(
             "INSERT INTO datasets
                (dataset_id, tenant_id, name, description, dataset_kind, domain, tags, visibility,
-                lifecycle, versioning, law_ref, version_selection, data_dependencies, meta)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+                lifecycle, versioning, law_ref, version_selection, data_dependencies, event_schemas, meta)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
             params![
                 ds.dataset_id,
                 ds.tenant_id,
@@ -643,6 +645,7 @@ impl RuleStore {
                     .as_ref()
                     .map(serde_json::to_string)
                     .transpose()?,
+                serde_json::to_string(&ds.event_schemas)?,
                 serde_json::to_string(&ds.meta)?,
             ],
         )?;
@@ -654,13 +657,14 @@ impl RuleStore {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
             "SELECT dataset_id, tenant_id, name, description, dataset_kind, domain, tags, visibility,
-                    lifecycle, versioning, law_ref, version_selection, data_dependencies, meta
+                    lifecycle, versioning, law_ref, version_selection, data_dependencies, event_schemas, meta
              FROM datasets WHERE dataset_id = ?1",
         )?;
         let mut rows = stmt.query_map(params![dataset_id], |r| {
             let lifecycle: String = r.get(8)?;
             let versioning: String = r.get(9)?;
-            let meta: String = r.get(13)?;
+            let event_schemas: String = r.get(13)?;
+            let meta: String = r.get(14)?;
             Ok((
                 r.get::<_, String>(0)?,
                 r.get::<_, String>(1)?,
@@ -675,6 +679,7 @@ impl RuleStore {
                 r.get::<_, Option<String>>(10)?,
                 r.get::<_, Option<String>>(11)?,
                 r.get::<_, Option<String>>(12)?,
+                event_schemas,
                 meta,
             ))
         })?;
@@ -696,6 +701,7 @@ impl RuleStore {
             law_ref,
             version_selection,
             data_dependencies,
+            event_schemas,
             meta,
         ) = row?;
 
@@ -717,6 +723,7 @@ impl RuleStore {
             data_dependencies: data_dependencies
                 .map(|s| serde_json::from_str(&s))
                 .transpose()?,
+            event_schemas: serde_json::from_str(&event_schemas)?,
             meta: serde_json::from_str(&meta)?,
         }))
     }
@@ -727,8 +734,8 @@ impl RuleStore {
         let n = conn.execute(
             "UPDATE datasets SET name=?1, description=?2, domain=?3, tags=?4, visibility=?5,
                     lifecycle=?6, versioning=?7, law_ref=?8, version_selection=?9,
-                    data_dependencies=?10, meta=?11
-             WHERE dataset_id=?12",
+                    data_dependencies=?10, event_schemas=?11, meta=?12
+             WHERE dataset_id=?13",
             params![
                 ds.name,
                 ds.description,
@@ -747,6 +754,7 @@ impl RuleStore {
                     .as_ref()
                     .map(serde_json::to_string)
                     .transpose()?,
+                serde_json::to_string(&ds.event_schemas)?,
                 serde_json::to_string(&ds.meta)?,
                 ds.dataset_id,
             ],
@@ -3150,6 +3158,8 @@ impl RuleStore {
                 e.law_ref = bundle.dataset.law_ref.clone();
                 e.version_selection = bundle.dataset.version_selection.clone();
                 e.data_dependencies = bundle.data_dependencies.clone();
+                // B5：事件声明随包覆盖（导入 = 版本整体替换语义）
+                e.event_schemas = bundle.dataset.event_schemas.clone();
                 e.lifecycle.status = LifecycleStatus::Active;
                 e.lifecycle.state_history.push(StateChange {
                     from: format!("{:?}", e.lifecycle.status),
@@ -3193,6 +3203,7 @@ impl RuleStore {
                 law_ref: bundle.dataset.law_ref.clone(),
                 version_selection: bundle.dataset.version_selection.clone(),
                 data_dependencies: bundle.data_dependencies.clone(),
+                event_schemas: bundle.dataset.event_schemas.clone(),
                 meta: Meta {
                     created_at: at.into(),
                     created_by: by.into(),
@@ -3841,6 +3852,7 @@ mod tests {
                     template: None,
                 }],
             }),
+            event_schemas: vec![],
             meta: crate::model::Meta {
                 created_at: "t".into(),
                 created_by: "u".into(),
@@ -4316,6 +4328,62 @@ mod tests {
     }
 
     #[test]
+    fn test_event_schemas_export_import_roundtrip_and_reject() {
+        // B5 测试门（段B 14 号）：事件声明经导出/导入往返一致；非法 schema_ref 导入拒绝
+        use crate::bundle::{BundleTests, TestVerdict};
+        use crate::model::dependency::{EventDirection, EventSchemaDecl};
+        let (store, dir) = file_store_with_body_schema();
+        let uri = "https://evorule.dev/domain/rpsm-body.json";
+        let mut ds = tax_dataset();
+        ds.event_schemas = vec![EventSchemaDecl {
+            name: "payroll_event".into(),
+            schema_ref: uri.into(),
+            direction: EventDirection::Push,
+            description: Some("工资触发事件".into()),
+        }];
+        // 导入校验 auto 模式需生效基准
+        ds.law_ref = Some(crate::model::version::LawRef {
+            document_id: "gov-tax-2023-001".into(),
+            law_version: None,
+            effective_from: Some("2024-01-01".into()),
+            effective_to: None,
+        });
+        store.create_dataset(&ds).unwrap();
+        store.add_entry(&draft_entry()).unwrap();
+        // 持久化读回：声明不丢
+        assert_eq!(store.get_dataset("ds-tax-2024").unwrap().unwrap().event_schemas.len(), 1);
+        // 导出：声明随 manifest 携带
+        let bundle = store
+            .export_bundle(
+                "ds-tax-2024",
+                &BundleTests { subset: vec![], fixtures: vec![], verdict: TestVerdict::Pass },
+                "publisher-01",
+                "2026-08-31T12:00:00Z",
+                "org-evorule",
+            )
+            .unwrap();
+        assert_eq!(bundle.dataset.event_schemas.len(), 1);
+        assert_eq!(bundle.dataset.event_schemas[0].schema_ref, uri);
+        // 导入（另一 store）：往返一致
+        let (store2, dir2) = file_store_with_body_schema();
+        let r = store2.import_bundle(&bundle, "org-x", "u", "t", "inst").unwrap();
+        assert_eq!(r.entry_count, 1);
+        let got = store2.get_dataset("ds-tax-2024").unwrap().unwrap();
+        assert_eq!(got.event_schemas, ds.event_schemas);
+        // 非法 schema_ref（未注册）→ store 导入显式拒绝（fail-fast，不静默放行）
+        let mut bad = bundle.clone();
+        bad.dataset.event_schemas[0].schema_ref = "no-such-schema".into();
+        bad.audit.content_hash = bad.compute_content_hash();
+        let err = store2.import_bundle(&bad, "org-x", "u", "t", "inst").unwrap_err();
+        assert!(matches!(
+            err,
+            StoreError::Bundle(BundleError::EventSchemaNotResolved { .. })
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&dir2);
+    }
+
+    #[test]
     fn test_symbol_consistency_enforced_at_store() {
         let store = RuleStore::in_memory().unwrap();
         store.create_dataset(&tax_dataset()).unwrap();
@@ -4753,6 +4821,7 @@ mod tests {
             law_ref: None,
             version_selection: None,
             data_dependencies: None,
+            event_schemas: vec![],
             meta: crate::model::Meta {
                 created_at: "t".into(),
                 created_by: "u".into(),

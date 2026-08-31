@@ -10,7 +10,8 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 pub use evorule_bundle::dependency::{
-    DataDependencies, InputDecl, IoContract, ServiceDecl, ServiceTemplate, SourceBinding,
+    DataDependencies, EventDirection, EventSchemaDecl, InputDecl, IoContract, ServiceDecl,
+    ServiceTemplate, SourceBinding,
 };
 
 /// 服务模板注册记录（44 号 §7 deps/templates；35 号 §5 无凭据模板）

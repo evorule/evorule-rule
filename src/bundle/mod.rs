@@ -126,6 +126,8 @@ impl BundleExporter {
                 version_selection: dataset.version_selection.clone(),
                 law_ref: dataset.law_ref.clone(),
                 view_of: None,
+                // B5：数据集级 push 事件声明随包携带（导入侧 resolver 门禁强校验）
+                event_schemas: dataset.event_schemas.clone(),
             },
             entries,
             data_dependencies: enriched_deps,

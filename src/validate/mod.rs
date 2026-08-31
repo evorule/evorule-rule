@@ -250,6 +250,7 @@ mod tests {
                     template: None,
                 }],
             }),
+            event_schemas: vec![],
             meta: crate::model::Meta {
                 created_at: "t".into(),
                 created_by: "u".into(),

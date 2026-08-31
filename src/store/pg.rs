@@ -84,6 +84,7 @@ impl PgStore {
             dataset_id: ds_id.clone(),
             name: "冒烟数据集".into(),
             description: Some("45 号最小接线自检".into()),
+            dataset_kind: Default::default(),
             domain: vec!["smoke".into()],
             tags: vec![],
             tenant_id: tenant.clone(),
@@ -93,6 +94,7 @@ impl PgStore {
             law_ref: None,
             version_selection: None,
             data_dependencies: None,
+            event_schemas: vec![],
             meta: crate::model::dataset::Meta {
                 created_at: "2026-08-22T00:00:01Z".into(),
                 created_by: "smoke".into(),
@@ -199,6 +201,7 @@ impl PgStore {
             dataset_id,
             name,
             description,
+            dataset_kind: Default::default(),
             domain,
             tags,
             tenant_id,
@@ -208,6 +211,7 @@ impl PgStore {
             law_ref,
             version_selection,
             data_dependencies,
+            event_schemas: vec![],
             meta,
         }))
     }
@@ -944,6 +948,7 @@ mod tests {
             dataset_id: id.to_string(),
             name: format!("ds-{id}"),
             description: Some("P4 集成样本".into()),
+            dataset_kind: Default::default(),
             domain: vec!["tax".into(), "cn".into()],
             tags: vec!["test".into()],
             tenant_id: tenant.to_string(),
@@ -953,6 +958,7 @@ mod tests {
             law_ref: None,
             version_selection: None,
             data_dependencies: None,
+            event_schemas: vec![],
             meta: Meta {
                 created_at: "2026-08-22T00:00:00Z".into(),
                 created_by: "u-1".into(),

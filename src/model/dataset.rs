@@ -6,7 +6,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::dependency::DataDependencies;
+use super::dependency::{DataDependencies, EventSchemaDecl};
 use super::lifecycle::Lifecycle;
 use super::version::{LawRef, VersionSelection, Versioning};
 
@@ -99,6 +99,11 @@ pub struct RuleDataset {
     /// 数据依赖声明（决策点⑤，完整 schema 在 35 号）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub data_dependencies: Option<DataDependencies>,
+    /// 数据集级 push 事件 schema 声明（段B B5，14 号）：
+    /// 事件形态契约（name + schema_ref + direction=push），发布 bundle 时随 manifest 携带，
+    /// 导入侧经领域 schema resolver 门禁强校验；缺省空（存量数据集零迁移）。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub event_schemas: Vec<EventSchemaDecl>,
     pub meta: Meta,
 }
 
@@ -122,6 +127,7 @@ mod tests {
             law_ref: None,
             version_selection: None,
             data_dependencies: None,
+            event_schemas: vec![],
             meta: Meta {
                 created_at: "2026-07-01T08:00:00Z".into(),
                 created_by: "knowledge-eng-01".into(),
@@ -132,5 +138,45 @@ mod tests {
         let json = serde_json::to_string_pretty(&ds).unwrap();
         let back: RuleDataset = serde_json::from_str(&json).unwrap();
         assert_eq!(ds, back);
+    }
+
+    #[test]
+    fn test_dataset_event_schemas_roundtrip_and_legacy_default() {
+        // B5：事件声明往返不丢；存量 JSON（无 event_schemas 字段）缺省空，零迁移
+        use crate::model::dependency::EventSchemaDecl;
+        let ds = RuleDataset {
+            event_schemas: vec![EventSchemaDecl {
+                name: "payroll_event".into(),
+                schema_ref: "https://rpsm.evorule.org/schemas/payroll-event/v1.0.json".into(),
+                direction: Default::default(),
+                description: None,
+            }],
+            ..crate::model::dataset::legacy_min_dataset()
+        };
+        let json = serde_json::to_string(&ds).unwrap();
+        let back: RuleDataset = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.event_schemas.len(), 1);
+        assert_eq!(back.event_schemas[0].name, "payroll_event");
+    }
+}
+
+/// 最小存量形态数据集（legacy JSON 反序列化基线，供 B5 兼容测试复用）
+#[cfg(test)]
+pub(crate) fn legacy_min_dataset() -> RuleDataset {
+    let json = r#"{
+        "dataset_id": "ds-legacy", "name": "存量数据集", "tenant_id": "org-evorule",
+        "meta": {"created_at": "2026-01-01T00:00:00Z", "created_by": "u"}
+    }"#;
+    serde_json::from_str(json).unwrap()
+}
+
+#[cfg(test)]
+mod dataset_legacy_tests {
+    use super::*;
+
+    #[test]
+    fn test_legacy_json_without_event_schemas_defaults_empty() {
+        let ds: RuleDataset = crate::model::dataset::legacy_min_dataset();
+        assert!(ds.event_schemas.is_empty());
     }
 }

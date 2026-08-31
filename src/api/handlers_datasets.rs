@@ -98,6 +98,7 @@ pub async fn create_dataset(
         law_ref: req.law_ref,
         version_selection: req.version_selection,
         data_dependencies: None,
+        event_schemas: vec![],
         meta: Meta {
             created_at: now.clone(),
             created_by: ctx.user_id.clone(),

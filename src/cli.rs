@@ -389,6 +389,7 @@ pub fn build_bundle_from_dir(dir: &Path, dataset_override: Option<&str>) -> Resu
                 pinned_include_patch: None,
             }),
             view_of: None,
+            event_schemas: vec![],
         },
         entries,
         data_dependencies: if services.is_empty() {
@@ -545,6 +546,7 @@ mod tests {
                     template: None,
                 }],
             }),
+            event_schemas: vec![],
             meta: Meta { created_at: "t".into(), created_by: "u".into(), updated_at: None, updated_by: None },
         }
     }
