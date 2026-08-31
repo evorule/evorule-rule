@@ -8,8 +8,8 @@
 
 pub use evorule_bundle::{
     BundleAudit, BundleDatasetMeta, BundleEntry, BundleError, BundleImporter, BundleTests,
-    BundleTrimmer, DatasetBundle, DomainSchemaResolver, EntryKind, ImportResult, TestVerdict,
-    ViewRef, BUNDLE_SCHEMA_VERSION,
+    BundleTrimmer, DatasetBundle, DomainSchemaResolver, EntryFilter, EntryKind, ImportResult,
+    TestVerdict, ViewRef, BUNDLE_SCHEMA_VERSION,
 };
 
 use crate::model::dataset::RuleDataset;
@@ -37,20 +37,36 @@ impl BundleExporter {
         instance_id: &str,
         catalog: &std::collections::BTreeMap<String, ServiceCatalogEntry>,
     ) -> DatasetBundle {
-        let bundle_entries = entries
-            .iter()
-            .map(|e| BundleEntry {
-                entry_id: e.entry_id.clone(),
-                entry_kind: EntryKind::Rule,
-                rule_body: e.rule_body.clone(),
-                schema_ref: None,
-                provenance: e.provenance.clone(),
-                domain: e.domain.clone(),
-                tags: e.tags.clone(),
-                dependencies: e.data_source_binding.clone(),
-            })
-            .collect();
+        let bundle_entries = entries.iter().map(Self::rule_entry_to_bundle).collect();
         Self::finish(dataset, bundle_entries, tests, by, at, instance_id, catalog)
+    }
+
+    /// RuleEntry → BundleEntry 映射（导出与 B3 条目查询过滤共用同一视图，防口径漂移）
+    pub fn rule_entry_to_bundle(e: &RuleEntry) -> BundleEntry {
+        BundleEntry {
+            entry_id: e.entry_id.clone(),
+            entry_kind: EntryKind::Rule,
+            rule_body: e.rule_body.clone(),
+            schema_ref: None,
+            provenance: e.provenance.clone(),
+            domain: e.domain.clone(),
+            tags: e.tags.clone(),
+            dependencies: e.data_source_binding.clone(),
+        }
+    }
+
+    /// KnowledgeEntry → BundleEntry 映射（同上，Q12 数据资产条目视图）
+    pub fn knowledge_entry_to_bundle(e: &crate::model::knowledge::KnowledgeEntry) -> BundleEntry {
+        BundleEntry {
+            entry_id: e.entry_id.clone(),
+            entry_kind: EntryKind::Knowledge,
+            rule_body: e.payload.clone(),
+            schema_ref: Some(e.schema_ref.clone()),
+            provenance: e.provenance.clone(),
+            domain: e.domain.clone(),
+            tags: e.tags.clone(),
+            dependencies: vec![],
+        }
     }
 
     /// knowledge 数据集导出（Q12 数据资产化 R5）：数据条目 → `entry_kind=Knowledge` bundle。
@@ -64,19 +80,7 @@ impl BundleExporter {
         instance_id: &str,
         catalog: &std::collections::BTreeMap<String, ServiceCatalogEntry>,
     ) -> DatasetBundle {
-        let bundle_entries = entries
-            .iter()
-            .map(|e| BundleEntry {
-                entry_id: e.entry_id.clone(),
-                entry_kind: EntryKind::Knowledge,
-                rule_body: e.payload.clone(),
-                schema_ref: Some(e.schema_ref.clone()),
-                provenance: e.provenance.clone(),
-                domain: e.domain.clone(),
-                tags: e.tags.clone(),
-                dependencies: vec![],
-            })
-            .collect();
+        let bundle_entries = entries.iter().map(Self::knowledge_entry_to_bundle).collect();
         Self::finish(dataset, bundle_entries, tests, by, at, instance_id, catalog)
     }
 

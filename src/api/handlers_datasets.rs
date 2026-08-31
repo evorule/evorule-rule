@@ -509,6 +509,7 @@ pub async fn list_entries(
     Extension(ctx): Extension<AuthContext>,
     Path(id): Path<String>,
     Query(page): Query<PageQuery>,
+    Query(filter): Query<ListEntriesFilter>,
 ) -> Result<Json<Page<Value>>, ApiError> {
     let ds = state
         .store
@@ -518,21 +519,62 @@ pub async fn list_entries(
         return Err(ApiError::not_found("数据集不存在"));
     }
     // Q12 R4：按数据集类型分流（rule_set → 规则条目；knowledge → 数据条目）
-    let entries: Vec<Value> = match ds.dataset_kind {
-        DatasetKind::RuleSet => state
-            .store
-            .list_entries(&id, None)?
-            .iter()
-            .map(|e| serde_json::to_value(e).unwrap_or(Value::Null))
-            .collect(),
-        DatasetKind::Knowledge => state
-            .store
-            .list_knowledge_entries(&id, None)?
-            .iter()
-            .map(|e| serde_json::to_value(e).unwrap_or(Value::Null))
-            .collect(),
+    // B3（段B 14 号）：filter=... 条目查询表达式（SSOT 过滤核 = evorule-bundle EntryFilter，
+    // 与 bundle subset 语法同族）；过滤视图走 BundleEntry 映射，命中后回留原始 JSON（保留治理上下文）。
+    let (entries, view): (Vec<Value>, Vec<crate::bundle::BundleEntry>) = match ds.dataset_kind {
+        DatasetKind::RuleSet => {
+            let es = state.store.list_entries(&id, None)?;
+            let view = es
+                .iter()
+                .map(crate::bundle::BundleExporter::rule_entry_to_bundle)
+                .collect();
+            let raw = es
+                .iter()
+                .map(|e| serde_json::to_value(e).unwrap_or(Value::Null))
+                .collect();
+            (raw, view)
+        }
+        DatasetKind::Knowledge => {
+            let es = state.store.list_knowledge_entries(&id, None)?;
+            let view = es
+                .iter()
+                .map(crate::bundle::BundleExporter::knowledge_entry_to_bundle)
+                .collect();
+            let raw = es
+                .iter()
+                .map(|e| serde_json::to_value(e).unwrap_or(Value::Null))
+                .collect();
+            (raw, view)
+        }
+    };
+    let entries: Vec<Value> = match filter.filter.as_deref() {
+        None => entries,
+        Some(spec) => {
+            let ids: std::collections::BTreeSet<String> =
+                crate::bundle::EntryFilter::apply(&view, spec)
+                    .map_err(|e| ApiError::bad_request(format!("filter 表达式非法: {e}")))?
+                    .into_iter()
+                    .map(|e| e.entry_id)
+                    .collect();
+            entries
+                .into_iter()
+                .filter(|v| {
+                    v.get("entry_id")
+                        .and_then(|x| x.as_str())
+                        .is_some_and(|s| ids.contains(s))
+                })
+                .collect()
+        }
     };
     Ok(paginate(entries, page.limit, page.offset))
+}
+
+/// B3：条目查询表达式查询参数（与分页参数并存，Query 双提取互不干扰）
+#[derive(Deserialize, Default)]
+pub struct ListEntriesFilter {
+    /// `tag:x` / `domain:x` / `ids:a,b` / `kind:rule|knowledge` / `q:子串`（多段以 ; 分隔，交集）
+    #[serde(default)]
+    pub filter: Option<String>,
 }
 
 pub async fn add_entry(

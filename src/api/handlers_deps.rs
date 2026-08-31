@@ -16,7 +16,7 @@ use serde::Deserialize;
 
 use crate::api::handlers_auth::now_iso;
 use crate::api::{paginate, unix_now, AppState, ApiError, AuthContext, Page, PageQuery};
-use crate::model::auth::{Action, Role, can, is_org_admin};
+use crate::model::auth::{Action, can, is_org_admin};
 use crate::model::dependency::{
     DataDependencies, IoContract, ServiceTemplate, ServiceTemplateRecord,
 };

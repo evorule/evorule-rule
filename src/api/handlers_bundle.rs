@@ -14,7 +14,7 @@ use serde_json::Value;
 use crate::api::{unix_now, AppState, ApiError, AuthContext};
 use crate::auth::iso_from_unix;
 use crate::bundle::{BundleImporter, BundleTests, DatasetBundle};
-use crate::model::auth::{Role, is_org_admin};
+use crate::model::auth::is_org_admin;
 use crate::store::StoreError;
 
 #[derive(Deserialize)]

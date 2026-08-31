@@ -13,6 +13,7 @@
 pub mod api;
 pub mod auth;
 pub mod bundle;
+pub mod cli;
 pub mod llm_client;
 pub mod model;
 pub mod resolve;
