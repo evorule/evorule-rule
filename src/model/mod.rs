@@ -34,7 +34,7 @@ pub use governance::{Governance, LifecycleTimestamps, LlmGenerated};
 pub use lifecycle::{Lifecycle, LifecycleStatus, StateChange};
 pub use llm_audit::{LlmAuditFilter, LlmAuditStats, LlmOpAudit, OperationStat};
 pub use provenance::Provenance;
-pub use service_catalog::{BindingHint, ServiceCatalogEntry, OFFICIAL_NATIVE_SERVICES, official_entry};
+pub use service_catalog::{BindingHint, ServiceCatalogEntry, official_entry, official_native_services};
 pub use version::{
     BumpKind, LawRef, Version, VersionError, VersionSelection, VersionSelectionMode, Versioning,
 };

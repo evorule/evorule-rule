@@ -55,17 +55,42 @@ fn default_version() -> String {
     "1.0.0".into()
 }
 
-/// 官方预置原生服务（SSOT：与 evorule-server demo-services `NATIVE_SERVICE_NAMES` 对齐）。
-/// (service_name, sensitive, description)
-pub const OFFICIAL_NATIVE_SERVICES: &[(&str, bool, &str)] = &[
-    ("inverse_kinematics_solver", false, "机器人逆运动学求解（Phase 1 原生）"),
-    ("robot_move_joints", false, "机器人关节移动（确定性，Phase 1 原生）"),
-    ("llm_advisor", true, "LLM 建议服务（sensitive：涉及外部 LLM API）"),
-    ("shadow_ik_solver", false, "影子 IK 求解（对照验证）"),
-    ("sampling_service", false, "采样服务"),
-    ("rule_sandbox", false, "规则沙箱验证服务"),
-    ("config_persist", false, "规则热加载持久化服务"),
-];
+/// 官方预置原生服务种子（UV-029 声明文件化）。
+///
+/// SSOT = evorule-server 仓 `plugins/demo-services/official_native_services.json`；
+/// 本仓持有嵌入副本 `official_native_services.embedded.json`（由 evorule-server
+/// `scripts/sync-native-services.ps1` 从源仓同步），守卫测试锁定副本合法性与顺序。
+/// 返回 `(service_name, sensitive, description)`；副本损坏即 fail-fast
+/// （嵌入副本属仓内完整性问题，如实报错、不静默跳过）。
+pub fn official_native_services() -> Vec<(String, bool, String)> {
+    let raw = include_str!("official_native_services.embedded.json");
+    let file: serde_json::Value = serde_json::from_str(raw)
+        .expect("official_native_services.embedded.json 非法 JSON — 请在 evorule-server 仓运行 scripts/sync-native-services.ps1 重新同步");
+    let services = file
+        .get("services")
+        .and_then(|v| v.as_array())
+        .expect("嵌入副本缺 services 数组 — 请重新同步嵌入副本");
+    services
+        .iter()
+        .map(|s| {
+            let name = s
+                .get("name")
+                .and_then(|v| v.as_str())
+                .expect("嵌入副本条目缺 name — 请重新同步嵌入副本")
+                .to_string();
+            let sensitive = s
+                .get("sensitive")
+                .and_then(|v| v.as_bool())
+                .expect("嵌入副本条目缺 sensitive — 请重新同步嵌入副本");
+            let description = s
+                .get("description")
+                .and_then(|v| v.as_str())
+                .expect("嵌入副本条目缺 description — 请重新同步嵌入副本")
+                .to_string();
+            (name, sensitive, description)
+        })
+        .collect()
+}
 
 /// 由官方种子生成目录条目（version=1.0.0，binding_hint=Native，宽松契约摘要）
 pub fn official_entry(name: &str, sensitive: bool, description: &str, now: &str) -> ServiceCatalogEntry {
@@ -83,5 +108,37 @@ pub fn official_entry(name: &str, sensitive: bool, description: &str, now: &str)
         scope: "platform".to_string(),
         created_at: now.to_string(),
         updated_at: None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// UV-029 嵌入副本守卫：副本可解析且 schema 合法（字段齐全、非空、name 唯一、
+    /// 顺序稳定 = SSOT 文件序）。与源仓 SSOT 的内容一致性由同步脚本
+    /// （evorule-server `scripts/sync-native-services.ps1`：复制 + 双侧守卫）保证。
+    #[test]
+    fn test_embedded_native_services_copy_valid() {
+        let seed = official_native_services();
+        assert!(!seed.is_empty(), "嵌入副本不应为空");
+        let mut names: Vec<String> = Vec::new();
+        for (name, _, description) in &seed {
+            assert!(!name.is_empty(), "存在空 name 条目");
+            assert!(!description.is_empty(), "{name} 缺 description");
+            names.push(name.clone());
+        }
+        let unique: std::collections::HashSet<&String> = names.iter().collect();
+        assert_eq!(
+            unique.len(),
+            names.len(),
+            "服务名重复 — 嵌入副本与 SSOT 漂移,请重新同步"
+        );
+        // 顺序锁定:首项必须是声明表首服务(路由查找序与目录种子序同源)
+        assert_eq!(
+            names.first().map(String::as_str),
+            Some("inverse_kinematics_solver"),
+            "嵌入副本顺序漂移,请重新同步"
+        );
     }
 }

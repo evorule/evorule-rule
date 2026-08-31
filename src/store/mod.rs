@@ -26,7 +26,7 @@ use crate::model::knowledge::KnowledgeEntry;
 use crate::model::lifecycle::{Lifecycle, LifecycleStatus, StateChange};
 use crate::model::llm_audit::{LlmAuditFilter, LlmAuditStats, LlmOpAudit, OperationStat};
 use crate::model::service_catalog::{
-    OFFICIAL_NATIVE_SERVICES, ServiceCatalogEntry, official_entry,
+    ServiceCatalogEntry, official_entry, official_native_services,
 };
 use crate::model::version::{BumpKind, VersionError, Versioning};
 use crate::validate::{ValidationError, Validator, scan_credentials};
@@ -2780,8 +2780,8 @@ impl RuleStore {
             return Ok(0);
         }
         let mut inserted = 0usize;
-        for (name, sensitive, desc) in OFFICIAL_NATIVE_SERVICES {
-            self.upsert_service(&official_entry(name, *sensitive, desc, now))?;
+        for (name, sensitive, desc) in official_native_services() {
+            self.upsert_service(&official_entry(&name, sensitive, &desc, now))?;
             inserted += 1;
         }
         Ok(inserted)
