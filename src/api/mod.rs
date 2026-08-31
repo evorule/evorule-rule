@@ -33,6 +33,7 @@ pub mod handlers_deps;
 pub mod handlers_entries;
 pub mod handlers_keys;
 pub mod handlers_llm;
+pub mod handlers_orgs;
 pub mod handlers_search;
 pub mod handlers_services;
 
@@ -242,6 +243,16 @@ impl From<crate::store::StoreError> for ApiError {
         match e {
             crate::store::StoreError::DatasetNotFound(id) => ApiError::not_found(format!("数据集 `{id}` 不存在")),
             crate::store::StoreError::TenantNotFound(t) => ApiError::bad_request(format!("租户 `{t}` 不存在")),
+            crate::store::StoreError::OrgNotFound(o) => ApiError::not_found(format!("组织 `{o}` 不存在")),
+            crate::store::StoreError::OrgAlreadyExists(o) => {
+                ApiError::conflict(format!("组织 `{o}` 已存在"))
+            }
+            crate::store::StoreError::UserNotFound(u) => {
+                ApiError::not_found(format!("用户 `{u}` 不存在"))
+            }
+            crate::store::StoreError::UsernameAmbiguous(u) => {
+                ApiError::conflict(format!("用户名 `{u}` 存在歧义（多组织各自注册），请联系管理员"))
+            }
             crate::store::StoreError::UsernameTaken(u) => ApiError::conflict(format!("用户名 `{u}` 已存在")),
             crate::store::StoreError::PublishRequiresApproval { dataset } => {
                 ApiError::conflict(format!("数据集 `{dataset}` 进入 Published 必须走独立发布审批"))
@@ -509,6 +520,15 @@ pub fn router(state: AppState) -> Router {
     let protected = Router::new()
         .route("/me", get(handlers_auth::me))
         .route("/admin/backend", get(admin_backend))
+        // B1 双层租户：org 管理（平台层）与成员管理
+        .route(
+            "/orgs",
+            get(handlers_orgs::list_orgs).post(handlers_orgs::create_org),
+        )
+        .route(
+            "/orgs/{org_id}/members",
+            get(handlers_orgs::list_members).post(handlers_orgs::add_member),
+        )
         .route("/audits", get(handlers_auth::audits))
         .route("/audits/auth", get(handlers_auth::audits))
         .route("/audits/lifecycle", get(handlers_auth::lifecycle_audits))
@@ -652,6 +672,9 @@ mod tests {
         store
             .ensure_default_tenant("tenant_a", "示例组织", "inst-001", "2026-08-22T00:00:00Z")
             .expect("tenant");
+        store
+            .ensure_default_org("tenant_a", "示例组织", "2026-08-22T00:00:00Z")
+            .expect("org");
         let state = AppState::new(store, "test-secret", "inst-001", "http://127.0.0.1:9");
         let app = router(state.clone());
         (app, state)
@@ -1501,6 +1524,10 @@ mod tests {
             .ensure_default_tenant("tenant_b", "另一组织", "inst-002", "2026-08-22T00:00:00Z")
             .expect("tenant_b");
         state
+            .store
+            .ensure_default_org("tenant_b", "另一组织", "2026-08-22T00:00:00Z")
+            .expect("org_b");
+        state
             .auth
             .register(&state.store, "tenant_b", "badmin", "password123", Role::Admin, unix_now())
             .expect("register b_admin");
@@ -1970,8 +1997,14 @@ mod tests {
             .ensure_default_tenant("tenant_a", "示例组织", "inst-001", "2026-08-22T00:00:00Z")
             .expect("tenant_a");
         store
+            .ensure_default_org("tenant_a", "示例组织", "2026-08-22T00:00:00Z")
+            .expect("org_a");
+        store
             .ensure_default_tenant("tenant_b", "第二组织", "inst-001", "2026-08-22T00:00:00Z")
             .expect("tenant_b");
+        store
+            .ensure_default_org("tenant_b", "第二组织", "2026-08-22T00:00:00Z")
+            .expect("org_b");
         let state = AppState::new(store, "test-secret", "inst-001", "http://127.0.0.1:9");
         let app = router(state.clone());
         (app, state)

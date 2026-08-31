@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::api::handlers_auth::now_iso;
 use crate::api::{paginate, AppState, ApiError, AuthContext, Page, PageQuery};
-use crate::model::auth::{ApiKey, Role};
+use crate::model::auth::{ApiKey, Role, is_org_admin};
 
 #[derive(Deserialize)]
 pub struct CreateKeyReq {
@@ -36,7 +36,7 @@ pub async fn create(
     Extension(ctx): Extension<AuthContext>,
     Json(req): Json<CreateKeyReq>,
 ) -> Result<(StatusCode, Json<CreateKeyResp>), ApiError> {
-    if ctx.role != Role::Admin {
+    if !is_org_admin(ctx.role) {
         return Err(ApiError::forbidden("仅管理员可创建 API Key"));
     }
     let scope = req.scope.unwrap_or_else(|| "pull".to_string());
@@ -81,7 +81,7 @@ pub async fn list(
     Extension(ctx): Extension<AuthContext>,
     Query(page): Query<PageQuery>,
 ) -> Result<Json<Page<KeySummary>>, ApiError> {
-    if ctx.role != Role::Admin {
+    if !is_org_admin(ctx.role) {
         return Err(ApiError::forbidden("仅管理员可查看 API Key"));
     }
     let keys = state.store.list_api_keys(&ctx.tenant_id)?;
@@ -104,7 +104,7 @@ pub async fn revoke(
     Extension(ctx): Extension<AuthContext>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
-    if ctx.role != Role::Admin {
+    if !is_org_admin(ctx.role) {
         return Err(ApiError::forbidden("仅管理员可吊销 API Key"));
     }
     let revoked = state.store.revoke_api_key(&ctx.tenant_id, &id, &now_iso())?;

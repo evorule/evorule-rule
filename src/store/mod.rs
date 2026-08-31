@@ -17,7 +17,7 @@ use crate::bundle::{
     BundleEntry, BundleError, BundleExporter, BundleImporter, BundleTests, DatasetBundle,
     EntryKind, ImportResult,
 };
-use crate::model::auth::{ApiKey, AuthAudit, Role, Tenant, User};
+use crate::model::auth::{ApiKey, AuthAudit, Org, Role, Tenant, User, UserOrg};
 use crate::model::dataset::{DatasetKind, Meta, RuleDataset, Visibility};
 use crate::model::dependency::{DataDependencies, ServiceTemplateRecord};
 use crate::model::entry::RuleEntry;
@@ -87,6 +87,18 @@ pub enum StoreError {
 
     #[error("租户 `{0}` 不存在")]
     TenantNotFound(String),
+
+    #[error("组织 `{0}` 不存在")]
+    OrgNotFound(String),
+
+    #[error("组织 `{0}` 已存在（org_id 唯一）")]
+    OrgAlreadyExists(String),
+
+    #[error("用户 `{0}` 不存在")]
+    UserNotFound(String),
+
+    #[error("用户名 `{0}` 在多个组织各自注册，跨组织登录歧义（B1 起用户名全局唯一）")]
+    UsernameAmbiguous(String),
 
     #[error("用户 `{0}` 已存在（tenant 内用户名唯一）")]
     UsernameTaken(String),
@@ -394,6 +406,26 @@ impl RuleStore {
             );
             CREATE INDEX IF NOT EXISTS idx_auth_audit_time
                 ON auth_audits(tenant_id, created_at);
+
+            -- B1 双层租户（2026-08-31 用户裁定）：org 层与成员关系。
+            -- tenants 表保留为 platform 注册表（每实例一行）；org 承接原租户的数据隔离语义
+            -- （datasets.tenant_id 等字段语义平移为 org id，字段名不变零迁移）。
+            CREATE TABLE IF NOT EXISTS orgs (
+                org_id     TEXT PRIMARY KEY,
+                name       TEXT NOT NULL,
+                disabled   INTEGER NOT NULL DEFAULT 0,   -- 停用的 org 拒绝新登录/刷新
+                created_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS user_org_memberships (
+                user_id    TEXT NOT NULL,
+                org_id     TEXT NOT NULL,
+                role       TEXT NOT NULL,                -- viewer/rule_engineer/approver/admin/platform_admin
+                created_at TEXT NOT NULL,
+                PRIMARY KEY (user_id, org_id),
+                FOREIGN KEY (user_id) REFERENCES users(user_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_membership_org
+                ON user_org_memberships(org_id);
 
             -- 43 号 §3.3：JWT 撤销黑名单（登出后按 jti 拉黑至 exp，防刷新旋转续用）
             CREATE TABLE IF NOT EXISTS revoked_tokens (
@@ -3221,6 +3253,168 @@ impl RuleStore {
             params![disabled as i64, at, user_id],
         )?;
         Ok(())
+    }
+
+    // ------------------------------------------------------------------
+    // B1 双层租户：org 与成员关系（2026-08-31 用户裁定）
+    // ------------------------------------------------------------------
+
+    /// 确保 platform 默认 org 存在（幂等；镜像默认租户，存量数据 tenant_id 即该 org id）
+    pub fn ensure_default_org(&self, org_id: &str, name: &str, created_at: &str) -> Result<Org, StoreError> {
+        self.conn.lock().unwrap().execute(
+            "INSERT OR IGNORE INTO orgs (org_id, name, disabled, created_at)
+             VALUES (?1, ?2, 0, ?3)",
+            params![org_id, name, created_at],
+        )?;
+        self.get_org(org_id)?
+            .ok_or_else(|| StoreError::OrgNotFound(org_id.into()))
+    }
+
+    pub fn create_org(&self, org: &Org) -> Result<(), StoreError> {
+        let conn = self.conn.lock().unwrap();
+        let inserted = conn.execute(
+            "INSERT INTO orgs (org_id, name, disabled, created_at)
+             VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(org_id) DO NOTHING",
+            params![org.org_id, org.name, org.disabled as i64, org.created_at],
+        )?;
+        if inserted == 0 {
+            return Err(StoreError::OrgAlreadyExists(org.org_id.clone()));
+        }
+        Ok(())
+    }
+
+    pub fn get_org(&self, org_id: &str) -> Result<Option<Org>, StoreError> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT org_id, name, disabled, created_at FROM orgs WHERE org_id = ?1",
+        )?;
+        let mut rows = stmt.query_map(params![org_id], |row| {
+            Ok(Org {
+                org_id: row.get(0)?,
+                name: row.get(1)?,
+                disabled: row.get::<_, i64>(2)? != 0,
+                created_at: row.get(3)?,
+            })
+        })?;
+        match rows.next() {
+            Some(Ok(o)) => Ok(Some(o)),
+            Some(Err(e)) => Err(e.into()),
+            None => Ok(None),
+        }
+    }
+
+    pub fn list_orgs(&self) -> Result<Vec<Org>, StoreError> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT org_id, name, disabled, created_at FROM orgs ORDER BY created_at, org_id",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(Org {
+                org_id: row.get(0)?,
+                name: row.get(1)?,
+                disabled: row.get::<_, i64>(2)? != 0,
+                created_at: row.get(3)?,
+            })
+        })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    /// 设置用户在某 org 的角色（upsert 成员关系；用户必须存在）
+    pub fn upsert_user_org_role(
+        &self,
+        org_id: &str,
+        user_id: &str,
+        role: Role,
+        created_at: &str,
+    ) -> Result<(), StoreError> {
+        let conn = self.conn.lock().unwrap();
+        let exists = conn
+            .prepare("SELECT 1 FROM users WHERE user_id = ?1")?
+            .exists(params![user_id])?;
+        if !exists {
+            return Err(StoreError::UserNotFound(user_id.into()));
+        }
+        conn.execute(
+            "INSERT INTO user_org_memberships (user_id, org_id, role, created_at)
+             VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(user_id, org_id) DO UPDATE SET role = excluded.role",
+            params![user_id, org_id, role.as_str(), created_at],
+        )?;
+        Ok(())
+    }
+
+    /// 用户在某 org 的成员角色（无成员行返回 None）
+    pub fn get_user_org_role(&self, org_id: &str, user_id: &str) -> Result<Option<Role>, StoreError> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT role FROM user_org_memberships WHERE org_id = ?1 AND user_id = ?2",
+        )?;
+        let mut rows = stmt.query_map(params![org_id, user_id], |row| row.get::<_, String>(0))?;
+        match rows.next() {
+            Some(Ok(r)) => Ok(Role::parse(&r)),
+            Some(Err(e)) => Err(e.into()),
+            None => Ok(None),
+        }
+    }
+
+    /// 用户的全 org 成员关系列表
+    pub fn list_user_orgs(&self, user_id: &str) -> Result<Vec<UserOrg>, StoreError> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT org_id, user_id, role, created_at FROM user_org_memberships
+             WHERE user_id = ?1 ORDER BY created_at, org_id",
+        )?;
+        let rows = stmt.query_map(params![user_id], |row| {
+            let role_s: String = row.get(2)?;
+            Ok(UserOrg {
+                org_id: row.get(0)?,
+                user_id: row.get(1)?,
+                role: Role::parse(&role_s).unwrap_or(Role::Viewer),
+                created_at: row.get(3)?,
+            })
+        })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    /// 某 org 的全部成员（B1 成员管理列表）
+    pub fn list_user_orgs_in_org(&self, org_id: &str) -> Result<Vec<UserOrg>, StoreError> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT org_id, user_id, role, created_at FROM user_org_memberships
+             WHERE org_id = ?1 ORDER BY created_at, user_id",
+        )?;
+        let rows = stmt.query_map(params![org_id], |row| {
+            let role_s: String = row.get(2)?;
+            Ok(UserOrg {
+                org_id: row.get(0)?,
+                user_id: row.get(1)?,
+                role: Role::parse(&role_s).unwrap_or(Role::Viewer),
+                created_at: row.get(3)?,
+            })
+        })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    /// 按用户名全局查用户（B1 跨 org 登录用；同用户名多行视为歧义，返回冲突错误）
+    pub fn get_user_by_username_any(&self, username: &str) -> Result<Option<User>, StoreError> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT user_id, tenant_id, username, password_hash, salt, role, disabled, created_at, updated_at
+             FROM users WHERE username = ?1",
+        )?;
+        let mut rows = stmt.query_map(params![username], row_to_user)?;
+        match rows.next() {
+            Some(Ok(u)) => {
+                // 歧义防护：同用户名在多个 org 各自注册（历史行为允许）时拒绝全局解析
+                if rows.next().is_some() {
+                    return Err(StoreError::UsernameAmbiguous(username.into()));
+                }
+                Ok(Some(u))
+            }
+            Some(Err(e)) => Err(e.into()),
+            None => Ok(None),
+        }
     }
 
     /// 认证审计（only-append，43 号 §6）

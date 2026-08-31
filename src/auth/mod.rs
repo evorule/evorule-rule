@@ -43,6 +43,15 @@ pub enum AuthError {
     #[error("租户不存在")]
     TenantNotFound,
 
+    #[error("组织不存在")]
+    OrgNotFound,
+
+    #[error("组织已停用")]
+    OrgDisabled,
+
+    #[error("用户不是该组织成员")]
+    NotOrgMember,
+
     #[error("token 非法或已过期")]
     InvalidToken,
 
@@ -135,10 +144,19 @@ impl AuthService {
     // ------------------------------------------------------------------
 
     pub fn issue_access_token(&self, user: &User, now: i64) -> String {
+        self.issue_access_token_in(user, &user.tenant_id, user.role, now)
+    }
+
+    pub fn issue_refresh_token(&self, user: &User, now: i64) -> String {
+        self.issue_refresh_token_in(user, &user.tenant_id, user.role, now)
+    }
+
+    /// org 感知签发（B1 双层租户）：token 的 tenant_id = 登录 org，role = 该 org 的有效角色
+    pub fn issue_access_token_in(&self, user: &User, org_id: &str, role: Role, now: i64) -> String {
         let claims = TokenClaims {
             sub: user.user_id.clone(),
-            tenant_id: user.tenant_id.clone(),
-            role: user.role.as_str().to_string(),
+            tenant_id: org_id.to_string(),
+            role: role.as_str().to_string(),
             token_type: "access".to_string(),
             iat: now,
             exp: now + ACCESS_TOKEN_TTL_SECS,
@@ -147,11 +165,11 @@ impl AuthService {
         self.sign(claims)
     }
 
-    pub fn issue_refresh_token(&self, user: &User, now: i64) -> String {
+    pub fn issue_refresh_token_in(&self, user: &User, org_id: &str, role: Role, now: i64) -> String {
         let claims = TokenClaims {
             sub: user.user_id.clone(),
-            tenant_id: user.tenant_id.clone(),
-            role: user.role.as_str().to_string(),
+            tenant_id: org_id.to_string(),
+            role: role.as_str().to_string(),
             token_type: "refresh".to_string(),
             iat: now,
             exp: now + REFRESH_TOKEN_TTL_SECS,
@@ -221,6 +239,8 @@ impl AuthService {
     // ------------------------------------------------------------------
 
     /// 注册（默认角色 rule_engineer；管理员建账号可指定角色）
+    ///
+    /// B1：用户名全局唯一（跨 org 登录需无歧义解析）；注册即写入默认 org 成员关系
     pub fn register(
         &self,
         store: &RuleStore,
@@ -233,7 +253,11 @@ impl AuthService {
         if store.get_tenant(tenant_id)?.is_none() {
             return Err(AuthError::TenantNotFound);
         }
-        if store.get_user_by_username(tenant_id, username)?.is_some() {
+        if store.get_org(tenant_id)?.is_none() {
+            return Err(AuthError::OrgNotFound);
+        }
+        // B1：全局唯一（旧库中同用户名多 org 各自注册属历史遗留，注册期拒绝新增冲突）
+        if store.get_user_by_username_any(username)?.is_some() {
             return Err(AuthError::UsernameTaken);
         }
         if password.len() < 8 {
@@ -251,14 +275,28 @@ impl AuthService {
             role,
             disabled: false,
             created_at: iso.clone(),
-            updated_at: iso,
+            updated_at: iso.clone(),
         };
         store.create_user(&user)?;
+        // B1：注册即成员（默认 org，角色同注册角色）
+        store.upsert_user_org_role(tenant_id, &user.user_id, role, &iso)?;
         self.audit(store, tenant_id, Some(&user.user_id), "register", "success", None, iso_from_unix(now));
         Ok(user)
     }
 
-    /// 登录：校验凭据 → 签发 access + refresh
+    /// B1：用户在某 org 的有效角色 —— 成员关系优先；无成员行时回退默认 org（users.tenant_id）
+    /// 的 users.role（存量用户零迁移）；两者皆无 → 非成员拒绝。
+    fn effective_role(store: &RuleStore, user: &User, org_id: &str) -> Result<Role, AuthError> {
+        if let Some(role) = store.get_user_org_role(org_id, &user.user_id)? {
+            return Ok(role);
+        }
+        if user.tenant_id == org_id {
+            return Ok(user.role);
+        }
+        Err(AuthError::NotOrgMember)
+    }
+
+    /// 登录：校验凭据 → 签发 access + refresh（B1：tenant_id 参数语义为 org id）
     pub fn login(
         &self,
         store: &RuleStore,
@@ -267,12 +305,27 @@ impl AuthService {
         password: &str,
         now: i64,
     ) -> Result<AuthTokens, AuthError> {
+        // org 必须存在且未停用（platform 层 tenants 检查保留：实例身份溯源）
+        if store.get_tenant(tenant_id)?.is_none() {
+            return Err(AuthError::TenantNotFound);
+        }
+        let org = store
+            .get_org(tenant_id)?
+            .ok_or(AuthError::OrgNotFound)?;
+        if org.disabled {
+            self.audit(store, tenant_id, None, "login", "failure", Some("org disabled"), iso_from_unix(now));
+            return Err(AuthError::OrgDisabled);
+        }
+        // 解析用户：默认 org 直接命中；跨 org 登录经成员关系（用户名全局解析）
         let user = match store.get_user_by_username(tenant_id, username)? {
             Some(u) => u,
-            None => {
-                self.audit(store, tenant_id, None, "login", "failure", Some("user not found"), iso_from_unix(now));
-                return Err(AuthError::InvalidCredentials);
-            }
+            None => match store.get_user_by_username_any(username)? {
+                Some(u) => u,
+                None => {
+                    self.audit(store, tenant_id, None, "login", "failure", Some("user not found"), iso_from_unix(now));
+                    return Err(AuthError::InvalidCredentials);
+                }
+            },
         };
         if user.disabled {
             self.audit(store, tenant_id, Some(&user.user_id), "login", "failure", Some("disabled"), iso_from_unix(now));
@@ -282,12 +335,16 @@ impl AuthService {
             self.audit(store, tenant_id, Some(&user.user_id), "login", "failure", Some("bad password"), iso_from_unix(now));
             return Err(AuthError::InvalidCredentials);
         }
-        let tokens = self.tokens_for(&user, now);
+        // B1：token 角色 = 该 org 的有效角色（同用户跨 org 异角色）
+        let role = Self::effective_role(store, &user, tenant_id)?;
+        let tokens = self.tokens_for_in(&user, tenant_id, role, now);
         self.audit(store, tenant_id, Some(&user.user_id), "login", "success", None, iso_from_unix(now));
         Ok(tokens)
     }
 
     /// 刷新：校验 refresh token → 重新签发（旋转）
+    ///
+    /// B1：刷新时重算 org 有效角色（成员角色可能已被变更），非成员拒绝续用
     pub fn refresh(
         &self,
         store: &RuleStore,
@@ -310,7 +367,8 @@ impl AuthService {
             self.audit(store, tenant_id, Some(&user.user_id), "refresh", "failure", Some("disabled"), iso_from_unix(now));
             return Err(AuthError::UserDisabled);
         }
-        let tokens = self.tokens_for(&user, now);
+        let role = Self::effective_role(store, &user, tenant_id)?;
+        let tokens = self.tokens_for_in(&user, tenant_id, role, now);
         self.audit(store, tenant_id, Some(&user.user_id), "refresh", "success", None, iso_from_unix(now));
         Ok(tokens)
     }
@@ -345,10 +403,10 @@ impl AuthService {
         can(role, action)
     }
 
-    fn tokens_for(&self, user: &User, now: i64) -> AuthTokens {
+    fn tokens_for_in(&self, user: &User, org_id: &str, role: Role, now: i64) -> AuthTokens {
         AuthTokens {
-            access_token: self.issue_access_token(user, now),
-            refresh_token: self.issue_refresh_token(user, now),
+            access_token: self.issue_access_token_in(user, org_id, role, now),
+            refresh_token: self.issue_refresh_token_in(user, org_id, role, now),
             access_expires_at: now + ACCESS_TOKEN_TTL_SECS,
             refresh_expires_at: now + REFRESH_TOKEN_TTL_SECS,
         }
@@ -357,6 +415,21 @@ impl AuthService {
     /// 认证审计落库（失败仅 warn，不掩盖主流程）
     #[allow(clippy::too_many_arguments)] // 参数即 AuthAudit 记录字段，合并会引入中间结构徒增耦合
     fn audit(
+        &self,
+        store: &RuleStore,
+        tenant_id: &str,
+        user_id: Option<&str>,
+        action: &str,
+        outcome: &str,
+        detail: Option<&str>,
+        created_at: String,
+    ) {
+        self.record_audit(store, tenant_id, user_id, action, outcome, detail, created_at);
+    }
+
+    /// 公开审计入口（供 handler 记录治理动作，如 B1 成员指派 assign_role）
+    #[allow(clippy::too_many_arguments)]
+    pub fn record_audit(
         &self,
         store: &RuleStore,
         tenant_id: &str,
@@ -512,7 +585,12 @@ mod tests {
         store
             .ensure_default_tenant("tenant_a", "示例组织", "inst-001", "2026-08-22T00:00:00Z")
             .expect("tenant")
-            .tenant_id
+            .tenant_id;
+        // B1：登录/注册要求 org 行存在（双层租户）
+        store
+            .ensure_default_org("tenant_a", "示例组织", "2026-08-22T00:00:00Z")
+            .expect("org");
+        "tenant_a".to_string()
     }
 
     #[test]

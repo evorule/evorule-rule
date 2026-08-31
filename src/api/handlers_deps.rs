@@ -16,7 +16,7 @@ use serde::Deserialize;
 
 use crate::api::handlers_auth::now_iso;
 use crate::api::{paginate, unix_now, AppState, ApiError, AuthContext, Page, PageQuery};
-use crate::model::auth::{Action, Role, can};
+use crate::model::auth::{Action, Role, can, is_org_admin};
 use crate::model::dependency::{
     DataDependencies, IoContract, ServiceTemplate, ServiceTemplateRecord,
 };
@@ -97,7 +97,7 @@ pub async fn create_template(
     Extension(ctx): Extension<AuthContext>,
     Json(req): Json<CreateTemplateReq>,
 ) -> Result<(StatusCode, Json<ServiceTemplateRecord>), ApiError> {
-    if ctx.role != Role::Admin {
+    if !is_org_admin(ctx.role) {
         return Err(ApiError::forbidden("注册服务模板需管理员角色"));
     }
     if req.kind != "pull" && req.kind != "push" {

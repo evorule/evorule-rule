@@ -14,7 +14,7 @@ use serde::Deserialize;
 
 use crate::api::handlers_auth::now_iso;
 use crate::api::{AppState, ApiError, AuthContext};
-use crate::model::auth::{Action, Role, can};
+use crate::model::auth::{Action, can, is_org_admin};
 use crate::model::dependency::IoContract;
 use crate::model::service_catalog::{BindingHint, ServiceCatalogEntry};
 
@@ -54,7 +54,7 @@ pub async fn create_service(
     Extension(ctx): Extension<AuthContext>,
     Json(req): Json<CreateServiceReq>,
 ) -> Result<(StatusCode, Json<ServiceCatalogEntry>), ApiError> {
-    if ctx.role != Role::Admin {
+    if !is_org_admin(ctx.role) {
         return Err(ApiError::forbidden("注册服务需管理员角色（服务由服务公司/官方维护，D13）"));
     }
     let now = now_iso();
@@ -101,7 +101,7 @@ pub async fn update_service(
     Path(name): Path<String>,
     Json(req): Json<CreateServiceReq>,
 ) -> Result<Json<ServiceCatalogEntry>, ApiError> {
-    if ctx.role != Role::Admin {
+    if !is_org_admin(ctx.role) {
         return Err(ApiError::forbidden("更新服务需管理员角色"));
     }
     let existing = state

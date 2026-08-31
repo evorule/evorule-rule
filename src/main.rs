@@ -107,6 +107,10 @@ async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
     )?;
     tracing::info!(tenant = %cli.tenant, "默认租户就绪");
 
+    // 2.1 B1 双层租户：platform 下默认 org（幂等；存量数据 tenant_id 即该 org id）
+    store.ensure_default_org(&cli.tenant, &cli.tenant_name, &auth::iso_from_unix(now))?;
+    tracing::info!(org = %cli.tenant, "默认组织就绪");
+
     // 2.5 C2：服务目录预置官方 7 个原生服务（幂等 seed；02 方案服务契约三层闭环 层0）
     let seeded = store.seed_official_services_if_empty(&auth::iso_from_unix(now))?;
     if seeded > 0 {
@@ -126,11 +130,11 @@ async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    // 4. 引导管理员（幂等：仅当租户内无该用户名时创建）
+    // 4. 引导管理员（幂等：仅当租户内无该用户名时创建；B1：平台管理员，可管理 org）
     if let (Some(user), Some(pass)) = (&cli.admin_user, &cli.admin_password) {
         let auth_svc = AuthService::new(&secret);
-        match auth_svc.register(&store, &cli.tenant, user, pass, Role::Admin, now) {
-            Ok(_) => tracing::info!(user = %user, "引导管理员创建成功"),
+        match auth_svc.register(&store, &cli.tenant, user, pass, Role::PlatformAdmin, now) {
+            Ok(_) => tracing::info!(user = %user, "引导管理员创建成功（platform_admin）"),
             Err(AuthError::UsernameTaken) => {
                 tracing::info!(user = %user, "引导管理员已存在，跳过创建");
             }

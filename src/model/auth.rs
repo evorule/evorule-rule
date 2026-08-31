@@ -5,6 +5,17 @@
 //! - 四角色递进：查看者 ⊆ 规则工程师 ⊆ 审批者 ⊆ 管理员；
 //! - 发布者 = 复用审批者 + 二次确认（不设独立发布者角色）；
 //! - token：access 15min / refresh 30d，HS256 单密钥（生产级换 RS256，45 号批次 1）。
+//!
+//! **双层租户升级（2026-08-31 用户裁定，数据治理攻坚 B1）**：
+//! - 一个部署实例 = 一个 platform（平台层，原 Tenant 语义）；platform 下若干 organization
+//!   （org，数据隔离与协作单元）；
+//! - **wire/存储字段名 `tenant_id` 不变，语义平移为 org id**（存量库零迁移；platform 层
+//!   由 tenants 表承载，org 层由新表 orgs 承载）；
+//! - 角色随 org 成员关系（user_org_memberships），同一用户可在不同 org 有不同角色；
+//!   旧用户（无成员行）在其默认 org（users.tenant_id）回退 users.role，行为不变；
+//! - 平台管理员（PlatformAdmin）：仅平台层动作（org 建/管/成员指派），org 内动作按
+//!   rank 递进同样可执行（rank 5 ≥ admin 4）；
+//! - org 内四角色递进不变。
 
 use serde::{Deserialize, Serialize};
 
@@ -15,6 +26,28 @@ pub struct Tenant {
     pub name: String,
     /// 实例真实身份（39 号 §2，白标不掩盖来源，进溯源）
     pub instance_id: String,
+    pub created_at: String,
+}
+
+/// 组织（org，B1 双层租户：platform 下的数据隔离与协作单元）
+///
+/// 命名说明：历史上叫"租户"，双层化后 org 层承接原租户的数据隔离语义；
+/// `tenants` 表保留为 platform 注册表（每实例一行）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Org {
+    pub org_id: String,
+    pub name: String,
+    /// 停用的 org 拒绝新登录/刷新（存量 token 到期自然失效）
+    pub disabled: bool,
+    pub created_at: String,
+}
+
+/// 用户-org 成员关系（B1：角色随成员关系，同一用户可跨 org 有不同角色）
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UserOrg {
+    pub org_id: String,
+    pub user_id: String,
+    pub role: Role,
     pub created_at: String,
 }
 
@@ -30,6 +63,9 @@ pub enum Role {
     Approver = 3,
     /// 管理员：租户配置、服务注册、密钥管理、成员管理
     Admin = 4,
+    /// 平台管理员（B1 双层租户）：平台层动作（org 建/管/成员指派）；
+    /// org 内动作按 rank 递进（5 ≥ 4）同样可执行
+    PlatformAdmin = 5,
 }
 
 impl Role {
@@ -40,6 +76,7 @@ impl Role {
             "rule_engineer" => Some(Role::RuleEngineer),
             "approver" => Some(Role::Approver),
             "admin" => Some(Role::Admin),
+            "platform_admin" => Some(Role::PlatformAdmin),
             _ => None,
         }
     }
@@ -50,6 +87,7 @@ impl Role {
             Role::RuleEngineer => "rule_engineer",
             Role::Approver => "approver",
             Role::Admin => "admin",
+            Role::PlatformAdmin => "platform_admin",
         }
     }
 }
@@ -72,6 +110,8 @@ pub enum Action {
     Publish,
     /// 管理（租户配置/成员/密钥/服务注册）
     Admin,
+    /// 平台管理（B1：org 建/停/成员指派，仅 PlatformAdmin）
+    ManageOrgs,
 }
 
 impl Action {
@@ -82,6 +122,7 @@ impl Action {
             Action::Create | Action::Edit | Action::Test => Role::RuleEngineer as u8,
             Action::Approve | Action::Publish => Role::Approver as u8,
             Action::Admin => Role::Admin as u8,
+            Action::ManageOrgs => Role::PlatformAdmin as u8,
         }
     }
 }
@@ -89,6 +130,12 @@ impl Action {
 /// 角色是否允许该动作（递进判断）
 pub fn can(role: Role, action: Action) -> bool {
     (role as u8) >= action.required_rank()
+}
+
+/// 是否 org 管理层（B1：admin 及以上含 platform_admin；替代旧 `role != Admin` 等值门控，
+/// 使平台管理员在 org 内同样通过管理层门控）
+pub fn is_org_admin(role: Role) -> bool {
+    (role as u8) >= Role::Admin as u8
 }
 
 /// 用户（43 号 §2）

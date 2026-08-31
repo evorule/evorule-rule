@@ -13,7 +13,7 @@ use serde_json::Value;
 use crate::api::{unix_now, AppState, ApiError, AuthContext};
 use crate::auth::iso_from_unix;
 use crate::bundle::{BundleImporter, BundleTests, DatasetBundle};
-use crate::model::auth::Role;
+use crate::model::auth::{Role, is_org_admin};
 use crate::store::StoreError;
 
 #[derive(Deserialize)]
@@ -184,7 +184,7 @@ pub async fn import_bundle(
     Extension(ctx): Extension<AuthContext>,
     Json(req): Json<ImportReq>,
 ) -> Result<(StatusCode, Json<Value>), ApiError> {
-    if ctx.role != Role::Admin {
+    if !is_org_admin(ctx.role) {
         return Err(ApiError::forbidden("导入快照包需管理员角色"));
     }
     let at = iso_from_unix(unix_now());
@@ -219,7 +219,7 @@ pub async fn import_dry_run(
     Extension(ctx): Extension<AuthContext>,
     Json(req): Json<ImportReq>,
 ) -> Result<Json<Value>, ApiError> {
-    if ctx.role != Role::Admin {
+    if !is_org_admin(ctx.role) {
         return Err(ApiError::forbidden("导入预检需管理员角色"));
     }
     // D3 领域 schema resolver 与入库同源（store 领域目录），knowledge 条目预检口径一致

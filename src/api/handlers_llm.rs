@@ -9,7 +9,7 @@ use serde_json::Value;
 use crate::api::handlers_auth::now_iso;
 use crate::api::{paginate, AppState, ApiError, AuthContext, Page, PageQuery};
 use crate::llm_client::{LlmClient, LlmOpRequest, Operation};
-use crate::model::auth::{Action, Role, can};
+use crate::model::auth::{Action, Role, can, is_org_admin};
 use crate::model::llm_audit::{LlmAuditFilter, LlmAuditStats, LlmOpAudit};
 
 /// 解析路径中的操作名
@@ -28,7 +28,7 @@ pub async fn list_llm_audits(
     Extension(ctx): Extension<AuthContext>,
     Query(page): Query<PageQuery>,
 ) -> Result<Json<Page<LlmOpAudit>>, ApiError> {
-    if ctx.role != Role::Admin {
+    if !is_org_admin(ctx.role) {
         return Err(ApiError::forbidden("仅管理员可查看 LLM 审计"));
     }
     let audits = state.store.list_llm_audits_filtered(&LlmAuditFilter::default())?;
@@ -40,7 +40,7 @@ pub async fn llm_audit_stats(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
 ) -> Result<Json<LlmAuditStats>, ApiError> {
-    if ctx.role != Role::Admin {
+    if !is_org_admin(ctx.role) {
         return Err(ApiError::forbidden("仅管理员可查看 LLM 审计统计"));
     }
     let stats = state.store.llm_audit_stats()?;

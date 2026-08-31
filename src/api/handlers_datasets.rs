@@ -9,7 +9,7 @@ use serde_json::Value;
 use crate::api::handlers_auth::now_iso;
 use crate::api::{api_key_from_header, bearer_token, paginate, unix_now, AppState, ApiError, AuthContext, Page, PageQuery};
 use crate::auth::iso_from_unix;
-use crate::model::auth::{Action, Role, can};
+use crate::model::auth::{Action, Role, can, is_org_admin};
 use crate::model::dataset::{DatasetKind, Meta, RuleDataset, Visibility};
 use crate::model::entry::RuleEntry;
 use crate::model::lifecycle::LifecycleStatus;
@@ -153,7 +153,7 @@ pub async fn transition_lifecycle(
     let allowed = match to {
         LifecycleStatus::Candidate => can(ctx.role, Action::Create),
         LifecycleStatus::Active => can(ctx.role, Action::Approve),
-        LifecycleStatus::Rejected => ctx.role == Role::Admin,
+        LifecycleStatus::Rejected => is_org_admin(ctx.role),
         _ => false,
     };
     if !allowed {
@@ -304,7 +304,7 @@ pub async fn delete_dataset_meta(
     Extension(ctx): Extension<AuthContext>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
-    if ctx.role != Role::Admin {
+    if !is_org_admin(ctx.role) {
         return Err(ApiError::forbidden("删除数据集需管理员角色"));
     }
     state.store.delete_dataset(&id)?;
@@ -446,7 +446,7 @@ pub async fn unpublish(
     Extension(ctx): Extension<AuthContext>,
     Path(id): Path<String>,
 ) -> Result<Json<RuleDataset>, ApiError> {
-    if ctx.role != Role::Admin {
+    if !is_org_admin(ctx.role) {
         return Err(ApiError::forbidden("撤销发布需管理员角色"));
     }
     // 租户归属校验（38 号 §10-3：跨租户返回 404，防越权撤销他租户发布）

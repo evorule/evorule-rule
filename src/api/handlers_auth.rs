@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::api::{AppState, AuthContext, ApiError, unix_now};
 use crate::auth::iso_from_unix;
-use crate::model::auth::Role;
+use crate::model::auth::{Role, is_org_admin};
 
 #[derive(Deserialize)]
 pub struct RegisterReq {
@@ -68,6 +68,9 @@ pub async fn register(
             crate::auth::AuthError::TenantNotFound => {
                 ApiError::bad_request("租户不存在")
             }
+            crate::auth::AuthError::OrgNotFound => {
+                ApiError::bad_request("组织不存在")
+            }
             crate::auth::AuthError::InvalidCredentials => {
                 ApiError::bad_request("密码至少 8 位")
             }
@@ -100,7 +103,18 @@ pub async fn login(
     let tokens = state
         .auth
         .login(&state.store, &req.tenant_id, &req.username, &req.password, unix_now())
-        .map_err(|_| ApiError::unauthorized("用户名或密码错误"))?;
+        .map_err(|e| match e {
+            crate::auth::AuthError::OrgDisabled => {
+                ApiError::forbidden("组织已停用，禁止登录")
+            }
+            crate::auth::AuthError::OrgNotFound => {
+                ApiError::forbidden("组织不存在")
+            }
+            crate::auth::AuthError::NotOrgMember => {
+                ApiError::forbidden("该账号不是此组织成员")
+            }
+            _ => ApiError::unauthorized("用户名或密码错误"),
+        })?;
     Ok(Json(TokenResp {
         access_token: tokens.access_token,
         refresh_token: tokens.refresh_token,
@@ -118,7 +132,15 @@ pub async fn refresh(
     let tokens = state
         .auth
         .refresh(&state.store, &req.tenant_id, &req.refresh_token, unix_now())
-        .map_err(|_| ApiError::unauthorized("刷新 token 非法或已过期"))?;
+        .map_err(|e| match e {
+            crate::auth::AuthError::NotOrgMember => {
+                ApiError::forbidden("该账号已不是此组织成员")
+            }
+            crate::auth::AuthError::OrgDisabled => {
+                ApiError::forbidden("组织已停用")
+            }
+            _ => ApiError::unauthorized("刷新 token 非法或已过期"),
+        })?;
     Ok(Json(TokenResp {
         access_token: tokens.access_token,
         refresh_token: tokens.refresh_token,
@@ -162,7 +184,7 @@ pub async fn audits(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
 ) -> Result<Json<Vec<crate::model::auth::AuthAudit>>, ApiError> {
-    if ctx.role != Role::Admin {
+    if !is_org_admin(ctx.role) {
         return Err(ApiError::forbidden("仅管理员可查看认证审计"));
     }
     let audits = state.store.list_auth_audits(&ctx.tenant_id, 100)?;
@@ -174,7 +196,7 @@ pub async fn lifecycle_audits(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
 ) -> Result<Json<Vec<serde_json::Value>>, ApiError> {
-    if ctx.role != Role::Admin {
+    if !is_org_admin(ctx.role) {
         return Err(ApiError::forbidden("仅管理员可查看生命周期审计"));
     }
     let audits = state.store.list_lifecycle_audits(&ctx.tenant_id)?;
