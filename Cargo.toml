@@ -1,6 +1,6 @@
 [package]
 name = "evorule-rule"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 description = "evorule-rule data governance system — JSON rule asset library (decision point ①: data model & schema)"
 license = "AGPL-3.0-or-later"
@@ -49,10 +49,3 @@ version = "0.8"
 optional = true
 default-features = false
 features = ["runtime-tokio", "postgres", "migrate", "json"]
-
-# 本地开发：用 path 覆盖 crates.io 上的 evorule-bundle（与 evorule-server 钉 evorule 核心 crates 同模式）。
-# T1 修正（2026-08-24）：git 依赖 + [patch.crates-io] 无法同时生效（patch 只覆盖 crates.io registry 来源），
-# 故采用「crates.io version 需求 + path patch」——发布 evorule-bundle 到 crates.io 后去掉本段即走正式版。
-[patch.crates-io]
-evorule-bundle = { path = "../evorule-bundle" }
-evorule-hash = { path = "../evorule-hash" }

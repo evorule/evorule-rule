@@ -4,9 +4,58 @@ evorule-rule 的所有显著变更都记录在此文件。
 
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),版本遵循 [SemVer 2.0](https://semver.org/lang/zh-CN/)。
 
-> 仓库位置:`gitee.com/evorule/evorule-rule` · 协议:AGPL-3.0-or-later · 设计稿:`D:\evo-agent\_design_docs\` 30-47 号(决策点 ①-⑨)
+> 仓库位置:`gitee.com/evorule/evorule-rule` · 协议:AGPL-3.0-or-later
 
 ---
+
+## [0.3.0] - 2026-09-02
+
+**数据治理系统功能扩展** — 双层租户 + 查询表达式 + 历史版本快照 + 事件 schema + 数据资产化 + 服务目录种子声明文件化
+
+### 🆕 新增
+
+**双层租户与角色(B1)**
+
+- platform/org 两级租户结构 + viewer / rule_engineer / approver / org_admin / platform_admin 五角色体系 + 组织管理端点
+
+**查询与版本能力(B3/B4)**
+
+- 条目查询表达式:EntryFilter 对外可用,`GET /datasets/{id}/entries?filter=` 服务端过滤
+- CLI 导入导出子命令(datasets / entries bulk),bundle 组装缺省 pinned v1
+- 历史版本快照落库:dataset_version_snapshots + `export_bundle_at` 解锁历史版本导出
+
+**事件与回写契约(B5)**
+
+- 数据集级 push 事件 schema 声明:event_schemas 落库 / 导出 / 导入全链路
+
+**数据资产化(Q12)**
+
+- knowledge 数据集治理链接入 + 条目级裁剪 + 检索同口径
+- 跨租户 Public+Published 只读可见(V3 语义反转:浏览列表混入公开数据集)
+- knowledge_entries FTS5 trigram 全文索引(存量库幂等回填)
+- 条目逐版本载荷端点 `GET /entries/{id}/versions/{version}`
+
+**服务目录与种子(UV-029/035/037)**
+
+- 官方原生服务种子接入声明文件:嵌入副本(源仓 SSOT 经 sync 脚本同步)+ OFFICIAL_NATIVE_SERVICES 常量退役改运行时解析 + 副本 schema 守卫测试
+- 多插件聚合:嵌入副本按插件分文件,service_catalog 嵌入副本登记表(新增插件零改动聚合,声明序 = 执行侧挂载链序,跨插件服务名全局唯一 fail-fast)
+- 第三插件 indicator-services 登记(4 服务:indicator_sma / ema / macd / rsi)
+
+**门禁与运维**
+
+- 入库门禁接 BundleImporter::validate_entry(执行侧同口径 SSOT,C8)
+- `GET /v1/health` 存活探针:无鉴权独立挂载,仅返回 ok / service / version 三键防状态泄漏(UV-031)
+- LLM 三操作契约验收脚本:链路 B 端到端 6 场景 26 断言,LLM 不可达如实报错(UV-030 V1)
+
+### 🔄 变更
+
+- 依赖走 crates.io 正式版:evorule-bundle 0.3.0、evorule-hash 0.1.3,移除本地 `[patch.crates-io]` path 覆盖
+- rusqlite 0.32 对齐(与执行侧 workspace 的 libsqlite3-sys 版本一致)
+- 治理侧功能收编:服务目录 / 独立入口 / SSOT 迁移收尾
+
+### 🐛 修复
+
+- create_org 双层落地一致性:同步创建 tenants 行,修复平台层创建组织后无法登录的缺陷(总验收 E2E 实测发现)
 
 ## [0.2.0] - 2026-08-22
 
