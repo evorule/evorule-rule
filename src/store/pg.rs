@@ -13,8 +13,8 @@
 //! 仅覆盖核心两表；全表方言改写、PG 事务拆分（P6）、配置化双后端为后续批次，不伪称完成。
 
 use sqlx::migrate::MigrateError;
-use sqlx::postgres::{PgPool, PgPoolOptions};
 use sqlx::migrate::Migrator;
+use sqlx::postgres::{PgPool, PgPoolOptions};
 use sqlx::Row;
 use thiserror::Error;
 
@@ -54,10 +54,7 @@ impl PgStore {
 
     /// 显式连接串建池 + 迁移（对齐 45 号 §2.4 版本化迁移；破坏性变更走 v2 迁移，44 §3.1）。
     pub async fn connect(url: &str) -> Result<Self, PgError> {
-        let pool = PgPoolOptions::new()
-            .max_connections(8)
-            .connect(url)
-            .await?;
+        let pool = PgPoolOptions::new().max_connections(8).connect(url).await?;
         let migrator = Migrator::new(std::path::Path::new("./migrations")).await?;
         migrator.run(&pool).await?;
         Ok(Self { pool })
@@ -188,9 +185,12 @@ impl PgStore {
         let description: Option<String> = row.get("description");
         let domain: Vec<String> = decode_opt(row.get("domain"))?.unwrap_or_default();
         let tags: Vec<String> = decode_opt(row.get("tags"))?.unwrap_or_default();
-        let visibility: crate::model::dataset::Visibility = decode_opt(row.get("visibility"))?.unwrap();
-        let lifecycle: crate::model::lifecycle::Lifecycle = decode_opt(row.get("lifecycle"))?.unwrap();
-        let versioning: crate::model::version::Versioning = decode_opt(row.get("versioning"))?.unwrap();
+        let visibility: crate::model::dataset::Visibility =
+            decode_opt(row.get("visibility"))?.unwrap();
+        let lifecycle: crate::model::lifecycle::Lifecycle =
+            decode_opt(row.get("lifecycle"))?.unwrap();
+        let versioning: crate::model::version::Versioning =
+            decode_opt(row.get("versioning"))?.unwrap();
         let law_ref: Option<crate::model::version::LawRef> = decode_opt(row.get("law_ref"))?;
         let version_selection: Option<crate::model::version::VersionSelection> =
             decode_opt(row.get("version_selection"))?;
@@ -221,12 +221,11 @@ impl PgStore {
         &self,
         tenant_id: &str,
     ) -> Result<Vec<crate::model::dataset::RuleDataset>, PgError> {
-        let rows = sqlx::query(
-            "SELECT dataset_id FROM datasets WHERE tenant_id = $1 ORDER BY dataset_id",
-        )
-        .bind(tenant_id)
-        .fetch_all(&self.pool)
-        .await?;
+        let rows =
+            sqlx::query("SELECT dataset_id FROM datasets WHERE tenant_id = $1 ORDER BY dataset_id")
+                .bind(tenant_id)
+                .fetch_all(&self.pool)
+                .await?;
         let mut out = Vec::with_capacity(rows.len());
         for r in rows {
             let id: String = r.get("dataset_id");
@@ -240,10 +239,7 @@ impl PgStore {
     /// 新增条目（方言改写 + entry_snapshots 内容寻址去重，同 SQLite add_entry 语义）。
     /// 注意：本方法为演示验证用，头部复用了 RuleStore 的校验要点（数据集存在）+ 快照去重；
     /// 完整校验链（符号三方一致/LLM 边界/唯一性友好报错）在接入查询层时对齐，见 store/mod.rs。
-    pub async fn add_entry(
-        &self,
-        entry: &crate::model::entry::RuleEntry,
-    ) -> Result<(), PgError> {
+    pub async fn add_entry(&self, entry: &crate::model::entry::RuleEntry) -> Result<(), PgError> {
         let ds = self.get_dataset(&entry.dataset_id).await?.ok_or_else(|| {
             PgError::NotYetWired // 数据集不存在时无法友好区分，先用占位错误（待接入全校验链）
         })?;
@@ -286,7 +282,13 @@ impl PgStore {
         .bind(serde_json::to_string(&entry.data_source_binding)?)
         .bind(serde_json::to_string(&entry.consumed_inputs)?)
         .bind(serde_json::to_string(&entry.rule_body)?)
-        .bind(entry.governance.as_ref().map(serde_json::to_string).transpose()?)
+        .bind(
+            entry
+                .governance
+                .as_ref()
+                .map(serde_json::to_string)
+                .transpose()?,
+        )
         .bind(&hash)
         .execute(&mut *tx)
         .await?;
@@ -454,12 +456,11 @@ impl PgStore {
         &self,
         limit: usize,
     ) -> Result<Vec<crate::model::llm_audit::LlmOpAudit>, PgError> {
-        let rows = sqlx::query(
-            "SELECT request_id FROM llm_op_audit ORDER BY created_at DESC LIMIT $1",
-        )
-        .bind(limit as i64)
-        .fetch_all(&self.pool)
-        .await?;
+        let rows =
+            sqlx::query("SELECT request_id FROM llm_op_audit ORDER BY created_at DESC LIMIT $1")
+                .bind(limit as i64)
+                .fetch_all(&self.pool)
+                .await?;
         let mut out = Vec::with_capacity(rows.len());
         for r in rows {
             let id: String = r.get("request_id");
@@ -492,10 +493,7 @@ impl PgStore {
     }
 
     /// 创建 API Key（方言改写；仅存 key_hash，不存明文，对齐 44 号 §14）。
-    pub async fn create_api_key(
-        &self,
-        k: &crate::model::auth::ApiKey,
-    ) -> Result<(), PgError> {
+    pub async fn create_api_key(&self, k: &crate::model::auth::ApiKey) -> Result<(), PgError> {
         sqlx::query(
             "INSERT INTO api_keys (key_id, tenant_id, name, scope, key_hash, created_at, revoked_at)
              VALUES ($1, $2, $3, $4, $5, $6, $7)",
@@ -543,14 +541,13 @@ impl PgStore {
         key_id: &str,
         at: String,
     ) -> Result<bool, PgError> {
-        let res = sqlx::query(
-            "UPDATE api_keys SET revoked_at = $1 WHERE tenant_id = $2 AND key_id = $3",
-        )
-        .bind(at)
-        .bind(tenant_id)
-        .bind(key_id)
-        .execute(&self.pool)
-        .await?;
+        let res =
+            sqlx::query("UPDATE api_keys SET revoked_at = $1 WHERE tenant_id = $2 AND key_id = $3")
+                .bind(at)
+                .bind(tenant_id)
+                .bind(key_id)
+                .execute(&self.pool)
+                .await?;
         Ok(res.rows_affected() > 0)
     }
 
@@ -581,21 +578,16 @@ impl PgStore {
 
     /// 查 token 是否已撤销（方言改写；now 之前且 jti 命中即视为 revoked）。
     pub async fn is_token_revoked(&self, jti: &str, now: i64) -> Result<bool, PgError> {
-        let row = sqlx::query(
-            "SELECT 1 FROM revoked_tokens WHERE jti = $1 AND expires_at > $2",
-        )
-        .bind(jti)
-        .bind(now)
-        .fetch_optional(&self.pool)
-        .await?;
+        let row = sqlx::query("SELECT 1 FROM revoked_tokens WHERE jti = $1 AND expires_at > $2")
+            .bind(jti)
+            .bind(now)
+            .fetch_optional(&self.pool)
+            .await?;
         Ok(row.is_some())
     }
 
     /// 创建用户（方言改写；Role 以 snake_case 文本落库，与 SQLite 一致）。
-    pub async fn create_user(
-        &self,
-        u: &crate::model::auth::User,
-    ) -> Result<(), PgError> {
+    pub async fn create_user(&self, u: &crate::model::auth::User) -> Result<(), PgError> {
         sqlx::query(
             "INSERT INTO users
                (user_id, tenant_id, username, password_hash, salt, role, disabled, created_at, updated_at)
@@ -873,9 +865,7 @@ impl PgStore {
 }
 
 /// 把 `TEXT` 列（可为 NULL）反序列化为 `V`。
-fn decode_opt<V: serde::de::DeserializeOwned>(
-    raw: Option<String>,
-) -> Result<Option<V>, PgError> {
+fn decode_opt<V: serde::de::DeserializeOwned>(raw: Option<String>) -> Result<Option<V>, PgError> {
     match raw {
         None => Ok(None),
         Some(s) => Ok(Some(serde_json::from_str(&s)?)),
@@ -883,9 +873,7 @@ fn decode_opt<V: serde::de::DeserializeOwned>(
 }
 
 /// 从 `Row` 映射一条 RuleEntry（方言改写）。
-fn map_entry_row(
-    r: &sqlx::postgres::PgRow,
-) -> Result<crate::model::entry::RuleEntry, PgError> {
+fn map_entry_row(r: &sqlx::postgres::PgRow) -> Result<crate::model::entry::RuleEntry, PgError> {
     let status: Option<String> = r.get("status");
     let rule_body: String = r.get("rule_body");
     let entry = crate::model::entry::RuleEntry {
@@ -1022,7 +1010,9 @@ mod tests {
         assert_eq!(entries[0].content_hash(), entry.content_hash());
 
         // P6：其余核心表往返
-        pg_aux_tables_roundtrip(&store, &tenant).await.expect("P6 aux");
+        pg_aux_tables_roundtrip(&store, &tenant)
+            .await
+            .expect("P6 aux");
 
         // P6 剩余表：dataset_versions 归因 / entry_state_history 迁移审计 / bundles_import_logs
         let hash = entry.content_hash();
@@ -1106,7 +1096,10 @@ mod tests {
             tenant_id: tenant.into(),
             service_name: "s3-demo".into(),
             kind: "pull".into(),
-            io_contract: IoContract { r#in: None, out: None },
+            io_contract: IoContract {
+                r#in: None,
+                out: None,
+            },
             endpoint_template: "https://api.example.com/{token}".into(),
             method: Some("GET".into()),
             headers_template: Default::default(),
@@ -1115,7 +1108,10 @@ mod tests {
             created_by: "u-1".into(),
         };
         store.create_service_template(&tpl).await?;
-        let got = store.get_service_template(&tpl.template_id).await?.expect("模板缺失");
+        let got = store
+            .get_service_template(&tpl.template_id)
+            .await?
+            .expect("模板缺失");
         assert_eq!(got.service_name, "s3-demo");
         let list = store.list_service_templates(tenant).await?;
         assert_eq!(list.len(), 1);
@@ -1135,7 +1131,10 @@ mod tests {
         let mut audit2 = audit.clone();
         audit2.duration_ms = 999;
         store.record_llm_audit(&audit2).await?; // 覆盖
-        let got = store.get_llm_audit(&audit.request_id).await?.expect("audit 缺失");
+        let got = store
+            .get_llm_audit(&audit.request_id)
+            .await?
+            .expect("audit 缺失");
         assert_eq!(got.duration_ms, 999);
         // 列表含本条（共享库可能残留旧行，故验证包含而非全局长度==1）
         let list = store.list_llm_audits(10).await?;
@@ -1166,7 +1165,10 @@ mod tests {
             revoked_at: None,
         };
         store.create_api_key(&key).await?;
-        let got = store.get_api_key_by_hash(&key.key_hash).await?.expect("key 缺失");
+        let got = store
+            .get_api_key_by_hash(&key.key_hash)
+            .await?
+            .expect("key 缺失");
         assert_eq!(got.scope, "pull");
         let revoked = store
             .revoke_api_key(tenant, &key.key_id, "2026-08-22T00:00:04Z".into())

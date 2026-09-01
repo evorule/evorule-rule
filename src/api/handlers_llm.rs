@@ -7,9 +7,9 @@ use axum::Json;
 use serde_json::Value;
 
 use crate::api::handlers_auth::now_iso;
-use crate::api::{paginate, AppState, ApiError, AuthContext, Page, PageQuery};
+use crate::api::{paginate, ApiError, AppState, AuthContext, Page, PageQuery};
 use crate::llm_client::{LlmClient, LlmOpRequest, Operation};
-use crate::model::auth::{Action, can, is_org_admin};
+use crate::model::auth::{can, is_org_admin, Action};
 use crate::model::llm_audit::{LlmAuditFilter, LlmAuditStats, LlmOpAudit};
 
 /// 解析路径中的操作名
@@ -31,7 +31,9 @@ pub async fn list_llm_audits(
     if !is_org_admin(ctx.role) {
         return Err(ApiError::forbidden("仅管理员可查看 LLM 审计"));
     }
-    let audits = state.store.list_llm_audits_filtered(&LlmAuditFilter::default())?;
+    let audits = state
+        .store
+        .list_llm_audits_filtered(&LlmAuditFilter::default())?;
     Ok(paginate(audits, page.limit, page.offset))
 }
 
@@ -57,7 +59,8 @@ pub async fn run_llm_op(
     if !can(ctx.role, Action::Create) {
         return Err(ApiError::forbidden("需要规则工程师及以上角色"));
     }
-    let op = parse_operation(&operation).ok_or_else(|| ApiError::bad_request(format!("非法操作: {operation}")))?;
+    let op = parse_operation(&operation)
+        .ok_or_else(|| ApiError::bad_request(format!("非法操作: {operation}")))?;
 
     let client = LlmClient::new(&state.llm_base_url);
     let started = Instant::now();
@@ -67,7 +70,10 @@ pub async fn run_llm_op(
     // 操作级审计：成功/失败都落库（37 号 §8）
     let audit = match &call {
         Ok(resp) => LlmOpAudit {
-            request_id: resp.request_id.clone().unwrap_or_else(crate::llm_client::make_request_id),
+            request_id: resp
+                .request_id
+                .clone()
+                .unwrap_or_else(crate::llm_client::make_request_id),
             operation: op.as_str().to_string(),
             model: req.model.clone(),
             status: "completed".to_string(),
@@ -95,5 +101,6 @@ pub async fn run_llm_op(
         tracing::warn!("LLM 操作审计落库失败: {audit_err}");
     }
 
-    call.map(Json).map_err(|e| ApiError::internal(e.to_string()))
+    call.map(Json)
+        .map_err(|e| ApiError::internal(e.to_string()))
 }

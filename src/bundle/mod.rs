@@ -80,7 +80,10 @@ impl BundleExporter {
         instance_id: &str,
         catalog: &std::collections::BTreeMap<String, ServiceCatalogEntry>,
     ) -> DatasetBundle {
-        let bundle_entries = entries.iter().map(Self::knowledge_entry_to_bundle).collect();
+        let bundle_entries = entries
+            .iter()
+            .map(Self::knowledge_entry_to_bundle)
+            .collect();
         Self::finish(dataset, bundle_entries, tests, by, at, instance_id, catalog)
     }
 
@@ -116,7 +119,11 @@ impl BundleExporter {
         });
         let mut bundle = DatasetBundle {
             bundle_schema_version: BUNDLE_SCHEMA_VERSION.into(),
-            bundle_id: format!("bundle-{}-{}", dataset.dataset_id, source_version.replace('.', "")),
+            bundle_id: format!(
+                "bundle-{}-{}",
+                dataset.dataset_id,
+                source_version.replace('.', "")
+            ),
             dataset: BundleDatasetMeta {
                 dataset_id: dataset.dataset_id.clone(),
                 name: dataset.name.clone(),

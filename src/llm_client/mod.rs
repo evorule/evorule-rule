@@ -119,8 +119,8 @@ impl LlmClient {
         let body: String = resp
             .into_string()
             .map_err(|e| LlmClientError::Parse(e.to_string()))?;
-        let resp: LlmOpResponse = serde_json::from_str(&body)
-            .map_err(|e| LlmClientError::Parse(e.to_string()))?;
+        let resp: LlmOpResponse =
+            serde_json::from_str(&body).map_err(|e| LlmClientError::Parse(e.to_string()))?;
 
         if resp.status != "completed" {
             return Err(LlmClientError::Pending(resp.status));
@@ -151,7 +151,13 @@ impl LlmClient {
 
         let record = |status: &str, error: Option<String>| {
             store.record_llm_audit(&build_audit(
-                op, req, status, duration_ms, result_ref, error, &created_at,
+                op,
+                req,
+                status,
+                duration_ms,
+                result_ref,
+                error,
+                &created_at,
             ))
         };
 
@@ -265,9 +271,18 @@ fn llm_generated_from(resp: &LlmOpResponse) -> LlmGenerated {
     let g = &resp.llm_generated;
     LlmGenerated {
         flag: true,
-        model: g.get("model").and_then(Value::as_str).map(ToOwned::to_owned),
-        op: g.get("operation").and_then(Value::as_str).map(ToOwned::to_owned),
-        timestamp: g.get("timestamp").and_then(Value::as_str).map(ToOwned::to_owned),
+        model: g
+            .get("model")
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned),
+        op: g
+            .get("operation")
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned),
+        timestamp: g
+            .get("timestamp")
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned),
     }
 }
 
@@ -324,10 +339,7 @@ fn format_utc_secs(secs: i64) -> String {
     let h = secs_of_day / 3600;
     let mi = (secs_of_day % 3600) / 60;
     let s = secs_of_day % 60;
-    format!(
-        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
-        y, m, d, h, mi, s
-    )
+    format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z", y, m, d, h, mi, s)
 }
 
 /// 天数（自 1970-01-01 起）→ 公历 (年, 月, 日)（Howard Hinnant civil_from_days 算法）
@@ -453,7 +465,10 @@ mod tests {
         // 2026-08-22T00:00:00Z
         assert_eq!(format_utc_secs(1_787_356_800), "2026-08-22T00:00:00Z");
         // 跨天 + 时分秒：2026-08-22T01:01:01Z
-        assert_eq!(format_utc_secs(1_787_356_800 + 3_661), "2026-08-22T01:01:01Z");
+        assert_eq!(
+            format_utc_secs(1_787_356_800 + 3_661),
+            "2026-08-22T01:01:01Z"
+        );
         // 2038-01-19T03:14:07Z（i32::MAX，经典边界）
         assert_eq!(format_utc_secs(2_147_483_647), "2038-01-19T03:14:07Z");
     }
@@ -572,7 +587,12 @@ mod tests {
             params: json!({"law_text": "x", "domain": "tax"}),
         };
         let resp = client
-            .call_audited(&store, Operation::DraftRule, &req, Some("ds-tax/smoke-rule-01"))
+            .call_audited(
+                &store,
+                Operation::DraftRule,
+                &req,
+                Some("ds-tax/smoke-rule-01"),
+            )
             .unwrap();
         assert_eq!(resp.status, "completed");
         // 审计已落库（completed + result_ref 溯源到条目）

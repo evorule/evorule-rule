@@ -70,8 +70,8 @@ impl KnowledgeEntry {
 
 #[cfg(test)]
 mod tests {
-    use crate::model::entry::RuleEntry;
     use super::*;
+    use crate::model::entry::RuleEntry;
 
     fn sample() -> KnowledgeEntry {
         KnowledgeEntry {

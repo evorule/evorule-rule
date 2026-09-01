@@ -7,8 +7,8 @@ use axum::Json;
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::api::{paginate, AppState, ApiError, AuthContext, Page};
-use crate::model::auth::{Action, can};
+use crate::api::{paginate, ApiError, AppState, AuthContext, Page};
+use crate::model::auth::{can, Action};
 use crate::model::dataset::{RuleDataset, Visibility};
 use crate::model::entry::RuleEntry;
 use crate::model::lifecycle::LifecycleStatus;

@@ -11,7 +11,7 @@ use axum::Json;
 use serde::{Deserialize, Serialize};
 
 use crate::api::{ApiError, AppState, AuthContext};
-use crate::model::auth::{is_org_admin, Action, can, Org, Role, UserOrg};
+use crate::model::auth::{can, is_org_admin, Action, Org, Role, UserOrg};
 
 #[derive(Deserialize)]
 pub struct CreateOrgReq {

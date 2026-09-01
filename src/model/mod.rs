@@ -21,7 +21,7 @@ pub mod service_catalog;
 pub mod version;
 pub mod writeback;
 
-pub use auth::{Action, ApiKey, AuthAudit, Role, Tenant, TokenClaims, User, can};
+pub use auth::{can, Action, ApiKey, AuthAudit, Role, Tenant, TokenClaims, User};
 
 pub use dataset::{DatasetKind, Meta, RuleDataset, Visibility};
 pub use dependency::{
@@ -29,13 +29,15 @@ pub use dependency::{
     SourceBinding,
 };
 pub use entry::RuleEntry;
-pub use knowledge::KnowledgeEntry;
 pub use governance::{Governance, LifecycleTimestamps, LlmGenerated};
+pub use knowledge::KnowledgeEntry;
 pub use lifecycle::{Lifecycle, LifecycleStatus, StateChange};
 pub use llm_audit::{LlmAuditFilter, LlmAuditStats, LlmOpAudit, OperationStat};
 pub use provenance::Provenance;
-pub use service_catalog::{BindingHint, ServiceCatalogEntry, official_entry, official_native_services};
+pub use service_catalog::{
+    official_entry, official_native_services, BindingHint, ServiceCatalogEntry,
+};
 pub use version::{
     BumpKind, LawRef, Version, VersionError, VersionSelection, VersionSelectionMode, Versioning,
 };
-pub use writeback::{ExecutionCtx, FailureDetail, RuleFailureEvent, validate_event};
+pub use writeback::{validate_event, ExecutionCtx, FailureDetail, RuleFailureEvent};

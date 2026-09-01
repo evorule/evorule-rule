@@ -13,8 +13,8 @@ use serde_json::Value;
 use evorule_bundle::validate_rule_structure;
 
 use crate::api::handlers_auth::now_iso;
-use crate::api::{paginate, AppState, ApiError, AuthContext, Page};
-use crate::model::auth::{Action, can};
+use crate::api::{paginate, ApiError, AppState, AuthContext, Page};
+use crate::model::auth::{can, Action};
 use crate::model::dependency::SourceBinding;
 use crate::model::entry::RuleEntry;
 use crate::model::lifecycle::LifecycleStatus;
@@ -160,8 +160,14 @@ pub async fn submit_candidate(
         return Err(ApiError::forbidden("需要规则工程师及以上角色"));
     }
     let (dataset_id, _) = locate_entry(&state, &ctx.tenant_id, &entry_id)?;
-    transition_any(&state, &dataset_id, &entry_id, LifecycleStatus::Candidate, &ctx.user_id,
-        &format!("闸门一通过，沙箱报告 {}", req.sandbox_report_id))?;
+    transition_any(
+        &state,
+        &dataset_id,
+        &entry_id,
+        LifecycleStatus::Candidate,
+        &ctx.user_id,
+        &format!("闸门一通过，沙箱报告 {}", req.sandbox_report_id),
+    )?;
     let (_, updated) = locate_entry(&state, &ctx.tenant_id, &entry_id)?;
     Ok(Json(updated.to_json()))
 }
@@ -176,7 +182,12 @@ fn transition_any(
     cause: &str,
 ) -> Result<(), ApiError> {
     let rule_err = match state.store.transition_entry_status(
-        dataset_id, entry_id, to, user_id, &now_iso(), cause,
+        dataset_id,
+        entry_id,
+        to,
+        user_id,
+        &now_iso(),
+        cause,
     ) {
         Ok(()) => return Ok(()),
         Err(e) => e,
@@ -186,7 +197,12 @@ fn transition_any(
         return Err(rule_err.into());
     }
     state.store.transition_knowledge_entry_status(
-        dataset_id, entry_id, to, user_id, &now_iso(), cause,
+        dataset_id,
+        entry_id,
+        to,
+        user_id,
+        &now_iso(),
+        cause,
     )?;
     Ok(())
 }
@@ -201,8 +217,14 @@ pub async fn approve(
         return Err(ApiError::forbidden("审批需审批者及以上角色"));
     }
     let (dataset_id, _) = locate_entry(&state, &ctx.tenant_id, &entry_id)?;
-    transition_any(&state, &dataset_id, &entry_id, LifecycleStatus::Active, &ctx.user_id,
-        "闸门二审批通过（Candidate→Active）")?;
+    transition_any(
+        &state,
+        &dataset_id,
+        &entry_id,
+        LifecycleStatus::Active,
+        &ctx.user_id,
+        "闸门二审批通过（Candidate→Active）",
+    )?;
     let (_, updated) = locate_entry(&state, &ctx.tenant_id, &entry_id)?;
     Ok(Json(updated.to_json()))
 }
@@ -215,9 +237,13 @@ pub async fn history(
 ) -> Result<Json<Vec<crate::model::lifecycle::StateChange>>, ApiError> {
     let (dataset_id, _) = locate_entry(&state, &ctx.tenant_id, &entry_id)?;
     // Q12 R4：先查规则表历史，空则查 knowledge 平行表
-    let mut hist = state.store.get_entry_state_history(&dataset_id, &entry_id)?;
+    let mut hist = state
+        .store
+        .get_entry_state_history(&dataset_id, &entry_id)?;
     if hist.is_empty() {
-        hist = state.store.get_knowledge_entry_state_history(&dataset_id, &entry_id)?;
+        hist = state
+            .store
+            .get_knowledge_entry_state_history(&dataset_id, &entry_id)?;
     }
     Ok(Json(hist))
 }
@@ -315,7 +341,10 @@ pub async fn list_entries_all(
         let cross_public = state
             .store
             .get_dataset(did)?
-            .map(|ds| ds.tenant_id != ctx.tenant_id && state.store.is_publicly_pullable(did).unwrap_or(false))
+            .map(|ds| {
+                ds.tenant_id != ctx.tenant_id
+                    && state.store.is_publicly_pullable(did).unwrap_or(false)
+            })
             .unwrap_or(false);
         if cross_public {
             for e in state.store.list_entries(did, None)? {
@@ -400,7 +429,10 @@ pub async fn entry_version_payload(
     let payload = match state.store.get_entry(&dataset_id, &entry_id, version)? {
         Some(e) => serde_json::to_value(e).unwrap_or(Value::Null),
         None => {
-            match state.store.get_knowledge_entry(&dataset_id, &entry_id, version)? {
+            match state
+                .store
+                .get_knowledge_entry(&dataset_id, &entry_id, version)?
+            {
                 Some(e) => serde_json::to_value(e).unwrap_or(Value::Null),
                 None => {
                     return Err(ApiError::not_found(format!(
@@ -455,7 +487,11 @@ fn map_store_err(e: crate::store::StoreError) -> ApiError {
         SE::InvalidDiffRange { from, to } => ApiError::bad_request(format!(
             "版本 diff 区间非法: from=`{from}` to=`{to}`（from 须先于 to 且版本存在）"
         )),
-        SE::EntryVersionNotFound { dataset, entry, version } => ApiError::not_found(format!(
+        SE::EntryVersionNotFound {
+            dataset,
+            entry,
+            version,
+        } => ApiError::not_found(format!(
             "条目版本不存在: dataset=`{dataset}` entry=`{entry}` version=`{version}`"
         )),
         other => other.into(),
@@ -495,11 +531,17 @@ pub async fn create_entry(
         .get_dataset(&req.dataset_id)?
         .ok_or_else(|| ApiError::not_found(format!("数据集 `{}` 不存在", req.dataset_id)))?;
     if ds.tenant_id != ctx.tenant_id {
-        return Err(ApiError::not_found(format!("数据集 `{}` 不存在", req.dataset_id)));
+        return Err(ApiError::not_found(format!(
+            "数据集 `{}` 不存在",
+            req.dataset_id
+        )));
     }
     let version = req.version.unwrap_or(1);
     let domain = req.domain.unwrap_or_else(|| {
-        ds.domain.first().cloned().unwrap_or_else(|| "general".to_string())
+        ds.domain
+            .first()
+            .cloned()
+            .unwrap_or_else(|| "general".to_string())
     });
     let provenance = req.provenance.unwrap_or_else(|| Provenance {
         source: "API 收录".into(),

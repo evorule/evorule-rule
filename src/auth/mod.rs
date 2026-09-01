@@ -18,7 +18,7 @@ use sha2::{Digest, Sha256};
 use subtle::ConstantTimeEq;
 use thiserror::Error;
 
-use crate::model::auth::{Action, AuthAudit, Role, TokenClaims, User, can};
+use crate::model::auth::{can, Action, AuthAudit, Role, TokenClaims, User};
 use crate::store::{RuleStore, StoreError};
 
 /// 默认 PBKDF2 迭代次数（OWASP 推荐 PBKDF2-HMAC-SHA256 ≥ 600k）
@@ -165,7 +165,13 @@ impl AuthService {
         self.sign(claims)
     }
 
-    pub fn issue_refresh_token_in(&self, user: &User, org_id: &str, role: Role, now: i64) -> String {
+    pub fn issue_refresh_token_in(
+        &self,
+        user: &User,
+        org_id: &str,
+        role: Role,
+        now: i64,
+    ) -> String {
         let claims = TokenClaims {
             sub: user.user_id.clone(),
             tenant_id: org_id.to_string(),
@@ -190,7 +196,12 @@ impl AuthService {
 
     /// 校验：验签 + exp + token_type；返回 claims。
     /// 双代验签（45 号 §3.3 K4）：先试 active，失败且存在 previous 时兜底试 previous（轮换后旧 token 兼容）。
-    pub fn verify_token(&self, token: &str, now: i64, expected_type: &str) -> Result<TokenClaims, AuthError> {
+    pub fn verify_token(
+        &self,
+        token: &str,
+        now: i64,
+        expected_type: &str,
+    ) -> Result<TokenClaims, AuthError> {
         match self.verify_with_secret(token, now, expected_type, &self.secret) {
             Ok(claims) => Ok(claims),
             Err(e) => match &self.previous_secret {
@@ -218,7 +229,8 @@ impl AuthService {
         let signing_input = format!("{}.{}", parts[0], parts[1]);
         let expected_sig = hmac_sha256(secret.as_bytes(), signing_input.as_bytes());
         let given_sig = unhex(&hex(&unb64(parts[2])?)); // decode then re-hex for constant-time
-        let ok = expected_sig.len() == given_sig.len() && bool::from(expected_sig.ct_eq(&given_sig));
+        let ok =
+            expected_sig.len() == given_sig.len() && bool::from(expected_sig.ct_eq(&given_sig));
         if !ok {
             return Err(AuthError::InvalidToken);
         }
@@ -229,7 +241,9 @@ impl AuthService {
             return Err(AuthError::InvalidToken);
         }
         if claims.token_type != expected_type {
-            return Err(AuthError::WrongTokenType { expected: expected_type.to_string() });
+            return Err(AuthError::WrongTokenType {
+                expected: expected_type.to_string(),
+            });
         }
         Ok(claims)
     }
@@ -280,7 +294,15 @@ impl AuthService {
         store.create_user(&user)?;
         // B1：注册即成员（默认 org，角色同注册角色）
         store.upsert_user_org_role(tenant_id, &user.user_id, role, &iso)?;
-        self.audit(store, tenant_id, Some(&user.user_id), "register", "success", None, iso_from_unix(now));
+        self.audit(
+            store,
+            tenant_id,
+            Some(&user.user_id),
+            "register",
+            "success",
+            None,
+            iso_from_unix(now),
+        );
         Ok(user)
     }
 
@@ -309,11 +331,17 @@ impl AuthService {
         if store.get_tenant(tenant_id)?.is_none() {
             return Err(AuthError::TenantNotFound);
         }
-        let org = store
-            .get_org(tenant_id)?
-            .ok_or(AuthError::OrgNotFound)?;
+        let org = store.get_org(tenant_id)?.ok_or(AuthError::OrgNotFound)?;
         if org.disabled {
-            self.audit(store, tenant_id, None, "login", "failure", Some("org disabled"), iso_from_unix(now));
+            self.audit(
+                store,
+                tenant_id,
+                None,
+                "login",
+                "failure",
+                Some("org disabled"),
+                iso_from_unix(now),
+            );
             return Err(AuthError::OrgDisabled);
         }
         // 解析用户：默认 org 直接命中；跨 org 登录经成员关系（用户名全局解析）
@@ -322,23 +350,55 @@ impl AuthService {
             None => match store.get_user_by_username_any(username)? {
                 Some(u) => u,
                 None => {
-                    self.audit(store, tenant_id, None, "login", "failure", Some("user not found"), iso_from_unix(now));
+                    self.audit(
+                        store,
+                        tenant_id,
+                        None,
+                        "login",
+                        "failure",
+                        Some("user not found"),
+                        iso_from_unix(now),
+                    );
                     return Err(AuthError::InvalidCredentials);
                 }
             },
         };
         if user.disabled {
-            self.audit(store, tenant_id, Some(&user.user_id), "login", "failure", Some("disabled"), iso_from_unix(now));
+            self.audit(
+                store,
+                tenant_id,
+                Some(&user.user_id),
+                "login",
+                "failure",
+                Some("disabled"),
+                iso_from_unix(now),
+            );
             return Err(AuthError::UserDisabled);
         }
         if !self.verify_password(password, &user.salt, &user.password_hash) {
-            self.audit(store, tenant_id, Some(&user.user_id), "login", "failure", Some("bad password"), iso_from_unix(now));
+            self.audit(
+                store,
+                tenant_id,
+                Some(&user.user_id),
+                "login",
+                "failure",
+                Some("bad password"),
+                iso_from_unix(now),
+            );
             return Err(AuthError::InvalidCredentials);
         }
         // B1：token 角色 = 该 org 的有效角色（同用户跨 org 异角色）
         let role = Self::effective_role(store, &user, tenant_id)?;
         let tokens = self.tokens_for_in(&user, tenant_id, role, now);
-        self.audit(store, tenant_id, Some(&user.user_id), "login", "success", None, iso_from_unix(now));
+        self.audit(
+            store,
+            tenant_id,
+            Some(&user.user_id),
+            "login",
+            "success",
+            None,
+            iso_from_unix(now),
+        );
         Ok(tokens)
     }
 
@@ -364,12 +424,28 @@ impl AuthService {
             .get_user(&claims.sub)?
             .ok_or(AuthError::TokenUserNotFound)?;
         if user.disabled {
-            self.audit(store, tenant_id, Some(&user.user_id), "refresh", "failure", Some("disabled"), iso_from_unix(now));
+            self.audit(
+                store,
+                tenant_id,
+                Some(&user.user_id),
+                "refresh",
+                "failure",
+                Some("disabled"),
+                iso_from_unix(now),
+            );
             return Err(AuthError::UserDisabled);
         }
         let role = Self::effective_role(store, &user, tenant_id)?;
         let tokens = self.tokens_for_in(&user, tenant_id, role, now);
-        self.audit(store, tenant_id, Some(&user.user_id), "refresh", "success", None, iso_from_unix(now));
+        self.audit(
+            store,
+            tenant_id,
+            Some(&user.user_id),
+            "refresh",
+            "success",
+            None,
+            iso_from_unix(now),
+        );
         Ok(tokens)
     }
 
@@ -389,12 +465,25 @@ impl AuthService {
             claims.exp,
             &iso_from_unix(now),
         )?;
-        self.audit(store, &claims.tenant_id, Some(&claims.sub), "logout", "success", None, iso_from_unix(now));
+        self.audit(
+            store,
+            &claims.tenant_id,
+            Some(&claims.sub),
+            "logout",
+            "success",
+            None,
+            iso_from_unix(now),
+        );
         Ok(())
     }
 
     /// 校验收到的 access/refresh 是否已被拉黑（供 `require_auth` 鉴权中间件使用）
-    pub fn is_blacklisted(&self, store: &RuleStore, claims: &TokenClaims, now: i64) -> Result<bool, AuthError> {
+    pub fn is_blacklisted(
+        &self,
+        store: &RuleStore,
+        claims: &TokenClaims,
+        now: i64,
+    ) -> Result<bool, AuthError> {
         Ok(store.is_token_revoked(&claims.jti, now)?)
     }
 
@@ -424,7 +513,9 @@ impl AuthService {
         detail: Option<&str>,
         created_at: String,
     ) {
-        self.record_audit(store, tenant_id, user_id, action, outcome, detail, created_at);
+        self.record_audit(
+            store, tenant_id, user_id, action, outcome, detail, created_at,
+        );
     }
 
     /// 公开审计入口（供 handler 记录治理动作，如 B1 成员指派 assign_role）
@@ -630,7 +721,9 @@ mod tests {
             updated_at: "t".into(),
         };
         let access = svc.issue_access_token(&user, now);
-        let claims = svc.verify_token(&access, now, "access").expect("valid access");
+        let claims = svc
+            .verify_token(&access, now, "access")
+            .expect("valid access");
         assert_eq!(claims.sub, "usr_1");
         assert_eq!(claims.role, "approver");
         assert_eq!(claims.exp, now + ACCESS_TOKEN_TTL_SECS);
@@ -645,7 +738,9 @@ mod tests {
         assert!(svc.verify_token(&tampered2, now, "access").is_err());
 
         // 过期拒绝
-        assert!(svc.verify_token(&access, now + ACCESS_TOKEN_TTL_SECS + 1, "access").is_err());
+        assert!(svc
+            .verify_token(&access, now + ACCESS_TOKEN_TTL_SECS + 1, "access")
+            .is_err());
     }
 
     #[test]
@@ -678,13 +773,18 @@ mod tests {
         assert_eq!(svc_rot.secret, new_secret);
 
         // 旧 token 仍可验（previous 兜底）
-        assert!(svc_rot.verify_token(&legacy_token, now, "access").is_ok(), "旧 token 应可验签");
+        assert!(
+            svc_rot.verify_token(&legacy_token, now, "access").is_ok(),
+            "旧 token 应可验签"
+        );
         // 新 token 用 active 验
         assert!(svc_rot.verify_token(&new_token, now, "access").is_ok());
 
         // 无 previous 的实例不能验旧 token
         let svc_new_only = AuthService::new(new_secret);
-        assert!(svc_new_only.verify_token(&legacy_token, now, "access").is_err());
+        assert!(svc_new_only
+            .verify_token(&legacy_token, now, "access")
+            .is_err());
     }
 
     #[test]
@@ -709,7 +809,14 @@ mod tests {
         let now = 1_700_000_000i64;
 
         let user = svc
-            .register(&store, &tenant, "alice", "password123", Role::RuleEngineer, now)
+            .register(
+                &store,
+                &tenant,
+                "alice",
+                "password123",
+                Role::RuleEngineer,
+                now,
+            )
             .expect("register ok");
         assert_eq!(user.role, Role::RuleEngineer);
 
@@ -778,7 +885,9 @@ mod tests {
             .expect("login");
 
         // 登出前：access/refresh 均可用
-        assert!(svc.verify_token(&tokens.access_token, now, "access").is_ok());
+        assert!(svc
+            .verify_token(&tokens.access_token, now, "access")
+            .is_ok());
         assert!(svc
             .refresh(&store, &tenant, &tokens.refresh_token, now + 60)
             .is_ok());
@@ -801,7 +910,9 @@ mod tests {
         let _ = svc
             .register(&store, &tenant, "dave", "password123", Role::Viewer, now)
             .expect("register");
-        let dave_tokens = svc.login(&store, &tenant, "dave", "password123", now).expect("login");
+        let dave_tokens = svc
+            .login(&store, &tenant, "dave", "password123", now)
+            .expect("login");
         assert!(svc
             .refresh(&store, &tenant, &dave_tokens.refresh_token, now + 60)
             .is_ok());

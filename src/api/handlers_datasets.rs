@@ -7,14 +7,17 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use crate::api::handlers_auth::now_iso;
-use crate::api::{api_key_from_header, bearer_token, paginate, unix_now, AppState, ApiError, AuthContext, Page, PageQuery};
+use crate::api::{
+    api_key_from_header, bearer_token, paginate, unix_now, ApiError, AppState, AuthContext, Page,
+    PageQuery,
+};
 use crate::auth::iso_from_unix;
-use crate::model::auth::{Action, Role, can, is_org_admin};
+use crate::model::auth::{can, is_org_admin, Action, Role};
 use crate::model::dataset::{DatasetKind, Meta, RuleDataset, Visibility};
 use crate::model::entry::RuleEntry;
 use crate::model::lifecycle::LifecycleStatus;
 use crate::model::provenance::Provenance;
-use crate::model::version::{BumpKind, LawRef, Versioning, VersionSelection};
+use crate::model::version::{BumpKind, LawRef, VersionSelection, Versioning};
 
 // ----------------------------------------------------------------------
 // 数据集
@@ -147,7 +150,11 @@ pub async fn transition_lifecycle(
         "candidate" => LifecycleStatus::Candidate,
         "active" => LifecycleStatus::Active,
         "rejected" => LifecycleStatus::Rejected,
-        "published" => return Err(ApiError::bad_request("Published 必须走独立发布审批端点 POST /publish")),
+        "published" => {
+            return Err(ApiError::bad_request(
+                "Published 必须走独立发布审批端点 POST /publish",
+            ))
+        }
         other => return Err(ApiError::bad_request(format!("非法目标状态: {other}"))),
     };
     // 状态迁移权限（34 号 §9 定案：闸门/审批/撤销需对应角色）
@@ -169,9 +176,13 @@ pub async fn transition_lifecycle(
         return Err(ApiError::not_found("数据集不存在"));
     }
     let at = iso_from_unix(unix_now());
-    state
-        .store
-        .transition_dataset_status(&id, to, &ctx.user_id, &format!("API 迁移 to {to:?}"), &at)?;
+    state.store.transition_dataset_status(
+        &id,
+        to,
+        &ctx.user_id,
+        &format!("API 迁移 to {to:?}"),
+        &at,
+    )?;
     let ds = state
         .store
         .get_dataset(&id)?
@@ -384,14 +395,16 @@ pub async fn create_version(
     let kind = match req.kind.as_str() {
         "major" => BumpKind::Major,
         "patch" => BumpKind::Patch,
-        other => return Err(ApiError::bad_request(format!("非法变更线: {other}（major|patch）"))),
+        other => {
+            return Err(ApiError::bad_request(format!(
+                "非法变更线: {other}（major|patch）"
+            )))
+        }
     };
-    let new_version = state.store.create_dataset_version(
-        &id,
-        kind,
-        &ctx.user_id,
-        &iso_from_unix(unix_now()),
-    )?;
+    let new_version =
+        state
+            .store
+            .create_dataset_version(&id, kind, &ctx.user_id, &iso_from_unix(unix_now()))?;
     let v = state.store.list_dataset_versions(&id)?;
     Ok(Json(serde_json::json!({
         "dataset_id": id,
@@ -597,12 +610,16 @@ pub async fn add_entry(
     // Q12 R4：按数据集类型分流校验（同一端点，两类条目互斥、显式报错）
     match ds.dataset_kind {
         DatasetKind::Knowledge => {
-            let req: AddKnowledgeEntryReq = serde_json::from_value(body)
-                .map_err(|e| ApiError::bad_request(format!(
+            let req: AddKnowledgeEntryReq = serde_json::from_value(body).map_err(|e| {
+                ApiError::bad_request(format!(
                     "knowledge 数据集条目须为 {{entry_id, version, payload, schema_ref, ...}}: {e}"
-                )))?;
+                ))
+            })?;
             let domain = req.domain.unwrap_or_else(|| {
-                ds.domain.first().cloned().unwrap_or_else(|| "general".to_string())
+                ds.domain
+                    .first()
+                    .cloned()
+                    .unwrap_or_else(|| "general".to_string())
             });
             let provenance = req.provenance.unwrap_or_else(|| Provenance {
                 source: "API 收录".into(),
@@ -632,12 +649,16 @@ pub async fn add_entry(
             ))
         }
         DatasetKind::RuleSet => {
-            let req: AddEntryReq = serde_json::from_value(body)
-                .map_err(|e| ApiError::bad_request(format!(
+            let req: AddEntryReq = serde_json::from_value(body).map_err(|e| {
+                ApiError::bad_request(format!(
                     "rule_set 数据集条目须为 {{entry_id, version, rule_body, ...}}: {e}"
-                )))?;
+                ))
+            })?;
             let domain = req.domain.unwrap_or_else(|| {
-                ds.domain.first().cloned().unwrap_or_else(|| "general".to_string())
+                ds.domain
+                    .first()
+                    .cloned()
+                    .unwrap_or_else(|| "general".to_string())
             });
             let provenance = req.provenance.unwrap_or_else(|| Provenance {
                 source: "API 收录".into(),
@@ -708,7 +729,9 @@ pub async fn get_bundle(
         };
         return export_for(&state, &ctx.tenant_id, &id, &ctx.user_id).await;
     }
-    Err(ApiError::unauthorized("缺少认证：需 Bearer token 或 X-Api-Key"))
+    Err(ApiError::unauthorized(
+        "缺少认证：需 Bearer token 或 X-Api-Key",
+    ))
 }
 
 async fn export_for(
@@ -724,19 +747,19 @@ async fn export_for(
     // 拉取条件：本租户任意状态 或 public+Published（34 号对外双条件）
     let pullable = ds.tenant_id == tenant_id || state.store.is_publicly_pullable(dataset_id)?;
     if !pullable {
-        return Err(ApiError::forbidden("该数据集不可拉取（非本租户且非 public+Published）"));
+        return Err(ApiError::forbidden(
+            "该数据集不可拉取（非本租户且非 public+Published）",
+        ));
     }
-    let bundle = state
-        .store
-        .export_bundle(
-            dataset_id,
-            // T0 决策（2026-08-24）：拉取路径无测试工作台 → 显式 verdict=fail（不默认 Pass），
-            // 使 F5 执行侧导入闸门一真实生效（矛盾 B 推荐方案）。
-            &crate::bundle::BundleTests::unverified(),
-            by,
-            &iso_from_unix(unix_now()),
-            &state.instance_id,
-        )?;
+    let bundle = state.store.export_bundle(
+        dataset_id,
+        // T0 决策（2026-08-24）：拉取路径无测试工作台 → 显式 verdict=fail（不默认 Pass），
+        // 使 F5 执行侧导入闸门一真实生效（矛盾 B 推荐方案）。
+        &crate::bundle::BundleTests::unverified(),
+        by,
+        &iso_from_unix(unix_now()),
+        &state.instance_id,
+    )?;
     Ok(Json(bundle))
 }
 

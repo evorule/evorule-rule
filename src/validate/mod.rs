@@ -23,7 +23,10 @@ pub enum ValidationError {
     ServiceNotInRuleBody { service: String },
 
     #[error("LLM 产出（llm_generated=true）的条目 `{entry}` 状态只能是 Draft，当前为 {status:?}")]
-    LlmGeneratedNotDraft { entry: String, status: LifecycleStatus },
+    LlmGeneratedNotDraft {
+        entry: String,
+        status: LifecycleStatus,
+    },
 
     #[error("rule_body 结构无法解析 transform（需含 type=io_request 且 params.service_name）")]
     InvalidRuleBody,
@@ -31,7 +34,9 @@ pub enum ValidationError {
     #[error("规则体含动态服务引用（__exec__.instruction.params.*）但数据集 `{dataset}` 未声明任何服务：运行所需服务必须显式声明，否则执行侧绑定核对无法覆盖（C1，不静默）")]
     DynamicRefNeedsDeclaration { dataset: String },
 
-    #[error("发布前凭据静态扫描未通过：命中疑似凭据 {hits:?}（35 号 §6/§9-3：凭据永不入规则资产库）")]
+    #[error(
+        "发布前凭据静态扫描未通过：命中疑似凭据 {hits:?}（35 号 §6/§9-3：凭据永不入规则资产库）"
+    )]
     CredentialScanFailed { hits: Vec<String> },
 
     /// 通用校验失败（自描述消息；供存储层零散校验点复用，避免为单一场景扩枚举）
@@ -57,9 +62,20 @@ pub fn scan_credentials(text: &str) -> Vec<String> {
     }
     // 2) 密钥键名 + 收集
     let key_names: &[&str] = &[
-        "api_key", "apikey", "access_token", "auth_token", "refresh_token",
-        "secret", "client_secret", "private_key", "password", "passwd",
-        "credential", "credentials", "authorization", "bearer",
+        "api_key",
+        "apikey",
+        "access_token",
+        "auth_token",
+        "refresh_token",
+        "secret",
+        "client_secret",
+        "private_key",
+        "password",
+        "passwd",
+        "credential",
+        "credentials",
+        "authorization",
+        "bearer",
     ];
     let lower = text.to_ascii_lowercase();
     for name in key_names {
@@ -69,7 +85,10 @@ pub fn scan_credentials(text: &str) -> Vec<String> {
             // 取键名后到值片段（冒号/等号后 → 到空白/逗号/右括号/引号/右括号/换行）
             if let Some(sep) = lower[idx..].find([':', '=']) {
                 let vstart = idx + sep + 1;
-                let vtrim = lower[vstart..].trim_start().trim_start_matches('"').trim_start_matches('\'');
+                let vtrim = lower[vstart..]
+                    .trim_start()
+                    .trim_start_matches('"')
+                    .trim_start_matches('\'');
                 // 值非空、非布尔/纯数字/对象/占位符 → 疑似凭据
                 let non_trivial = !vtrim.is_empty()
                     && !vtrim.starts_with("true")
@@ -77,7 +96,11 @@ pub fn scan_credentials(text: &str) -> Vec<String> {
                     && !vtrim.starts_with('{')
                     && !vtrim.starts_with('[')
                     && !vtrim.starts_with('<')
-                    && vtrim.chars().next().map(|c| !c.is_ascii_digit()).unwrap_or(false);
+                    && vtrim
+                        .chars()
+                        .next()
+                        .map(|c| !c.is_ascii_digit())
+                        .unwrap_or(false);
                 if non_trivial {
                     let val: String = vtrim
                         .split([',', '"', '\'', ')', '}', '\n', ' '])
@@ -86,9 +109,14 @@ pub fn scan_credentials(text: &str) -> Vec<String> {
                         .trim_end_matches(['{', ','])
                         .to_string();
                     // 占位符/示例/说明值不算命中（避免误伤规则正文）
-                    if !val.is_empty() && !val.contains("提示") && !val.contains("示例")
-                        && !val.contains("占位") && !val.contains("PLACEHOLDER")
-                        && !val.contains("...") && !val.contains('<') && !val.contains('{')
+                    if !val.is_empty()
+                        && !val.contains("提示")
+                        && !val.contains("示例")
+                        && !val.contains("占位")
+                        && !val.contains("PLACEHOLDER")
+                        && !val.contains("...")
+                        && !val.contains('<')
+                        && !val.contains('{')
                     {
                         hits.push(format!("{name}={val}"));
                     }
@@ -143,9 +171,10 @@ impl Validator {
 
         for binding in &entry.data_source_binding {
             // a) 必须出现在数据集声明中
-            if !declared_services.iter().any(|s| {
-                s.service_name == binding.service_name
-            }) {
+            if !declared_services
+                .iter()
+                .any(|s| s.service_name == binding.service_name)
+            {
                 return Err(ValidationError::ServiceNotDeclared {
                     dataset: dataset.dataset_id.clone(),
                     service: binding.service_name.clone(),
@@ -346,7 +375,10 @@ mod tests {
             }]
         }));
         let err = Validator::validate_symbol_consistency(&ds, &entry).unwrap_err();
-        assert!(matches!(err, ValidationError::DynamicRefNeedsDeclaration { .. }));
+        assert!(matches!(
+            err,
+            ValidationError::DynamicRefNeedsDeclaration { .. }
+        ));
 
         // 声明非空 → 通过（即使无绑定条目，动态引用也可入库）
         // 动态服务引用规则无法静态绑定（运行时才解析），故 data_source_binding 为空
@@ -389,17 +421,49 @@ mod tests {
     #[test]
     fn test_transition_rules() {
         // 常规闸门
-        assert!(Validator::validate_transition(Some(LifecycleStatus::Draft), LifecycleStatus::Candidate).is_ok());
-        assert!(Validator::validate_transition(Some(LifecycleStatus::Candidate), LifecycleStatus::Active).is_ok());
+        assert!(Validator::validate_transition(
+            Some(LifecycleStatus::Draft),
+            LifecycleStatus::Candidate
+        )
+        .is_ok());
+        assert!(Validator::validate_transition(
+            Some(LifecycleStatus::Candidate),
+            LifecycleStatus::Active
+        )
+        .is_ok());
         // Published 不能经通用迁移进入（34 号 §3 强约束）
-        assert!(Validator::validate_transition(Some(LifecycleStatus::Active), LifecycleStatus::Published).is_err());
-        assert!(Validator::validate_transition(Some(LifecycleStatus::Draft), LifecycleStatus::Published).is_err());
+        assert!(Validator::validate_transition(
+            Some(LifecycleStatus::Active),
+            LifecycleStatus::Published
+        )
+        .is_err());
+        assert!(Validator::validate_transition(
+            Some(LifecycleStatus::Draft),
+            LifecycleStatus::Published
+        )
+        .is_err());
         // 驳回路径
-        assert!(Validator::validate_transition(Some(LifecycleStatus::Candidate), LifecycleStatus::Rejected).is_ok());
-        assert!(Validator::validate_transition(Some(LifecycleStatus::Active), LifecycleStatus::Rejected).is_ok());
+        assert!(Validator::validate_transition(
+            Some(LifecycleStatus::Candidate),
+            LifecycleStatus::Rejected
+        )
+        .is_ok());
+        assert!(Validator::validate_transition(
+            Some(LifecycleStatus::Active),
+            LifecycleStatus::Rejected
+        )
+        .is_ok());
         // 撤销发布 + 修订重来
-        assert!(Validator::validate_transition(Some(LifecycleStatus::Published), LifecycleStatus::Rejected).is_ok());
-        assert!(Validator::validate_transition(Some(LifecycleStatus::Rejected), LifecycleStatus::Draft).is_ok());
+        assert!(Validator::validate_transition(
+            Some(LifecycleStatus::Published),
+            LifecycleStatus::Rejected
+        )
+        .is_ok());
+        assert!(Validator::validate_transition(
+            Some(LifecycleStatus::Rejected),
+            LifecycleStatus::Draft
+        )
+        .is_ok());
     }
 
     #[test]
@@ -420,13 +484,29 @@ mod tests {
     #[test]
     fn test_scan_credentials_heuristics() {
         // 命中真实凭据格式
-        assert_eq!(scan_credentials("aws key=AKIAIOSFODNN7EXAMPLE"), ["AKIA".to_string()]);
-        assert_eq!(scan_credentials("token=ghp_abcdefg12345"), ["ghp_".to_string()]);
+        assert_eq!(
+            scan_credentials("aws key=AKIAIOSFODNN7EXAMPLE"),
+            ["AKIA".to_string()]
+        );
+        assert_eq!(
+            scan_credentials("token=ghp_abcdefg12345"),
+            ["ghp_".to_string()]
+        );
         // 命中键名+引号包裹的 JSON 值
-        assert!(scan_credentials(r#"{"api_key":"super-secret-123"}"#).contains(&"api_key=super-secret-123".to_string()));
+        assert!(scan_credentials(r#"{"api_key":"super-secret-123"}"#)
+            .contains(&"api_key=super-secret-123".to_string()));
         // 不误伤：纯占位符/示例/说明（无冒号等号键值、或值为占位符）
-        assert_eq!(scan_credentials("endpoint=<host>:8080, key=<key>"), Vec::<String>::new());
-        assert_eq!(scan_credentials("备注：password 应为示例占位，勿填真实值"), Vec::<String>::new());
-        assert_eq!(scan_credentials(r#"{"auth": "<token 由执行侧注入>"}"#), Vec::<String>::new());
+        assert_eq!(
+            scan_credentials("endpoint=<host>:8080, key=<key>"),
+            Vec::<String>::new()
+        );
+        assert_eq!(
+            scan_credentials("备注：password 应为示例占位，勿填真实值"),
+            Vec::<String>::new()
+        );
+        assert_eq!(
+            scan_credentials(r#"{"auth": "<token 由执行侧注入>"}"#),
+            Vec::<String>::new()
+        );
     }
 }

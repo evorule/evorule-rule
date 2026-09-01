@@ -9,8 +9,8 @@ use rand::RngCore;
 use serde::{Deserialize, Serialize};
 
 use crate::api::handlers_auth::now_iso;
-use crate::api::{paginate, AppState, ApiError, AuthContext, Page, PageQuery};
-use crate::model::auth::{ApiKey, is_org_admin};
+use crate::api::{paginate, ApiError, AppState, AuthContext, Page, PageQuery};
+use crate::model::auth::{is_org_admin, ApiKey};
 
 #[derive(Deserialize)]
 pub struct CreateKeyReq {
@@ -107,7 +107,9 @@ pub async fn revoke(
     if !is_org_admin(ctx.role) {
         return Err(ApiError::forbidden("仅管理员可吊销 API Key"));
     }
-    let revoked = state.store.revoke_api_key(&ctx.tenant_id, &id, &now_iso())?;
+    let revoked = state
+        .store
+        .revoke_api_key(&ctx.tenant_id, &id, &now_iso())?;
     if !revoked {
         return Err(ApiError::not_found("API Key 不存在或已吊销"));
     }

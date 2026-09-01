@@ -42,7 +42,10 @@ pub struct ServiceTemplateRecord {
 impl ServiceTemplateRecord {
     /// 占位符填充：把 `values` 中的值替换到 endpoint_template 与 headers_template。
     /// 未提供的占位符保留原样（剩余值由消费者在执行侧填写，35 号 §5）。
-    pub fn bind(&self, values: &BTreeMap<String, String>) -> crate::model::dependency::ServiceTemplate {
+    pub fn bind(
+        &self,
+        values: &BTreeMap<String, String>,
+    ) -> crate::model::dependency::ServiceTemplate {
         let fill = |s: &str| -> String {
             let mut out = s.to_string();
             for (k, v) in values {

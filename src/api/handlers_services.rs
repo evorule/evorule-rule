@@ -13,8 +13,8 @@ use axum::Json;
 use serde::Deserialize;
 
 use crate::api::handlers_auth::now_iso;
-use crate::api::{AppState, ApiError, AuthContext};
-use crate::model::auth::{Action, can, is_org_admin};
+use crate::api::{ApiError, AppState, AuthContext};
+use crate::model::auth::{can, is_org_admin, Action};
 use crate::model::dependency::IoContract;
 use crate::model::service_catalog::{BindingHint, ServiceCatalogEntry};
 
@@ -55,7 +55,9 @@ pub async fn create_service(
     Json(req): Json<CreateServiceReq>,
 ) -> Result<(StatusCode, Json<ServiceCatalogEntry>), ApiError> {
     if !is_org_admin(ctx.role) {
-        return Err(ApiError::forbidden("注册服务需管理员角色（服务由服务公司/官方维护，D13）"));
+        return Err(ApiError::forbidden(
+            "注册服务需管理员角色（服务由服务公司/官方维护，D13）",
+        ));
     }
     let now = now_iso();
     let entry = ServiceCatalogEntry {

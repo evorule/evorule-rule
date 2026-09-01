@@ -26,7 +26,11 @@ use tower_http::cors::CorsLayer;
 
 /// evorule-rule 独立治理服务
 #[derive(Parser, Debug)]
-#[command(name = "evorule-rule-serve", version, about = "EvoRule JSON 规则资产治理服务")]
+#[command(
+    name = "evorule-rule-serve",
+    version,
+    about = "EvoRule JSON 规则资产治理服务"
+)]
 struct Cli {
     /// SQLite 数据库路径（父目录自动创建）
     #[arg(long, default_value = "./data/rule.db")]

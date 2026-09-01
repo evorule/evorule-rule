@@ -5,9 +5,9 @@ use axum::http::StatusCode;
 use axum::Json;
 use serde::{Deserialize, Serialize};
 
-use crate::api::{AppState, AuthContext, ApiError, unix_now};
+use crate::api::{unix_now, ApiError, AppState, AuthContext};
 use crate::auth::iso_from_unix;
-use crate::model::auth::{Role, is_org_admin};
+use crate::model::auth::{is_org_admin, Role};
 
 #[derive(Deserialize)]
 pub struct RegisterReq {
@@ -60,26 +60,31 @@ pub async fn register(
     let now = unix_now();
     let user = state
         .auth
-        .register(&state.store, &req.tenant_id, &req.username, &req.password, Role::RuleEngineer, now)
+        .register(
+            &state.store,
+            &req.tenant_id,
+            &req.username,
+            &req.password,
+            Role::RuleEngineer,
+            now,
+        )
         .map_err(|e| match e {
-            crate::auth::AuthError::UsernameTaken => {
-                ApiError::conflict("用户名已存在")
-            }
-            crate::auth::AuthError::TenantNotFound => {
-                ApiError::bad_request("租户不存在")
-            }
-            crate::auth::AuthError::OrgNotFound => {
-                ApiError::bad_request("组织不存在")
-            }
-            crate::auth::AuthError::InvalidCredentials => {
-                ApiError::bad_request("密码至少 8 位")
-            }
+            crate::auth::AuthError::UsernameTaken => ApiError::conflict("用户名已存在"),
+            crate::auth::AuthError::TenantNotFound => ApiError::bad_request("租户不存在"),
+            crate::auth::AuthError::OrgNotFound => ApiError::bad_request("组织不存在"),
+            crate::auth::AuthError::InvalidCredentials => ApiError::bad_request("密码至少 8 位"),
             other => ApiError::internal(other.to_string()),
         })?;
 
     let tokens = state
         .auth
-        .login(&state.store, &req.tenant_id, &req.username, &req.password, now)
+        .login(
+            &state.store,
+            &req.tenant_id,
+            &req.username,
+            &req.password,
+            now,
+        )
         .map_err(|e| ApiError::internal(e.to_string()))?;
 
     let _ = user;
@@ -102,17 +107,17 @@ pub async fn login(
 ) -> Result<Json<TokenResp>, ApiError> {
     let tokens = state
         .auth
-        .login(&state.store, &req.tenant_id, &req.username, &req.password, unix_now())
+        .login(
+            &state.store,
+            &req.tenant_id,
+            &req.username,
+            &req.password,
+            unix_now(),
+        )
         .map_err(|e| match e {
-            crate::auth::AuthError::OrgDisabled => {
-                ApiError::forbidden("组织已停用，禁止登录")
-            }
-            crate::auth::AuthError::OrgNotFound => {
-                ApiError::forbidden("组织不存在")
-            }
-            crate::auth::AuthError::NotOrgMember => {
-                ApiError::forbidden("该账号不是此组织成员")
-            }
+            crate::auth::AuthError::OrgDisabled => ApiError::forbidden("组织已停用，禁止登录"),
+            crate::auth::AuthError::OrgNotFound => ApiError::forbidden("组织不存在"),
+            crate::auth::AuthError::NotOrgMember => ApiError::forbidden("该账号不是此组织成员"),
             _ => ApiError::unauthorized("用户名或密码错误"),
         })?;
     Ok(Json(TokenResp {
@@ -133,12 +138,8 @@ pub async fn refresh(
         .auth
         .refresh(&state.store, &req.tenant_id, &req.refresh_token, unix_now())
         .map_err(|e| match e {
-            crate::auth::AuthError::NotOrgMember => {
-                ApiError::forbidden("该账号已不是此组织成员")
-            }
-            crate::auth::AuthError::OrgDisabled => {
-                ApiError::forbidden("组织已停用")
-            }
+            crate::auth::AuthError::NotOrgMember => ApiError::forbidden("该账号已不是此组织成员"),
+            crate::auth::AuthError::OrgDisabled => ApiError::forbidden("组织已停用"),
             _ => ApiError::unauthorized("刷新 token 非法或已过期"),
         })?;
     Ok(Json(TokenResp {

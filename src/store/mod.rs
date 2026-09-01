@@ -26,10 +26,10 @@ use crate::model::knowledge::KnowledgeEntry;
 use crate::model::lifecycle::{Lifecycle, LifecycleStatus, StateChange};
 use crate::model::llm_audit::{LlmAuditFilter, LlmAuditStats, LlmOpAudit, OperationStat};
 use crate::model::service_catalog::{
-    ServiceCatalogEntry, official_entry, official_native_services,
+    official_entry, official_native_services, ServiceCatalogEntry,
 };
 use crate::model::version::{BumpKind, VersionError, Versioning};
-use crate::validate::{ValidationError, Validator, scan_credentials};
+use crate::validate::{scan_credentials, ValidationError, Validator};
 
 /// 存储错误
 #[derive(Debug, Error)]
@@ -56,7 +56,11 @@ pub enum StoreError {
     PublishRequiresApproval { dataset: String },
 
     #[error("条目 `{dataset}/{entry}` 已存在（version={version}）")]
-    EntryExists { dataset: String, entry: String, version: u32 },
+    EntryExists {
+        dataset: String,
+        entry: String,
+        version: u32,
+    },
 
     #[error("条目 `{dataset}/{entry}` 已冻结（Active/Published），不可原地修改")]
     EntryFrozen { dataset: String, entry: String },
@@ -68,10 +72,17 @@ pub enum StoreError {
     TemplateNotFound(String),
 
     #[error("数据集 `{dataset}` 当前状态 `{status:?}` 不可删除（仅 Draft/Rejected）")]
-    DatasetNotDeletable { dataset: String, status: LifecycleStatus },
+    DatasetNotDeletable {
+        dataset: String,
+        status: LifecycleStatus,
+    },
 
     #[error("条目 `{dataset}/{entry}` 当前状态 `{status:?}` 不可删除（仅 Draft）")]
-    EntryNotDeletable { dataset: String, entry: String, status: Option<LifecycleStatus> },
+    EntryNotDeletable {
+        dataset: String,
+        entry: String,
+        status: Option<LifecycleStatus>,
+    },
 
     #[error("版本 diff 区间非法: from=`{from}` to=`{to}`（需均存在于版本链且 from 先于 to）")]
     InvalidDiffRange { from: String, to: String },
@@ -80,10 +91,17 @@ pub enum StoreError {
     VersionSnapshotMissing { dataset: String, version: String },
 
     #[error("条目版本不存在: dataset=`{dataset}` entry=`{entry}` version=`{version}`")]
-    EntryVersionNotFound { dataset: String, entry: String, version: u32 },
+    EntryVersionNotFound {
+        dataset: String,
+        entry: String,
+        version: u32,
+    },
 
     #[error("非法状态迁移: {from:?} → {to:?}")]
-    IllegalTransition { from: Option<LifecycleStatus>, to: LifecycleStatus },
+    IllegalTransition {
+        from: Option<LifecycleStatus>,
+        to: LifecycleStatus,
+    },
 
     #[error("LLM 操作审计记录 `{0}` 已存在（request_id 唯一）")]
     AuditExists(String),
@@ -109,7 +127,9 @@ pub enum StoreError {
     #[error("角色 `{0}` 非法")]
     InvalidRole(String),
 
-    #[error("数据集 `{dataset}` 类型为 {actual}，不接受{expected}条目（数据集类型创建后不可变更）")]
+    #[error(
+        "数据集 `{dataset}` 类型为 {actual}，不接受{expected}条目（数据集类型创建后不可变更）"
+    )]
     DatasetKindMismatch {
         dataset: String,
         expected: &'static str,
@@ -185,17 +205,17 @@ pub struct RuleStore {
 
 /// service_templates 行原始列（rusqlite 闭包只读原始列，JSON 反序列化移到闭包外）
 type ServiceTemplateRow = (
-    String,        // template_id
-    String,        // tenant_id
-    String,        // service_name
-    String,        // kind
-    String,        // io_contract (JSON)
-    String,        // endpoint_template
+    String,         // template_id
+    String,         // tenant_id
+    String,         // service_name
+    String,         // kind
+    String,         // io_contract (JSON)
+    String,         // endpoint_template
     Option<String>, // method
-    String,        // headers_template (JSON)
-    String,        // placeholder_notes (JSON)
-    String,        // created_at
-    String,        // created_by
+    String,         // headers_template (JSON)
+    String,         // placeholder_notes (JSON)
+    String,         // created_at
+    String,         // created_by
 );
 
 /// service_catalog 行原始列（rusqlite 闭包只读原始列，JSON 反序列化移到闭包外）
@@ -529,11 +549,20 @@ impl RuleStore {
         )?;
         // 轻量迁移：若旧库 entries 表缺 35 号新增的 consumed_inputs 列，则补齐
         // （CREATE TABLE IF NOT EXISTS 不会为已存在表加列，需显式 ALTER）
-        let _ = conn.execute("ALTER TABLE entries ADD COLUMN consumed_inputs TEXT NOT NULL DEFAULT '[]'", []);
+        let _ = conn.execute(
+            "ALTER TABLE entries ADD COLUMN consumed_inputs TEXT NOT NULL DEFAULT '[]'",
+            [],
+        );
         // Q12 数据资产化 R1：datasets 表补 dataset_kind 列（存量默认 rule_set，零迁移成本）
-        let _ = conn.execute("ALTER TABLE datasets ADD COLUMN dataset_kind TEXT NOT NULL DEFAULT 'rule_set'", []);
+        let _ = conn.execute(
+            "ALTER TABLE datasets ADD COLUMN dataset_kind TEXT NOT NULL DEFAULT 'rule_set'",
+            [],
+        );
         // B5（段B 14 号）：datasets 表补 event_schemas 列（JSON 数组，存量默认 '[]'，零迁移成本）
-        let _ = conn.execute("ALTER TABLE datasets ADD COLUMN event_schemas TEXT NOT NULL DEFAULT '[]'", []);
+        let _ = conn.execute(
+            "ALTER TABLE datasets ADD COLUMN event_schemas TEXT NOT NULL DEFAULT '[]'",
+            [],
+        );
         // Q12 数据资产化 R3：knowledge 条目平行表（方案 D 定案：rule 查询热路径零扰动）
         conn.execute_batch(
             r#"
@@ -783,7 +812,10 @@ impl RuleStore {
             "DELETE FROM entry_state_history WHERE dataset_id=?1",
             params![dataset_id],
         )?;
-        conn.execute("DELETE FROM entries WHERE dataset_id=?1", params![dataset_id])?;
+        conn.execute(
+            "DELETE FROM entries WHERE dataset_id=?1",
+            params![dataset_id],
+        )?;
         conn.execute(
             "DELETE FROM knowledge_state_history WHERE dataset_id=?1",
             params![dataset_id],
@@ -796,7 +828,10 @@ impl RuleStore {
             "DELETE FROM knowledge_entries WHERE dataset_id=?1",
             params![dataset_id],
         )?;
-        conn.execute("DELETE FROM datasets WHERE dataset_id=?1", params![dataset_id])?;
+        conn.execute(
+            "DELETE FROM datasets WHERE dataset_id=?1",
+            params![dataset_id],
+        )?;
         Ok(())
     }
 
@@ -830,7 +865,8 @@ impl RuleStore {
     pub fn list_datasets(&self, tenant_id: &str) -> Result<Vec<RuleDataset>, StoreError> {
         let ids: Vec<String> = {
             let conn = self.conn.lock().unwrap();
-            let ids = conn.prepare("SELECT dataset_id FROM datasets WHERE tenant_id = ?1")?
+            let ids = conn
+                .prepare("SELECT dataset_id FROM datasets WHERE tenant_id = ?1")?
                 .query_map(params![tenant_id], |r| r.get::<_, String>(0))?
                 .collect::<Result<_, _>>()?;
             ids
@@ -855,9 +891,7 @@ impl RuleStore {
         let ids: Vec<String> = {
             let conn = self.conn.lock().unwrap();
             let ids = conn
-                .prepare(
-                    "SELECT dataset_id FROM datasets WHERE tenant_id = ?1 OR visibility = ?2",
-                )?
+                .prepare("SELECT dataset_id FROM datasets WHERE tenant_id = ?1 OR visibility = ?2")?
                 .query_map(params![tenant_id, public_flag], |r| r.get::<_, String>(0))?
                 .collect::<Result<_, _>>()?;
             ids
@@ -942,10 +976,22 @@ impl RuleStore {
                  ON CONFLICT(dataset_id, version, entry_hash) DO NOTHING",
             )?;
             for e in &rule_entries {
-                stmt.execute(params![dataset_id, old_version, e.content_hash(), e.entry_id, at])?;
+                stmt.execute(params![
+                    dataset_id,
+                    old_version,
+                    e.content_hash(),
+                    e.entry_id,
+                    at
+                ])?;
             }
             for e in &knowledge_entries {
-                stmt.execute(params![dataset_id, old_version, e.content_hash(), e.entry_id, at])?;
+                stmt.execute(params![
+                    dataset_id,
+                    old_version,
+                    e.content_hash(),
+                    e.entry_id,
+                    at
+                ])?;
             }
         }
         // 全量条目快照（B4）：完整条目 JSON 落库（含 provenance/domain/tags/绑定），
@@ -1061,14 +1107,21 @@ impl RuleStore {
                 entry.dataset_id,
                 entry.entry_id,
                 entry.version,
-                entry.status.map(|s| serde_json::to_string(&s)).transpose()?,
+                entry
+                    .status
+                    .map(|s| serde_json::to_string(&s))
+                    .transpose()?,
                 serde_json::to_string(&entry.provenance)?,
                 entry.domain,
                 serde_json::to_string(&entry.tags)?,
                 serde_json::to_string(&entry.data_source_binding)?,
                 serde_json::to_string(&entry.consumed_inputs)?,
                 serde_json::to_string(&entry.rule_body)?,
-                entry.governance.as_ref().map(serde_json::to_string).transpose()?,
+                entry
+                    .governance
+                    .as_ref()
+                    .map(serde_json::to_string)
+                    .transpose()?,
                 entry.content_hash(),
             ],
         )?;
@@ -1156,13 +1209,20 @@ impl RuleStore {
                 entry.dataset_id,
                 entry.entry_id,
                 entry.version,
-                entry.status.map(|s| serde_json::to_string(&s)).transpose()?,
+                entry
+                    .status
+                    .map(|s| serde_json::to_string(&s))
+                    .transpose()?,
                 serde_json::to_string(&entry.provenance)?,
                 entry.domain,
                 serde_json::to_string(&entry.tags)?,
                 serde_json::to_string(&entry.payload)?,
                 entry.schema_ref,
-                entry.governance.as_ref().map(serde_json::to_string).transpose()?,
+                entry
+                    .governance
+                    .as_ref()
+                    .map(serde_json::to_string)
+                    .transpose()?,
                 entry.content_hash(),
             ],
         )?;
@@ -1215,17 +1275,13 @@ impl RuleStore {
             entry_id,
             dataset_id,
             version,
-            status: status
-                .map(|s| serde_json::from_str(&s))
-                .transpose()?,
+            status: status.map(|s| serde_json::from_str(&s)).transpose()?,
             provenance: serde_json::from_str(&provenance)?,
             domain,
             tags: serde_json::from_str(&tags)?,
             payload: serde_json::from_str(&payload)?,
             schema_ref,
-            governance: governance
-                .map(|s| serde_json::from_str(&s))
-                .transpose()?,
+            governance: governance.map(|s| serde_json::from_str(&s)).transpose()?,
         }))
     }
 
@@ -1371,13 +1427,20 @@ impl RuleStore {
             params![
                 entry.dataset_id,
                 entry.entry_id,
-                entry.status.map(|s| serde_json::to_string(&s)).transpose()?,
+                entry
+                    .status
+                    .map(|s| serde_json::to_string(&s))
+                    .transpose()?,
                 serde_json::to_string(&entry.provenance)?,
                 entry.domain,
                 serde_json::to_string(&entry.tags)?,
                 serde_json::to_string(&entry.payload)?,
                 entry.schema_ref,
-                entry.governance.as_ref().map(serde_json::to_string).transpose()?,
+                entry
+                    .governance
+                    .as_ref()
+                    .map(serde_json::to_string)
+                    .transpose()?,
                 entry.content_hash(),
                 entry.version,
             ],
@@ -1573,18 +1636,14 @@ impl RuleStore {
             entry_id,
             dataset_id,
             version,
-            status: status
-                .map(|s| serde_json::from_str(&s))
-                .transpose()?,
+            status: status.map(|s| serde_json::from_str(&s)).transpose()?,
             provenance: serde_json::from_str(&provenance)?,
             domain,
             tags: serde_json::from_str(&tags)?,
             data_source_binding: serde_json::from_str(&binding)?,
             consumed_inputs: serde_json::from_str(&consumed_inputs)?,
             rule_body: serde_json::from_str(&rule_body)?,
-            governance: governance
-                .map(|s| serde_json::from_str(&s))
-                .transpose()?,
+            governance: governance.map(|s| serde_json::from_str(&s)).transpose()?,
         }))
     }
 
@@ -1622,11 +1681,10 @@ impl RuleStore {
                 // 未指定 → 每个 entry_id 取最新版本
                 let entry_ids: Vec<String> = {
                     let conn = self.conn.lock().unwrap();
-                    let ids = conn.prepare(
-                        "SELECT DISTINCT entry_id FROM entries WHERE dataset_id = ?1",
-                    )?
-                    .query_map(params![dataset_id], |r| r.get(0))?
-                    .collect::<Result<_, _>>()?;
+                    let ids = conn
+                        .prepare("SELECT DISTINCT entry_id FROM entries WHERE dataset_id = ?1")?
+                        .query_map(params![dataset_id], |r| r.get(0))?
+                        .collect::<Result<_, _>>()?;
                     ids
                 };
                 let mut out = Vec::new();
@@ -1640,7 +1698,8 @@ impl RuleStore {
         };
         let entry_ids: Vec<String> = {
             let conn = self.conn.lock().unwrap();
-            let ids = conn.prepare("SELECT entry_id FROM entries WHERE dataset_id=?1 AND version=?2")?
+            let ids = conn
+                .prepare("SELECT entry_id FROM entries WHERE dataset_id=?1 AND version=?2")?
                 .query_map(params![dataset_id, version], |r| r.get(0))?
                 .collect::<Result<_, _>>()?;
             ids
@@ -1724,7 +1783,8 @@ impl RuleStore {
         });
         if from_hash != to_hash {
             let (added, removed, changed) = json_keywise_diff(&from.rule_body, &to.rule_body);
-            result["keys"] = serde_json::json!({ "added": added, "removed": removed, "changed": changed });
+            result["keys"] =
+                serde_json::json!({ "added": added, "removed": removed, "changed": changed });
         }
         Ok(result)
     }
@@ -1771,7 +1831,8 @@ impl RuleStore {
         });
         if from_hash != to_hash {
             let (added, removed, changed) = json_keywise_diff(&from.payload, &to.payload);
-            result["keys"] = serde_json::json!({ "added": added, "removed": removed, "changed": changed });
+            result["keys"] =
+                serde_json::json!({ "added": added, "removed": removed, "changed": changed });
         }
         Ok(result)
     }
@@ -1976,13 +2037,20 @@ impl RuleStore {
             params![
                 entry.dataset_id,
                 entry.entry_id,
-                entry.status.map(|s| serde_json::to_string(&s)).transpose()?,
+                entry
+                    .status
+                    .map(|s| serde_json::to_string(&s))
+                    .transpose()?,
                 serde_json::to_string(&entry.provenance)?,
                 entry.domain,
                 serde_json::to_string(&entry.tags)?,
                 serde_json::to_string(&entry.data_source_binding)?,
                 serde_json::to_string(&entry.rule_body)?,
-                entry.governance.as_ref().map(serde_json::to_string).transpose()?,
+                entry
+                    .governance
+                    .as_ref()
+                    .map(serde_json::to_string)
+                    .transpose()?,
                 entry.content_hash(),
                 entry.version,
             ],
@@ -2076,12 +2144,8 @@ impl RuleStore {
         // 版本链完整性（published_as 依赖 current，防损坏数据被发布）
         ds.versioning.validate()?;
         // 独立发布审批前置：仅 Active
-        Validator::validate_publish(Some(ds.lifecycle.status)).map_err(|(f, t)| {
-            StoreError::IllegalTransition {
-                from: f,
-                to: t,
-            }
-        })?;
+        Validator::validate_publish(Some(ds.lifecycle.status))
+            .map_err(|(f, t)| StoreError::IllegalTransition { from: f, to: t })?;
         // 发布前凭据静态扫描（35 号 §6/§9-3 强约束 MVP 手段）：数据集元数据 + 全部条目规则体。
         // 命中疑似凭据 → 拒绝发布，交由发布审批人复核（不静默放行，硬失败）。
         self.scan_dataset_credentials(dataset_id, &ds)?;
@@ -2142,7 +2206,12 @@ impl RuleStore {
 
     /// 撤销发布（44 号 §4 `POST /datasets/{id}/unpublish`，admin 权限由 handler 把关）：
     /// `Published → Rejected`，state_history 留痕（34 号 §2/§4：撤销发布移除对外可见，历史快照保留）。
-    pub fn unpublish_dataset(&self, dataset_id: &str, by: &str, at: &str) -> Result<(), StoreError> {
+    pub fn unpublish_dataset(
+        &self,
+        dataset_id: &str,
+        by: &str,
+        at: &str,
+    ) -> Result<(), StoreError> {
         let Some(mut ds) = self.get_dataset(dataset_id)? else {
             return Err(StoreError::DatasetNotFound(dataset_id.into()));
         };
@@ -2200,7 +2269,8 @@ impl RuleStore {
         at: &str,
         instance_id: &str,
     ) -> Result<DatasetBundle, StoreError> {
-        let ds = self.get_dataset(dataset_id)?
+        let ds = self
+            .get_dataset(dataset_id)?
             .ok_or_else(|| StoreError::DatasetNotFound(dataset_id.into()))?;
         // C3/C4/C6：服务契约 SSOT 下沉 —— 从服务目录（平台 + 本租户）构建补齐映射
         let catalog: std::collections::BTreeMap<String, ServiceCatalogEntry> = self
@@ -2252,7 +2322,8 @@ impl RuleStore {
         at: &str,
         instance_id: &str,
     ) -> Result<DatasetBundle, StoreError> {
-        let ds = self.get_dataset(dataset_id)?
+        let ds = self
+            .get_dataset(dataset_id)?
             .ok_or_else(|| StoreError::DatasetNotFound(dataset_id.into()))?;
         if !ds.versioning.chain.iter().any(|v| v == version) {
             return Err(StoreError::VersionSnapshotMissing {
@@ -2305,10 +2376,18 @@ impl RuleStore {
             .map(|e| (e.service_name.clone(), e))
             .collect();
         Ok(match ds_hist.dataset_kind {
-            DatasetKind::RuleSet => BundleExporter::export(&ds_hist, &rules, tests, by, at, instance_id, &catalog),
-            DatasetKind::Knowledge => {
-                BundleExporter::export_knowledge(&ds_hist, &knowledges, tests, by, at, instance_id, &catalog)
+            DatasetKind::RuleSet => {
+                BundleExporter::export(&ds_hist, &rules, tests, by, at, instance_id, &catalog)
             }
+            DatasetKind::Knowledge => BundleExporter::export_knowledge(
+                &ds_hist,
+                &knowledges,
+                tests,
+                by,
+                at,
+                instance_id,
+                &catalog,
+            ),
         })
     }
 
@@ -2371,10 +2450,12 @@ impl RuleStore {
             .unwrap_or(false)
             && to != LifecycleStatus::Draft
         {
-            return Err(StoreError::Validation(ValidationError::LlmGeneratedNotDraft {
-                entry: entry_id.into(),
-                status: to,
-            }));
+            return Err(StoreError::Validation(
+                ValidationError::LlmGeneratedNotDraft {
+                    entry: entry_id.into(),
+                    status: to,
+                },
+            ));
         }
         let valid = matches!(
             (from, to),
@@ -2607,7 +2688,19 @@ impl RuleStore {
         let raw: Vec<ServiceTemplateRow> = rows.collect::<Result<_, _>>()?;
         raw.into_iter()
             .map(
-                |(template_id, tenant_id, service_name, kind, io_contract, endpoint_template, method, headers_template, placeholder_notes, created_at, created_by)| {
+                |(
+                    template_id,
+                    tenant_id,
+                    service_name,
+                    kind,
+                    io_contract,
+                    endpoint_template,
+                    method,
+                    headers_template,
+                    placeholder_notes,
+                    created_at,
+                    created_by,
+                )| {
                     Ok(ServiceTemplateRecord {
                         template_id,
                         tenant_id,
@@ -2647,7 +2740,10 @@ impl RuleStore {
                 e.service_name,
                 e.version,
                 e.description,
-                e.io_contract.as_ref().map(serde_json::to_string).transpose()?,
+                e.io_contract
+                    .as_ref()
+                    .map(serde_json::to_string)
+                    .transpose()?,
                 e.sensitive as i64,
                 serde_json::to_string(&e.binding_hint)?,
                 e.managed_by,
@@ -2660,7 +2756,10 @@ impl RuleStore {
     }
 
     /// 取服务目录条目
-    pub fn get_service(&self, service_name: &str) -> Result<Option<ServiceCatalogEntry>, StoreError> {
+    pub fn get_service(
+        &self,
+        service_name: &str,
+    ) -> Result<Option<ServiceCatalogEntry>, StoreError> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
             "SELECT service_name, version, description, io_contract, sensitive, binding_hint,
@@ -2742,7 +2841,18 @@ impl RuleStore {
         let raw: Vec<ServiceCatalogRow> = rows.collect::<Result<_, _>>()?;
         raw.into_iter()
             .map(
-                |(service_name, version, description, io_contract, sensitive, binding_hint, managed_by, scope, created_at, updated_at)| {
+                |(
+                    service_name,
+                    version,
+                    description,
+                    io_contract,
+                    sensitive,
+                    binding_hint,
+                    managed_by,
+                    scope,
+                    created_at,
+                    updated_at,
+                )| {
                     Ok(ServiceCatalogEntry {
                         service_name,
                         version,
@@ -3013,18 +3123,22 @@ impl RuleStore {
             .get_dataset(dataset_id)?
             .ok_or_else(|| StoreError::DatasetNotFound(dataset_id.into()))?;
         let chain = &ds.versioning.chain;
-        let fi = chain.iter().position(|v| v == from).ok_or_else(|| {
-            StoreError::InvalidDiffRange {
-                from: from.into(),
-                to: to.into(),
-            }
-        })?;
-        let ti = chain.iter().position(|v| v == to).ok_or_else(|| {
-            StoreError::InvalidDiffRange {
-                from: from.into(),
-                to: to.into(),
-            }
-        })?;
+        let fi =
+            chain
+                .iter()
+                .position(|v| v == from)
+                .ok_or_else(|| StoreError::InvalidDiffRange {
+                    from: from.into(),
+                    to: to.into(),
+                })?;
+        let ti =
+            chain
+                .iter()
+                .position(|v| v == to)
+                .ok_or_else(|| StoreError::InvalidDiffRange {
+                    from: from.into(),
+                    to: to.into(),
+                })?;
         if ti <= fi {
             return Err(StoreError::InvalidDiffRange {
                 from: from.into(),
@@ -3095,7 +3209,10 @@ impl RuleStore {
     }
 
     /// 生命周期审计（44 号 §11 `GET /audits/lifecycle`）：租户内数据集 state_history 扁平输出
-    pub fn list_lifecycle_audits(&self, tenant_id: &str) -> Result<Vec<serde_json::Value>, StoreError> {
+    pub fn list_lifecycle_audits(
+        &self,
+        tenant_id: &str,
+    ) -> Result<Vec<serde_json::Value>, StoreError> {
         let mut out = Vec::new();
         for ds in self.list_datasets(tenant_id)? {
             for sc in &ds.lifecycle.state_history {
@@ -3135,7 +3252,10 @@ impl RuleStore {
         let resolver = |uri: &str| self.lookup_domain_schema(uri);
         let result = BundleImporter::validate(bundle, &resolver)?;
         // Q12 R5：混合 kind 拒绝（数据集类型单一）
-        let has_rule = bundle.entries.iter().any(|e| e.entry_kind == EntryKind::Rule);
+        let has_rule = bundle
+            .entries
+            .iter()
+            .any(|e| e.entry_kind == EntryKind::Rule);
         let has_knowledge = bundle
             .entries
             .iter()
@@ -3166,7 +3286,10 @@ impl RuleStore {
                     to: format!("{:?}", LifecycleStatus::Active),
                     at: at.into(),
                     by: by.into(),
-                    cause: format!("导入快照包 {}（instance_id={}）", bundle.bundle_id, instance_id),
+                    cause: format!(
+                        "导入快照包 {}（instance_id={}）",
+                        bundle.bundle_id, instance_id
+                    ),
                     published_as: None,
                 });
                 e.meta.updated_at = Some(at.into());
@@ -3180,11 +3303,7 @@ impl RuleStore {
                 name: bundle.dataset.name.clone(),
                 description: Some(format!("由快照包 {} 导入", bundle.bundle_id)),
                 dataset_kind,
-                domain: bundle
-                    .entries
-                    .iter()
-                    .map(|e| e.domain.clone())
-                    .collect(),
+                domain: bundle.entries.iter().map(|e| e.domain.clone()).collect(),
                 tags: vec![],
                 tenant_id: tenant_id.into(),
                 visibility: Visibility::Private,
@@ -3195,7 +3314,10 @@ impl RuleStore {
                         to: format!("{:?}", LifecycleStatus::Active),
                         at: at.into(),
                         by: by.into(),
-                        cause: format!("导入快照包 {}（instance_id={}）", bundle.bundle_id, instance_id),
+                        cause: format!(
+                            "导入快照包 {}（instance_id={}）",
+                            bundle.bundle_id, instance_id
+                        ),
                         published_as: None,
                     }],
                 },
@@ -3283,7 +3405,10 @@ impl RuleStore {
             "DELETE FROM entry_state_history WHERE dataset_id=?1",
             params![dataset_id],
         )?;
-        conn.execute("DELETE FROM entries WHERE dataset_id=?1", params![dataset_id])?;
+        conn.execute(
+            "DELETE FROM entries WHERE dataset_id=?1",
+            params![dataset_id],
+        )?;
         // Q12 R5：knowledge 平行表同步清空（导入可重试幂等，两表口径一致）
         conn.execute(
             "DELETE FROM knowledge_state_history WHERE dataset_id=?1",
@@ -3386,7 +3511,12 @@ impl RuleStore {
     }
 
     /// 禁用/启用用户（管理员操作；禁用的用户登录/刷新被拒）
-    pub fn set_user_disabled(&self, user_id: &str, disabled: bool, at: &str) -> Result<(), StoreError> {
+    pub fn set_user_disabled(
+        &self,
+        user_id: &str,
+        disabled: bool,
+        at: &str,
+    ) -> Result<(), StoreError> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
             "UPDATE users SET disabled = ?1, updated_at = ?2 WHERE user_id = ?3",
@@ -3400,7 +3530,12 @@ impl RuleStore {
     // ------------------------------------------------------------------
 
     /// 确保 platform 默认 org 存在（幂等；镜像默认租户，存量数据 tenant_id 即该 org id）
-    pub fn ensure_default_org(&self, org_id: &str, name: &str, created_at: &str) -> Result<Org, StoreError> {
+    pub fn ensure_default_org(
+        &self,
+        org_id: &str,
+        name: &str,
+        created_at: &str,
+    ) -> Result<Org, StoreError> {
         self.conn.lock().unwrap().execute(
             "INSERT OR IGNORE INTO orgs (org_id, name, disabled, created_at)
              VALUES (?1, ?2, 0, ?3)",
@@ -3426,9 +3561,8 @@ impl RuleStore {
 
     pub fn get_org(&self, org_id: &str) -> Result<Option<Org>, StoreError> {
         let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare(
-            "SELECT org_id, name, disabled, created_at FROM orgs WHERE org_id = ?1",
-        )?;
+        let mut stmt =
+            conn.prepare("SELECT org_id, name, disabled, created_at FROM orgs WHERE org_id = ?1")?;
         let mut rows = stmt.query_map(params![org_id], |row| {
             Ok(Org {
                 org_id: row.get(0)?,
@@ -3485,11 +3619,14 @@ impl RuleStore {
     }
 
     /// 用户在某 org 的成员角色（无成员行返回 None）
-    pub fn get_user_org_role(&self, org_id: &str, user_id: &str) -> Result<Option<Role>, StoreError> {
+    pub fn get_user_org_role(
+        &self,
+        org_id: &str,
+        user_id: &str,
+    ) -> Result<Option<Role>, StoreError> {
         let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare(
-            "SELECT role FROM user_org_memberships WHERE org_id = ?1 AND user_id = ?2",
-        )?;
+        let mut stmt = conn
+            .prepare("SELECT role FROM user_org_memberships WHERE org_id = ?1 AND user_id = ?2")?;
         let mut rows = stmt.query_map(params![org_id, user_id], |row| row.get::<_, String>(0))?;
         match rows.next() {
             Some(Ok(r)) => Ok(Role::parse(&r)),
@@ -3577,7 +3714,11 @@ impl RuleStore {
     }
 
     /// 列出认证审计（倒序 + limit）
-    pub fn list_auth_audits(&self, tenant_id: &str, limit: usize) -> Result<Vec<AuthAudit>, StoreError> {
+    pub fn list_auth_audits(
+        &self,
+        tenant_id: &str,
+        limit: usize,
+    ) -> Result<Vec<AuthAudit>, StoreError> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
             "SELECT audit_id, action, user_id, tenant_id, outcome, detail, created_at
@@ -3665,7 +3806,12 @@ impl RuleStore {
         rows.collect::<Result<_, _>>().map_err(Into::into)
     }
 
-    pub fn revoke_api_key(&self, tenant_id: &str, key_id: &str, at: &str) -> Result<bool, StoreError> {
+    pub fn revoke_api_key(
+        &self,
+        tenant_id: &str,
+        key_id: &str,
+        at: &str,
+    ) -> Result<bool, StoreError> {
         let conn = self.conn.lock().unwrap();
         let n = conn.execute(
             "UPDATE api_keys SET revoked_at = ?3
@@ -3726,11 +3872,19 @@ fn json_keywise_diff(
 
 /// 将任意 JSON 扁平化为 `键路径 → 值`（数组元素以 `\N[i]` 索引）。
 fn flatten(v: &serde_json::Value) -> serde_json::Value {
-    fn walk(prefix: String, node: &serde_json::Value, acc: &mut serde_json::Map<String, serde_json::Value>) {
+    fn walk(
+        prefix: String,
+        node: &serde_json::Value,
+        acc: &mut serde_json::Map<String, serde_json::Value>,
+    ) {
         match node {
             serde_json::Value::Object(m) => {
                 for (k, c) in m {
-                    let p = if prefix.is_empty() { k.clone() } else { format!("{prefix}.{k}") };
+                    let p = if prefix.is_empty() {
+                        k.clone()
+                    } else {
+                        format!("{prefix}.{k}")
+                    };
                     walk(p, c, acc);
                 }
             }
@@ -3911,8 +4065,15 @@ mod tests {
         // 官方 seed：预置全部插件原生服务（UV-035 聚合,数量随嵌入副本联动,防硬编码漂移）;重复 seed 幂等
         let official_count = official_native_services().len();
         assert!(official_count >= 7, "官方原生服务种子不应少于 7");
-        assert_eq!(store.seed_official_services_if_empty("t").unwrap(), official_count);
-        assert_eq!(store.seed_official_services_if_empty("t").unwrap(), 0, "重复 seed 应幂等");
+        assert_eq!(
+            store.seed_official_services_if_empty("t").unwrap(),
+            official_count
+        );
+        assert_eq!(
+            store.seed_official_services_if_empty("t").unwrap(),
+            0,
+            "重复 seed 应幂等"
+        );
 
         // 平台官方目录对任意租户可见
         let platform = store.list_services("tenant_a").unwrap();
@@ -3946,7 +4107,10 @@ mod tests {
             store.list_services("tenant_a").unwrap().len(),
             official_count + 1
         );
-        assert_eq!(store.list_services("tenant_b").unwrap().len(), official_count);
+        assert_eq!(
+            store.list_services("tenant_b").unwrap().len(),
+            official_count
+        );
 
         // 平台官方条目可被运维更新（seed 只在空目录时补齐，不覆盖既有）
         let mut e = store.get_service("llm_advisor").unwrap().unwrap();
@@ -3956,7 +4120,11 @@ mod tests {
             store.get_service("llm_advisor").unwrap().unwrap().version,
             "2.0.0"
         );
-        assert_eq!(store.seed_official_services_if_empty("t").unwrap(), 0, "目录非空不再 seed");
+        assert_eq!(
+            store.seed_official_services_if_empty("t").unwrap(),
+            0,
+            "目录非空不再 seed"
+        );
     }
 
     #[test]
@@ -3964,10 +4132,19 @@ mod tests {
         let store = RuleStore::in_memory().unwrap();
         store.create_dataset(&tax_dataset()).unwrap();
         store.add_entry(&draft_entry()).unwrap();
-        let got = store.get_entry("ds-tax-2024", "tax-001", 1).unwrap().unwrap();
-        assert_eq!(got.rule_body["transform"][0]["params"]["service_name"], "payroll_svc");
+        let got = store
+            .get_entry("ds-tax-2024", "tax-001", 1)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            got.rule_body["transform"][0]["params"]["service_name"],
+            "payroll_svc"
+        );
         // 最新版本
-        let latest = store.get_latest_entry("ds-tax-2024", "tax-001").unwrap().unwrap();
+        let latest = store
+            .get_latest_entry("ds-tax-2024", "tax-001")
+            .unwrap()
+            .unwrap();
         assert_eq!(latest.version, 1);
     }
 
@@ -4027,7 +4204,10 @@ mod tests {
 
         let stats = store.snapshot_dedup_stats("ds-tax-2024").unwrap();
         assert_eq!(stats["entry_version_rows"], 3);
-        assert_eq!(stats["distinct_snapshots"], 2, "v1/v2 内容一致应共享同一快照");
+        assert_eq!(
+            stats["distinct_snapshots"], 2,
+            "v1/v2 内容一致应共享同一快照"
+        );
 
         // 版本历史可回查（33 号 §6）
         let versions = store.list_entry_versions("ds-tax-2024", "tax-001").unwrap();
@@ -4094,10 +4274,22 @@ mod tests {
         // 先 Draft 入库，迁移到 Active（冻结）
         store.add_entry(&draft_entry()).unwrap();
         store
-            .transition_dataset_status("ds-tax-2024", LifecycleStatus::Candidate, "eng", "提交", "t")
+            .transition_dataset_status(
+                "ds-tax-2024",
+                LifecycleStatus::Candidate,
+                "eng",
+                "提交",
+                "t",
+            )
             .unwrap();
         store
-            .transition_dataset_status("ds-tax-2024", LifecycleStatus::Active, "approver", "审批", "t")
+            .transition_dataset_status(
+                "ds-tax-2024",
+                LifecycleStatus::Active,
+                "approver",
+                "审批",
+                "t",
+            )
             .unwrap();
         // 条目 status 单独未改，但通过数据集级判断：这里直接构造 frozen 条目测 update
         let mut frozen = draft_entry();
@@ -4164,7 +4356,13 @@ mod tests {
         ));
         // Candidate 发布 → 拒绝
         store
-            .transition_dataset_status("ds-tax-2024", LifecycleStatus::Candidate, "eng", "提交", "t")
+            .transition_dataset_status(
+                "ds-tax-2024",
+                LifecycleStatus::Candidate,
+                "eng",
+                "提交",
+                "t",
+            )
             .unwrap();
         let err = store
             .publish_dataset("ds-tax-2024", "publisher-01", "t", "org")
@@ -4208,7 +4406,10 @@ mod tests {
             .unwrap()
             .execute(
                 "UPDATE datasets SET visibility=?1 WHERE dataset_id=?2",
-                rusqlite::params![serde_json::to_string(&ds.visibility).unwrap(), "ds-tax-2024"],
+                rusqlite::params![
+                    serde_json::to_string(&ds.visibility).unwrap(),
+                    "ds-tax-2024"
+                ],
             )
             .unwrap();
         assert!(store.is_publicly_pullable("ds-tax-2024").unwrap());
@@ -4236,7 +4437,13 @@ mod tests {
         let err = store
             .publish_dataset("ds-tax-2024", "publisher-01", "t", "org")
             .unwrap_err();
-        assert!(matches!(err, StoreError::Validation(ValidationError::CredentialScanFailed { .. })), "{err}");
+        assert!(
+            matches!(
+                err,
+                StoreError::Validation(ValidationError::CredentialScanFailed { .. })
+            ),
+            "{err}"
+        );
         // 未发布（仍 Active）
         let ds = store.get_dataset("ds-tax-2024").unwrap().unwrap();
         assert_eq!(ds.lifecycle.status, LifecycleStatus::Active);
@@ -4261,11 +4468,27 @@ mod tests {
         store.add_entry(&entry).unwrap();
         // 状态机层拦截：LLM 产出 Draft → Candidate 非法
         let err = store
-            .transition_entry_status("ds-tax-2024", &entry.entry_id, LifecycleStatus::Candidate, "eng", "t", "提交")
+            .transition_entry_status(
+                "ds-tax-2024",
+                &entry.entry_id,
+                LifecycleStatus::Candidate,
+                "eng",
+                "t",
+                "提交",
+            )
             .unwrap_err();
-        assert!(matches!(err, StoreError::Validation(ValidationError::LlmGeneratedNotDraft { .. })), "{err}");
+        assert!(
+            matches!(
+                err,
+                StoreError::Validation(ValidationError::LlmGeneratedNotDraft { .. })
+            ),
+            "{err}"
+        );
         // 仍为 Draft
-        let e = store.get_latest_entry("ds-tax-2024", &entry.entry_id).unwrap().unwrap();
+        let e = store
+            .get_latest_entry("ds-tax-2024", &entry.entry_id)
+            .unwrap()
+            .unwrap();
         assert_eq!(e.status, Some(LifecycleStatus::Draft));
     }
 
@@ -4283,13 +4506,25 @@ mod tests {
             .unwrap();
         // 撤销发布（Published → Rejected）
         store
-            .transition_dataset_status("ds-tax-2024", LifecycleStatus::Rejected, "admin", "撤销发布", "t")
+            .transition_dataset_status(
+                "ds-tax-2024",
+                LifecycleStatus::Rejected,
+                "admin",
+                "撤销发布",
+                "t",
+            )
             .unwrap();
         let ds = store.get_dataset("ds-tax-2024").unwrap().unwrap();
         assert_eq!(ds.lifecycle.status, LifecycleStatus::Rejected);
         // 修订重来（Rejected → Draft）
         store
-            .transition_dataset_status("ds-tax-2024", LifecycleStatus::Draft, "eng", "修订重来", "t")
+            .transition_dataset_status(
+                "ds-tax-2024",
+                LifecycleStatus::Draft,
+                "eng",
+                "修订重来",
+                "t",
+            )
             .unwrap();
         let ds = store.get_dataset("ds-tax-2024").unwrap().unwrap();
         assert_eq!(ds.lifecycle.status, LifecycleStatus::Draft);
@@ -4315,7 +4550,13 @@ mod tests {
             verdict: TestVerdict::Pass,
         };
         let bundle = store
-            .export_bundle("ds-tax-2024", &tests, "publisher-01", "2026-08-21T12:00:00Z", "org-evorule")
+            .export_bundle(
+                "ds-tax-2024",
+                &tests,
+                "publisher-01",
+                "2026-08-21T12:00:00Z",
+                "org-evorule",
+            )
             .unwrap();
         assert_eq!(bundle.audit.source_version, "v1");
         assert_eq!(bundle.entries.len(), 1);
@@ -4356,12 +4597,24 @@ mod tests {
         store.create_dataset(&ds).unwrap();
         store.add_entry(&draft_entry()).unwrap();
         // 持久化读回：声明不丢
-        assert_eq!(store.get_dataset("ds-tax-2024").unwrap().unwrap().event_schemas.len(), 1);
+        assert_eq!(
+            store
+                .get_dataset("ds-tax-2024")
+                .unwrap()
+                .unwrap()
+                .event_schemas
+                .len(),
+            1
+        );
         // 导出：声明随 manifest 携带
         let bundle = store
             .export_bundle(
                 "ds-tax-2024",
-                &BundleTests { subset: vec![], fixtures: vec![], verdict: TestVerdict::Pass },
+                &BundleTests {
+                    subset: vec![],
+                    fixtures: vec![],
+                    verdict: TestVerdict::Pass,
+                },
                 "publisher-01",
                 "2026-08-31T12:00:00Z",
                 "org-evorule",
@@ -4371,7 +4624,9 @@ mod tests {
         assert_eq!(bundle.dataset.event_schemas[0].schema_ref, uri);
         // 导入（另一 store）：往返一致
         let (store2, dir2) = file_store_with_body_schema();
-        let r = store2.import_bundle(&bundle, "org-x", "u", "t", "inst").unwrap();
+        let r = store2
+            .import_bundle(&bundle, "org-x", "u", "t", "inst")
+            .unwrap();
         assert_eq!(r.entry_count, 1);
         let got = store2.get_dataset("ds-tax-2024").unwrap().unwrap();
         assert_eq!(got.event_schemas, ds.event_schemas);
@@ -4379,7 +4634,9 @@ mod tests {
         let mut bad = bundle.clone();
         bad.dataset.event_schemas[0].schema_ref = "no-such-schema".into();
         bad.audit.content_hash = bad.compute_content_hash();
-        let err = store2.import_bundle(&bad, "org-x", "u", "t", "inst").unwrap_err();
+        let err = store2
+            .import_bundle(&bad, "org-x", "u", "t", "inst")
+            .unwrap_err();
         assert!(matches!(
             err,
             StoreError::Bundle(BundleError::EventSchemaNotResolved { .. })
@@ -4395,7 +4652,10 @@ mod tests {
         let mut bad = draft_entry();
         bad.data_source_binding[0].service_name = "undeclared_svc".into();
         let err = store.add_entry(&bad).unwrap_err();
-        assert!(matches!(err, StoreError::Validation(ValidationError::ServiceNotDeclared { .. })));
+        assert!(matches!(
+            err,
+            StoreError::Validation(ValidationError::ServiceNotDeclared { .. })
+        ));
     }
 
     #[test]
@@ -4519,7 +4779,14 @@ mod tests {
         assert_eq!(count, 1, "重复升版不得为 v1 重复落快照");
         // 历史版本导出：source_version=v1、条目内容与当时逐字段一致
         let hist = store
-            .export_bundle_at("ds-tax-2024", "v1", &BundleTests::unverified(), "u", "t", "inst")
+            .export_bundle_at(
+                "ds-tax-2024",
+                "v1",
+                &BundleTests::unverified(),
+                "u",
+                "t",
+                "inst",
+            )
             .unwrap();
         assert_eq!(hist.dataset.versioning.current, "v1");
         assert_eq!(hist.entries.len(), 1);
@@ -4530,7 +4797,14 @@ mod tests {
         assert_eq!(hist.entries, live.entries);
         // 当前版本导出仍走活条目路径
         let cur = store
-            .export_bundle_at("ds-tax-2024", "v2.p1", &BundleTests::unverified(), "u", "t", "inst")
+            .export_bundle_at(
+                "ds-tax-2024",
+                "v2.p1",
+                &BundleTests::unverified(),
+                "u",
+                "t",
+                "inst",
+            )
             .unwrap();
         assert_eq!(cur.entries.len(), 2);
     }
@@ -4555,7 +4829,14 @@ mod tests {
             )
             .unwrap();
         let err = store
-            .export_bundle_at("ds-tax-2024", "v1", &BundleTests::unverified(), "u", "t", "inst")
+            .export_bundle_at(
+                "ds-tax-2024",
+                "v1",
+                &BundleTests::unverified(),
+                "u",
+                "t",
+                "inst",
+            )
             .unwrap_err();
         assert!(
             matches!(err, StoreError::VersionSnapshotMissing { .. }),
@@ -4563,7 +4844,14 @@ mod tests {
         );
         // 版本不在链中 → 同样显式拒绝
         let err = store
-            .export_bundle_at("ds-tax-2024", "v9", &BundleTests::unverified(), "u", "t", "inst")
+            .export_bundle_at(
+                "ds-tax-2024",
+                "v9",
+                &BundleTests::unverified(),
+                "u",
+                "t",
+                "inst",
+            )
             .unwrap_err();
         assert!(matches!(err, StoreError::VersionSnapshotMissing { .. }));
     }
@@ -4796,10 +5084,7 @@ mod tests {
     fn file_store_with_body_schema() -> (RuleStore, std::path::PathBuf) {
         static SEQ: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
         let n = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let dir = std::env::temp_dir().join(format!(
-            "q12-store-test-{}-{n}",
-            std::process::id()
-        ));
+        let dir = std::env::temp_dir().join(format!("q12-store-test-{}-{n}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("domain_schemas")).unwrap();
         std::fs::write(
@@ -4868,12 +5153,22 @@ mod tests {
         // Draft → Candidate → Active（5 态状态机同 RuleEntry 口径）
         store
             .transition_knowledge_entry_status(
-                "ds-rpsm-assets", "body-001", LifecycleStatus::Candidate, "eng", "t", "评审通过",
+                "ds-rpsm-assets",
+                "body-001",
+                LifecycleStatus::Candidate,
+                "eng",
+                "t",
+                "评审通过",
             )
             .unwrap();
         store
             .transition_knowledge_entry_status(
-                "ds-rpsm-assets", "body-001", LifecycleStatus::Active, "eng", "t2", "生效",
+                "ds-rpsm-assets",
+                "body-001",
+                LifecycleStatus::Active,
+                "eng",
+                "t2",
+                "生效",
             )
             .unwrap();
         let got = store
@@ -4884,7 +5179,12 @@ mod tests {
         // 非法迁移：Active → Draft 拒绝
         let err = store
             .transition_knowledge_entry_status(
-                "ds-rpsm-assets", "body-001", LifecycleStatus::Draft, "eng", "t3", "回退",
+                "ds-rpsm-assets",
+                "body-001",
+                LifecycleStatus::Draft,
+                "eng",
+                "t3",
+                "回退",
             )
             .unwrap_err();
         assert!(matches!(err, StoreError::IllegalTransition { .. }));
@@ -4986,7 +5286,9 @@ mod tests {
             .unwrap();
         assert_eq!(latest.version, 2);
         // 数据集级列表（None = 各条目取最新）
-        let listed = store.list_knowledge_entries("ds-rpsm-assets", None).unwrap();
+        let listed = store
+            .list_knowledge_entries("ds-rpsm-assets", None)
+            .unwrap();
         assert_eq!(listed.len(), 1);
         assert_eq!(listed[0].version, 2);
         let _ = std::fs::remove_dir_all(&dir);
@@ -5020,7 +5322,12 @@ mod tests {
         // LLM 产出 Draft → Candidate 也拒绝（只能停留 Draft）
         let err = store
             .transition_knowledge_entry_status(
-                "ds-rpsm-assets", "body-001", LifecycleStatus::Candidate, "llm", "t", "越权推进",
+                "ds-rpsm-assets",
+                "body-001",
+                LifecycleStatus::Candidate,
+                "llm",
+                "t",
+                "越权推进",
             )
             .unwrap_err();
         assert!(matches!(
@@ -5189,10 +5496,22 @@ mod tests {
         store.create_dataset(&other_pub).unwrap();
         // 推进到 Published → 混入
         store
-            .transition_dataset_status("ds-other-public", LifecycleStatus::Candidate, "o", "t", "提交")
+            .transition_dataset_status(
+                "ds-other-public",
+                LifecycleStatus::Candidate,
+                "o",
+                "t",
+                "提交",
+            )
             .unwrap();
         store
-            .transition_dataset_status("ds-other-public", LifecycleStatus::Active, "o", "t2", "激活")
+            .transition_dataset_status(
+                "ds-other-public",
+                LifecycleStatus::Active,
+                "o",
+                "t2",
+                "激活",
+            )
             .unwrap();
         store
             .publish_dataset("ds-other-public", "o", "t3", "inst-001")

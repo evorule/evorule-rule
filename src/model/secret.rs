@@ -92,7 +92,8 @@ impl KeyRing {
 
     /// 双代取用：优先 active，其次 previous（JWT 验签等 backward 兼容路径）
     pub fn access_any(&self, scope: SecretScope) -> Option<&[u8]> {
-        self.access_active(scope).or_else(|| self.access_previous(scope))
+        self.access_active(scope)
+            .or_else(|| self.access_previous(scope))
     }
 
     /// 轮换（双代，45 号 §3.3）：新 active = 生成；旧 active → previous；旧 previous 丢弃。
@@ -120,7 +121,15 @@ impl KeyRing {
             tenant_id: "system".to_string(),
             outcome: "success".to_string(),
             // 只记 scope/代次，不记明文（35 号 §6）
-            detail: Some(format!("scope={} previous={} active", scope.key(), if self.previous.contains_key(&scope) { 1 } else { 0 })),
+            detail: Some(format!(
+                "scope={} previous={} active",
+                scope.key(),
+                if self.previous.contains_key(&scope) {
+                    1
+                } else {
+                    0
+                }
+            )),
             created_at: created_at.to_string(),
         }
     }

@@ -116,7 +116,9 @@ impl AppState {
                     // PG 连接/迁移失败：回落 SQLite，并如实记录失败原因（不 panic、不伪造）
                     s.set_backend(
                         BackendKind::Sqlite,
-                        Some(format!("POSTGRES_PROBE_ERROR={e} → 回落到 SQLite，PG 未激活")),
+                        Some(format!(
+                            "POSTGRES_PROBE_ERROR={e} → 回落到 SQLite，PG 未激活"
+                        )),
                     );
                 }
             }
@@ -293,8 +295,8 @@ pub async fn require_auth(
     mut req: Request,
     next: Next,
 ) -> Result<Response, ApiError> {
-    let token = bearer_token(req.headers())
-        .ok_or_else(|| ApiError::unauthorized("缺少 Bearer token"))?;
+    let token =
+        bearer_token(req.headers()).ok_or_else(|| ApiError::unauthorized("缺少 Bearer token"))?;
     let now = unix_now();
     let claims = state
         .auth
@@ -368,7 +370,9 @@ pub async fn idempotency(
         map.retain(|_, e| e.expires_at > now); // 机会式清理过期项
         if let Some(entry) = map.get(&cache_key) {
             if entry.state == IdemState::Pending {
-                return Err(ApiError::conflict("该 Idempotency-Key 正在处理中（并发重复请求）"));
+                return Err(ApiError::conflict(
+                    "该 Idempotency-Key 正在处理中（并发重复请求）",
+                ));
             }
             if entry.req_body == req_body {
                 let mut rp = Response::new(()).into_parts().0;
@@ -425,11 +429,7 @@ pub fn bearer_token(headers: &HeaderMap) -> Option<&str> {
 
 /// 从请求头取 X-Api-Key
 pub fn api_key_from_header(headers: &HeaderMap) -> Option<&str> {
-    headers
-        .get("x-api-key")?
-        .to_str()
-        .ok()
-        .map(|s| s.trim())
+    headers.get("x-api-key")?.to_str().ok().map(|s| s.trim())
 }
 
 /// 分页请求参数（44 号 §3.3，60 号 P1-B3 落地）
@@ -483,7 +483,7 @@ async fn admin_backend(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
 ) -> Result<Json<Value>, ApiError> {
-    use crate::model::auth::{Action, can};
+    use crate::model::auth::{can, Action};
     // 运维诊断端点：要求管理员角色（四角色递进最高级）
     if !can(ctx.role, Action::Admin) {
         return Err(ApiError::forbidden("需要管理员角色查看后端自检"));
@@ -523,10 +523,7 @@ pub fn router(state: AppState) -> Router {
 
     // 快照包拉取：`get_bundle` 自身解析 Bearer / X-Api-Key 双认证，
     // 故不挂通用 Bearer 中间件（否则执行侧 X-Api-Key 拉取会被 401 拦截）
-    let bundle = Router::new().route(
-        "/datasets/{id}/bundle",
-        get(handlers_datasets::get_bundle),
-    );
+    let bundle = Router::new().route("/datasets/{id}/bundle", get(handlers_datasets::get_bundle));
 
     let protected = Router::new()
         .route("/me", get(handlers_auth::me))
@@ -572,7 +569,10 @@ pub fn router(state: AppState) -> Router {
             patch(handlers_datasets::transition_lifecycle),
         )
         .route("/datasets/{id}/publish", post(handlers_datasets::publish))
-        .route("/datasets/{id}/unpublish", post(handlers_datasets::unpublish))
+        .route(
+            "/datasets/{id}/unpublish",
+            post(handlers_datasets::unpublish),
+        )
         .route(
             "/datasets/{id}/entries",
             get(handlers_datasets::list_entries).post(handlers_datasets::add_entry),
@@ -594,13 +594,19 @@ pub fn router(state: AppState) -> Router {
         .route("/entries/{id}/approve", post(handlers_entries::approve))
         .route("/entries/{id}/history", get(handlers_entries::history))
         .route("/entries/{id}/deps", get(handlers_entries::deps))
-        .route("/entries/{id}/versions", get(handlers_entries::entry_versions))
+        .route(
+            "/entries/{id}/versions",
+            get(handlers_entries::entry_versions),
+        )
         .route(
             "/entries/{id}/versions/{version}",
             get(handlers_entries::entry_version_payload),
         )
         .route("/entries/{id}/diff", get(handlers_entries::entry_diff))
-        .route("/datasets/{id}/snapshots/stats", get(handlers_datasets::snapshot_stats))
+        .route(
+            "/datasets/{id}/snapshots/stats",
+            get(handlers_datasets::snapshot_stats),
+        )
         .route(
             "/deps/datasets/{id}",
             get(handlers_deps::get_dataset_deps).put(handlers_deps::put_dataset_deps),
@@ -609,10 +615,7 @@ pub fn router(state: AppState) -> Router {
             "/deps/templates",
             get(handlers_deps::list_templates).post(handlers_deps::create_template),
         )
-        .route(
-            "/deps/templates/{id}",
-            get(handlers_deps::get_template),
-        )
+        .route("/deps/templates/{id}", get(handlers_deps::get_template))
         .route(
             "/deps/templates/{id}/bind",
             post(handlers_deps::bind_template),
@@ -621,11 +624,11 @@ pub fn router(state: AppState) -> Router {
             "/services",
             get(handlers_services::list_services).post(handlers_services::create_service),
         )
-        .route("/services/{name}", get(handlers_services::get_service).put(handlers_services::update_service))
         .route(
-            "/search/datasets",
-            get(handlers_search::search_datasets),
+            "/services/{name}",
+            get(handlers_services::get_service).put(handlers_services::update_service),
         )
+        .route("/search/datasets", get(handlers_search::search_datasets))
         .route(
             "/search/datasets/{id}/diff",
             get(handlers_search::version_diff),
@@ -649,7 +652,10 @@ pub fn router(state: AppState) -> Router {
         .route("/llm/audits", get(handlers_llm::list_llm_audits))
         .route("/llm/audits/stats", get(handlers_llm::llm_audit_stats))
         .route("/llm/ops/{operation}", post(handlers_llm::run_llm_op))
-        .route("/api_keys", get(handlers_keys::list).post(handlers_keys::create))
+        .route(
+            "/api_keys",
+            get(handlers_keys::list).post(handlers_keys::create),
+        )
         .route("/api_keys/{id}", delete(handlers_keys::revoke))
         // 幂等层置于 require_auth 之后运行（取证注入的 AuthContext 租户作用域）
         .route_layer(axum::middleware::from_fn_with_state(
@@ -668,10 +674,7 @@ pub fn router(state: AppState) -> Router {
         .nest("/v1", bundle)
         // 存活探针独立挂载于 /v1/health:不经过 require_auth 中间件(protected 已挂),
         // 保证进程级 liveness 在认证体系异常时仍可探测
-        .nest(
-            "/v1",
-            Router::new().route("/health", get(health)),
-        )
+        .nest("/v1", Router::new().route("/health", get(health)))
         .with_state(state)
 }
 
@@ -991,7 +994,10 @@ mod tests {
         )
         .await;
         assert_eq!(status, StatusCode::CREATED, "{body}");
-        assert_eq!(body["law_ref"]["document_id"], "com.yuanze.robot.quality_control");
+        assert_eq!(
+            body["law_ref"]["document_id"],
+            "com.yuanze.robot.quality_control"
+        );
         assert_eq!(body["law_ref"]["effective_from"], "2024-01-01");
         assert_eq!(body["version_selection"]["mode"], "auto_by_effective_date");
 
@@ -1140,7 +1146,14 @@ mod tests {
         let now = unix_now();
         state
             .auth
-            .register(&state.store, "tenant_a", "admin", "password123", Role::Admin, now)
+            .register(
+                &state.store,
+                "tenant_a",
+                "admin",
+                "password123",
+                Role::Admin,
+                now,
+            )
             .expect("admin register");
         let admin_tokens = state
             .auth
@@ -1161,8 +1174,14 @@ mod tests {
         assert!(plain.starts_with("evorule_"));
 
         // 用 X-Api-Key 拉取快照包（本租户任意状态可拉）
-        let (status, body) = send(app.clone(), "GET", "/v1/datasets/ds-tax-01/bundle", None, None)
-            .await;
+        let (status, body) = send(
+            app.clone(),
+            "GET",
+            "/v1/datasets/ds-tax-01/bundle",
+            None,
+            None,
+        )
+        .await;
         assert_eq!(status, StatusCode::UNAUTHORIZED, "{body}"); // 无认证拒绝
 
         let req = Request::builder()
@@ -1177,7 +1196,10 @@ mod tests {
         let bundle: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(bundle["dataset"]["dataset_id"], "ds-tax-01");
         // T0 决策（2026-08-24 矛盾 B）：执行侧拉取无测试工作台 → 显式 verdict=fail（不默认 Pass）
-        assert_eq!(bundle["tests"]["verdict"], "fail", "T0: get_bundle 无证据必须显式 fail");
+        assert_eq!(
+            bundle["tests"]["verdict"], "fail",
+            "T0: get_bundle 无证据必须显式 fail"
+        );
 
         // T0 决策（2026-08-24 矛盾 A）：GET export_version 无 tests → 显式 verdict=fail（不默认 Pass）
         let (status, body) = send(
@@ -1189,7 +1211,10 @@ mod tests {
         )
         .await;
         assert_eq!(status, StatusCode::OK, "{body}");
-        assert_eq!(body["tests"]["verdict"], "fail", "T0: GET 导出无证据必须显式 fail");
+        assert_eq!(
+            body["tests"]["verdict"], "fail",
+            "T0: GET 导出无证据必须显式 fail"
+        );
 
         // T0 决策（2026-08-24 矛盾 A）：POST /bundles/export 携带真实 tests → verdict 如实反映（pass）
         let (status, body) = send(
@@ -1205,7 +1230,10 @@ mod tests {
         )
         .await;
         assert_eq!(status, StatusCode::OK, "{body}");
-        assert_eq!(body["tests"]["verdict"], "pass", "T0: 带证据导出 verdict 如实反映沙箱结果");
+        assert_eq!(
+            body["tests"]["verdict"], "pass",
+            "T0: 带证据导出 verdict 如实反映沙箱结果"
+        );
 
         // T0 决策：带证据导出若 verdict=fail 也必须如实带出（不静默改 Pass）
         let (status, body) = send(
@@ -1221,7 +1249,10 @@ mod tests {
         )
         .await;
         assert_eq!(status, StatusCode::OK, "{body}");
-        assert_eq!(body["tests"]["verdict"], "fail", "T0: 带证据导出 verdict=fail 如实带出");
+        assert_eq!(
+            body["tests"]["verdict"], "fail",
+            "T0: 带证据导出 verdict=fail 如实带出"
+        );
     }
 
     /// 测试辅助：直接注册 admin 并返回 access token
@@ -1229,7 +1260,14 @@ mod tests {
         let now = unix_now();
         state
             .auth
-            .register(&state.store, "tenant_a", "admin", "password123", Role::Admin, now)
+            .register(
+                &state.store,
+                "tenant_a",
+                "admin",
+                "password123",
+                Role::Admin,
+                now,
+            )
             .expect("register admin");
         let t = state
             .auth
@@ -1282,7 +1320,14 @@ mod tests {
         assert_eq!(body["items"].as_array().map(|a| a.len()).unwrap_or(0), 1);
 
         // GET /entries/{id}（详情）
-        let (status, body) = send(app.clone(), "GET", "/v1/entries/rule-01", Some(&token), None).await;
+        let (status, body) = send(
+            app.clone(),
+            "GET",
+            "/v1/entries/rule-01",
+            Some(&token),
+            None,
+        )
+        .await;
         assert_eq!(status, StatusCode::OK, "{body}");
         assert_eq!(body["entry_id"], "rule-01");
 
@@ -1316,11 +1361,25 @@ mod tests {
         assert_eq!(body["status"], "Candidate");
 
         // 审批需审批者角色 → rule_engineer 被拒
-        let (status, body) = send(app.clone(), "POST", "/v1/entries/rule-02/approve", Some(&token), None).await;
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/entries/rule-02/approve",
+            Some(&token),
+            None,
+        )
+        .await;
         assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
 
         // history（only-append）
-        let (status, body) = send(app.clone(), "GET", "/v1/entries/rule-02/history", Some(&token), None).await;
+        let (status, body) = send(
+            app.clone(),
+            "GET",
+            "/v1/entries/rule-02/history",
+            Some(&token),
+            None,
+        )
+        .await;
         assert_eq!(status, StatusCode::OK, "{body}");
         assert_eq!(body.as_array().map(|a| a.len()).unwrap_or(0), 1);
     }
@@ -1344,7 +1403,11 @@ mod tests {
             })),
         )
         .await;
-        assert_eq!(status, StatusCode::CREATED, "v1 create status={status} body={body}");
+        assert_eq!(
+            status,
+            StatusCode::CREATED,
+            "v1 create status={status} body={body}"
+        );
 
         // v2：变化内容
         let (status, body) = send(
@@ -1363,32 +1426,77 @@ mod tests {
         assert_eq!(status, StatusCode::CREATED, "{body}");
 
         // 版本历史（C1）
-        let (status, body) = send(app.clone(), "GET", "/v1/entries/rule-a/versions", Some(&token), None).await;
+        let (status, body) = send(
+            app.clone(),
+            "GET",
+            "/v1/entries/rule-a/versions",
+            Some(&token),
+            None,
+        )
+        .await;
         assert_eq!(status, StatusCode::OK, "{body}");
         assert_eq!(body["versions"].as_array().map(|a| a.len()).unwrap_or(0), 2);
 
         // 内容级 diff（C2）：v1→v2 变化，含 description
-        let (status, body) = send(app.clone(), "GET", "/v1/entries/rule-a/diff?from=1&to=2", Some(&token), None).await;
+        let (status, body) = send(
+            app.clone(),
+            "GET",
+            "/v1/entries/rule-a/diff?from=1&to=2",
+            Some(&token),
+            None,
+        )
+        .await;
         assert_eq!(status, StatusCode::OK, "{body}");
         assert_eq!(body["changed"], true);
 
         // 逐版本载荷回查（D-B③）：历史版本完整载荷可得，rule_body 含各版差异
-        let (status, body) = send(app.clone(), "GET", "/v1/entries/rule-a/versions/1", Some(&token), None).await;
+        let (status, body) = send(
+            app.clone(),
+            "GET",
+            "/v1/entries/rule-a/versions/1",
+            Some(&token),
+            None,
+        )
+        .await;
         assert_eq!(status, StatusCode::OK, "{body}");
         assert_eq!(body["dataset_id"], "ds-tax-02");
         assert_eq!(body["version"], 1);
         assert_eq!(body["entry"]["rule_body"]["description"], "初版");
-        let (status, body) = send(app.clone(), "GET", "/v1/entries/rule-a/versions/2", Some(&token), None).await;
+        let (status, body) = send(
+            app.clone(),
+            "GET",
+            "/v1/entries/rule-a/versions/2",
+            Some(&token),
+            None,
+        )
+        .await;
         assert_eq!(status, StatusCode::OK, "{body}");
         assert_eq!(body["entry"]["rule_body"]["description"], "改版");
         // 不存在的版本 → 显式 404（不静默）
-        let (status, _) = send(app.clone(), "GET", "/v1/entries/rule-a/versions/9", Some(&token), None).await;
+        let (status, _) = send(
+            app.clone(),
+            "GET",
+            "/v1/entries/rule-a/versions/9",
+            Some(&token),
+            None,
+        )
+        .await;
         assert_eq!(status, StatusCode::NOT_FOUND);
 
         // 内容去重统计（C1）
-        let (status, body) = send(app.clone(), "GET", "/v1/datasets/ds-tax-02/snapshots/stats", Some(&token), None).await;
+        let (status, body) = send(
+            app.clone(),
+            "GET",
+            "/v1/datasets/ds-tax-02/snapshots/stats",
+            Some(&token),
+            None,
+        )
+        .await;
         assert_eq!(status, StatusCode::OK, "{body}");
-        assert_eq!(body["entry_version_rows"], 3, "seed rule-01 + rule-a v1 + rule-a v2");
+        assert_eq!(
+            body["entry_version_rows"], 3,
+            "seed rule-01 + rule-a v1 + rule-a v2"
+        );
         assert!(body["distinct_snapshots"].as_u64().unwrap() >= 1);
     }
 
@@ -1411,7 +1519,14 @@ mod tests {
         assert_eq!(body["description"], "更新后的描述");
 
         // 版本列表
-        let (status, body) = send(app.clone(), "GET", "/v1/datasets/ds-tax-01/versions", Some(&token), None).await;
+        let (status, body) = send(
+            app.clone(),
+            "GET",
+            "/v1/datasets/ds-tax-01/versions",
+            Some(&token),
+            None,
+        )
+        .await;
         assert_eq!(status, StatusCode::OK, "{body}");
         assert_eq!(body["current"], "v1");
 
@@ -1463,7 +1578,14 @@ mod tests {
         assert_eq!(body["new_version"], "v2.p1");
 
         // DELETE 数据集需 admin（rule_engineer 被拒）
-        let (status, body) = send(app.clone(), "DELETE", "/v1/datasets/ds-tax-01", Some(&token), None).await;
+        let (status, body) = send(
+            app.clone(),
+            "DELETE",
+            "/v1/datasets/ds-tax-01",
+            Some(&token),
+            None,
+        )
+        .await;
         assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
 
         // 升到 Candidate（不可删），admin 删除 → CONFLICT
@@ -1476,7 +1598,14 @@ mod tests {
         )
         .await;
         let admin = admin_token(&state).await;
-        let (status, body) = send(app.clone(), "DELETE", "/v1/datasets/ds-tax-01", Some(&admin), None).await;
+        let (status, body) = send(
+            app.clone(),
+            "DELETE",
+            "/v1/datasets/ds-tax-01",
+            Some(&admin),
+            None,
+        )
+        .await;
         assert_eq!(status, StatusCode::CONFLICT, "{body}"); // Candidate 态不可删
     }
 
@@ -1521,7 +1650,14 @@ mod tests {
         assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
         assert_eq!(body["error"]["code"], "bad_request");
         // 确认后未被发布（状态仍 Active）
-        let (status, body) = send(app.clone(), "GET", "/v1/datasets/ds-tax-01", Some(&token), None).await;
+        let (status, body) = send(
+            app.clone(),
+            "GET",
+            "/v1/datasets/ds-tax-01",
+            Some(&token),
+            None,
+        )
+        .await;
         assert_eq!(status, StatusCode::OK, "{body}");
         assert_eq!(body["lifecycle"]["status"], "Active");
 
@@ -1542,7 +1678,10 @@ mod tests {
             .find(|h| h["to"].as_str() == Some("Published"))
             .and_then(|h| h["cause"].as_str())
             .unwrap_or_default();
-        assert!(published_cause.contains("二次确认"), "cause: {published_cause}");
+        assert!(
+            published_cause.contains("二次确认"),
+            "cause: {published_cause}"
+        );
 
         // 管理端撤销发布 → Published → Rejected（34 号 §2/§4，非 Active）
         let (status, body) = send(
@@ -1567,11 +1706,24 @@ mod tests {
             .expect("org_b");
         state
             .auth
-            .register(&state.store, "tenant_b", "badmin", "password123", Role::Admin, unix_now())
+            .register(
+                &state.store,
+                "tenant_b",
+                "badmin",
+                "password123",
+                Role::Admin,
+                unix_now(),
+            )
             .expect("register b_admin");
         let other_admin = state
             .auth
-            .login(&state.store, "tenant_b", "badmin", "password123", unix_now())
+            .login(
+                &state.store,
+                "tenant_b",
+                "badmin",
+                "password123",
+                unix_now(),
+            )
             .expect("login b_admin")
             .access_token;
 
@@ -1647,7 +1799,14 @@ mod tests {
         assert!(body["services"][0]["service_name"] == "payroll_svc");
 
         // GET 数据集依赖（alias 端点）
-        let (status, body) = send(app.clone(), "GET", "/v1/deps/datasets/ds-tax-01", Some(&token), None).await;
+        let (status, body) = send(
+            app.clone(),
+            "GET",
+            "/v1/deps/datasets/ds-tax-01",
+            Some(&token),
+            None,
+        )
+        .await;
         assert_eq!(status, StatusCode::OK, "{body}");
         assert_eq!(body["services"].as_array().map(|a| a.len()).unwrap_or(0), 1);
 
@@ -1685,7 +1844,8 @@ mod tests {
         let template_id = body["template_id"].as_str().unwrap().to_string();
 
         // 模板列表/详情
-        let (status, body) = send(app.clone(), "GET", "/v1/deps/templates", Some(&token), None).await;
+        let (status, body) =
+            send(app.clone(), "GET", "/v1/deps/templates", Some(&token), None).await;
         assert_eq!(status, StatusCode::OK, "{body}");
         assert_eq!(body["items"].as_array().map(|a| a.len()).unwrap_or(0), 1);
 
@@ -1763,8 +1923,16 @@ mod tests {
             attr["unchanged"].as_array().map(|a| a.len()).unwrap_or(0) as u64,
             "升版未改条目 ⇒ 全部归 unchanged：{body}"
         );
-        assert_eq!(attr["added"].as_array().map(|a| a.len()).unwrap_or(0), 0, "{body}");
-        assert_eq!(attr["removed"].as_array().map(|a| a.len()).unwrap_or(0), 0, "{body}");
+        assert_eq!(
+            attr["added"].as_array().map(|a| a.len()).unwrap_or(0),
+            0,
+            "{body}"
+        );
+        assert_eq!(
+            attr["removed"].as_array().map(|a| a.len()).unwrap_or(0),
+            0,
+            "{body}"
+        );
     }
 
     #[tokio::test]
@@ -1818,9 +1986,13 @@ mod tests {
         let (status, body) = send(app.clone(), "GET", "/v1/services", Some(&admin), None).await;
         assert_eq!(status, StatusCode::OK, "{body}");
         let list = body.as_array().expect("services 应为数组");
-        assert!(list.len() >= official_count, "官方目录至少 {official_count} 个: {body}");
         assert!(
-            list.iter().any(|s| s["service_name"] == "llm_advisor" && s["sensitive"] == true),
+            list.len() >= official_count,
+            "官方目录至少 {official_count} 个: {body}"
+        );
+        assert!(
+            list.iter()
+                .any(|s| s["service_name"] == "llm_advisor" && s["sensitive"] == true),
             "llm_advisor 应标记 sensitive=true（C6）"
         );
 
@@ -1981,7 +2153,13 @@ mod tests {
 
         let bundle = state
             .store
-            .export_bundle("ds-pay-01", &crate::bundle::BundleTests::default(), "eng", "2026-08-02T00:00:00Z", "inst-001")
+            .export_bundle(
+                "ds-pay-01",
+                &crate::bundle::BundleTests::default(),
+                "eng",
+                "2026-08-02T00:00:00Z",
+                "inst-001",
+            )
             .unwrap();
 
         // dry-run 预检（不落库）
@@ -2011,9 +2189,19 @@ mod tests {
         assert_eq!(body["activated_version"], "v1");
 
         // 导入后可拉取
-        let (status, body) = send(app.clone(), "GET", "/v1/datasets/ds-pay-01", Some(&token), None).await;
+        let (status, body) = send(
+            app.clone(),
+            "GET",
+            "/v1/datasets/ds-pay-01",
+            Some(&token),
+            None,
+        )
+        .await;
         assert_eq!(status, StatusCode::OK, "{body}");
-        assert_eq!(body["data_dependencies"]["services"][0]["service_name"], "payroll_svc");
+        assert_eq!(
+            body["data_dependencies"]["services"][0]["service_name"],
+            "payroll_svc"
+        );
     }
 
     // ===== Q12 段2 测试（P2 裁剪 / P3 检索 / P4 可见性）=====
@@ -2022,10 +2210,7 @@ mod tests {
     fn build_app_with_domain_schema() -> (Router, AppState) {
         static SEQ: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
         let n = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let dir = std::env::temp_dir().join(format!(
-            "q12-api-test-{}-{n}",
-            std::process::id()
-        ));
+        let dir = std::env::temp_dir().join(format!("q12-api-test-{}-{n}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("domain_schemas")).unwrap();
         std::fs::write(
@@ -2081,7 +2266,12 @@ mod tests {
         }
     }
 
-    fn rule_fixture(ds_id: &str, id: &str, domain: &str, tags: &[&str]) -> crate::model::entry::RuleEntry {
+    fn rule_fixture(
+        ds_id: &str,
+        id: &str,
+        domain: &str,
+        tags: &[&str],
+    ) -> crate::model::entry::RuleEntry {
         crate::model::entry::RuleEntry {
             entry_id: id.into(),
             dataset_id: ds_id.into(),
@@ -2239,14 +2429,7 @@ mod tests {
         .await;
         assert_eq!(status, StatusCode::OK, "{body}");
         assert_eq!(entry_ids(&body), vec!["k2"], "{body}");
-        let (status, body) = send(
-            app.clone(),
-            "GET",
-            "/v1/entries?q=e1",
-            Some(&token),
-            None,
-        )
-        .await;
+        let (status, body) = send(app.clone(), "GET", "/v1/entries?q=e1", Some(&token), None).await;
         assert_eq!(status, StatusCode::OK, "{body}");
         assert_eq!(entry_ids(&body), vec!["e1"], "{body}");
 
@@ -2297,7 +2480,14 @@ mod tests {
             .unwrap();
 
         // Private 跨租户 → 404
-        let (status, _) = send(app.clone(), "GET", "/v1/datasets/ds-cross", Some(&bob), None).await;
+        let (status, _) = send(
+            app.clone(),
+            "GET",
+            "/v1/datasets/ds-cross",
+            Some(&bob),
+            None,
+        )
+        .await;
         assert_eq!(status, StatusCode::NOT_FOUND);
 
         // 交付边界收口 A：Private/未发布数据集不进浏览列表（V3 反转只放行 Public+Published）
@@ -2309,7 +2499,14 @@ mod tests {
         let mut d = state.store.get_dataset("ds-cross").unwrap().unwrap();
         d.visibility = crate::model::dataset::Visibility::Public;
         state.store.update_dataset(&d).unwrap();
-        let (status, _) = send(app.clone(), "GET", "/v1/datasets/ds-cross", Some(&bob), None).await;
+        let (status, _) = send(
+            app.clone(),
+            "GET",
+            "/v1/datasets/ds-cross",
+            Some(&bob),
+            None,
+        )
+        .await;
         assert_eq!(status, StatusCode::NOT_FOUND);
 
         // Public + Published → 200 只读
@@ -2337,7 +2534,14 @@ mod tests {
             .store
             .publish_dataset("ds-cross", "alice", "2026-08-30T00:00:00Z", "inst-001")
             .unwrap();
-        let (status, body) = send(app.clone(), "GET", "/v1/datasets/ds-cross", Some(&bob), None).await;
+        let (status, body) = send(
+            app.clone(),
+            "GET",
+            "/v1/datasets/ds-cross",
+            Some(&bob),
+            None,
+        )
+        .await;
         assert_eq!(status, StatusCode::OK, "{body}");
         assert_eq!(body["visibility"], "public");
 
@@ -2534,4 +2738,3 @@ mod tests {
         );
     }
 }
-

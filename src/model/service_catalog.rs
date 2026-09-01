@@ -85,13 +85,12 @@ const EMBEDDED_SERVICE_FILES: &[(&str, &str)] = &[
 pub fn official_native_services() -> Vec<(String, bool, String)> {
     let mut all: Vec<(String, bool, String)> = Vec::new();
     for (plugin_id, raw) in EMBEDDED_SERVICE_FILES {
-        let file: serde_json::Value = serde_json::from_str(raw)
-            .unwrap_or_else(|e| {
-                panic!(
-                    "official_native_services.{plugin_id}.embedded.json 非法 JSON: {e} — \
+        let file: serde_json::Value = serde_json::from_str(raw).unwrap_or_else(|e| {
+            panic!(
+                "official_native_services.{plugin_id}.embedded.json 非法 JSON: {e} — \
                      请在 evorule-server 仓运行 scripts/sync-native-services.ps1 重新同步"
-                )
-            });
+            )
+        });
         let services = file.get("services").and_then(|v| v.as_array())
             .unwrap_or_else(|| panic!("official_native_services.{plugin_id}.embedded.json 缺 services 数组 — 请重新同步嵌入副本"));
         for s in services {
@@ -122,7 +121,12 @@ pub fn official_native_services() -> Vec<(String, bool, String)> {
 }
 
 /// 由官方种子生成目录条目（version=1.0.0，binding_hint=Native，宽松契约摘要）
-pub fn official_entry(name: &str, sensitive: bool, description: &str, now: &str) -> ServiceCatalogEntry {
+pub fn official_entry(
+    name: &str,
+    sensitive: bool,
+    description: &str,
+    now: &str,
+) -> ServiceCatalogEntry {
     ServiceCatalogEntry {
         service_name: name.to_string(),
         version: default_version(),

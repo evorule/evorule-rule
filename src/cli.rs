@@ -25,7 +25,7 @@
 //! （执行侧绑定核对的前置，缺失声明由导入校验链显式拒绝）。
 
 use clap::{Parser, Subcommand};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::path::Path;
 
 use crate::bundle::{BundleEntry, BundleTests, DatasetBundle, BUNDLE_SCHEMA_VERSION};
@@ -39,7 +39,11 @@ use crate::bundle::{BundleEntry, BundleTests, DatasetBundle, BUNDLE_SCHEMA_VERSI
 )]
 pub struct CliArgs {
     /// 治理服务地址
-    #[arg(long, env = "EVORULE_RULE_URL", default_value = "http://127.0.0.1:18081")]
+    #[arg(
+        long,
+        env = "EVORULE_RULE_URL",
+        default_value = "http://127.0.0.1:18081"
+    )]
     pub base_url: String,
 
     /// API token（Bearer；env EVORULE_RULE_TOKEN）
@@ -129,7 +133,10 @@ pub fn run(args: CliArgs) -> Result<(), CliError> {
             )?;
             print_body(&body, json_mode);
             let items = body["items"].as_array().cloned().unwrap_or_default();
-            println!("{:<24} {:<12} {:<10} {:<10} {}", "DATASET_ID", "KIND", "STATUS", "VERSION", "NAME");
+            println!(
+                "{:<24} {:<12} {:<10} {:<10} {}",
+                "DATASET_ID", "KIND", "STATUS", "VERSION", "NAME"
+            );
             for ds in &items {
                 println!(
                     "{:<24} {:<12} {:<10} {:<10} {}",
@@ -165,13 +172,19 @@ pub fn run(args: CliArgs) -> Result<(), CliError> {
             require_created(status, &body)?;
             print_body(&body, json_mode);
         }
-        Cmd::EntriesBulkImport { dir, dataset, tests } => {
+        Cmd::EntriesBulkImport {
+            dir,
+            dataset,
+            tests,
+        } => {
             let mut bundle = build_bundle_from_dir(Path::new(&dir), dataset.as_deref())?;
             // 闸门一证据：缺省"未验证"（verdict=fail，服务端如实拒绝并给出指引）；
             // --tests 显式携带测试工作台产出的证据（T0 纪律：不默认 Pass，不绕行）
             if let Some(tf) = tests {
-                let t: BundleTests = read_json(Path::new(&tf))
-                    .and_then(|v| serde_json::from_value(v).map_err(|e| CliError(format!("--tests 文件解析失败: {e}"))))?;
+                let t: BundleTests = read_json(Path::new(&tf)).and_then(|v| {
+                    serde_json::from_value(v)
+                        .map_err(|e| CliError(format!("--tests 文件解析失败: {e}")))
+                })?;
                 bundle.tests = t;
                 bundle.audit.content_hash = bundle.compute_content_hash();
             }
@@ -236,7 +249,8 @@ fn send(
         Some(b) => {
             let text = serde_json::to_string(&b)
                 .map_err(|e| CliError(format!("请求体序列化失败: {e}")))?;
-            req.set("Content-Type", "application/json").send_string(&text)
+            req.set("Content-Type", "application/json")
+                .send_string(&text)
         }
         None => req.call(),
     };
@@ -249,8 +263,7 @@ fn send(
     let text = resp
         .into_string()
         .map_err(|e| CliError(format!("读取响应失败: {e}")))?;
-    let json: Value = serde_json::from_str(&text)
-        .unwrap_or_else(|_| Value::String(text.clone()));
+    let json: Value = serde_json::from_str(&text).unwrap_or_else(|_| Value::String(text.clone()));
     Ok((status, json))
 }
 
@@ -287,12 +300,11 @@ fn print_body(body: &Value, json_mode: bool) {
 }
 
 fn write_or_print(body: &Value, out: Option<&str>) -> Result<(), CliError> {
-    let text = serde_json::to_string_pretty(body)
-        .map_err(|e| CliError(format!("响应序列化失败: {e}")))?;
+    let text =
+        serde_json::to_string_pretty(body).map_err(|e| CliError(format!("响应序列化失败: {e}")))?;
     match out {
         Some(path) => {
-            std::fs::write(path, &text)
-                .map_err(|e| CliError(format!("写入 {path} 失败: {e}")))?;
+            std::fs::write(path, &text).map_err(|e| CliError(format!("写入 {path} 失败: {e}")))?;
             println!("已写出 {path}");
         }
         None => println!("{text}"),
@@ -303,7 +315,8 @@ fn write_or_print(body: &Value, out: Option<&str>) -> Result<(), CliError> {
 fn read_json(path: &Path) -> Result<Value, CliError> {
     let text = std::fs::read_to_string(path)
         .map_err(|e| CliError(format!("读取 {} 失败: {e}", path.display())))?;
-    serde_json::from_str(&text).map_err(|e| CliError(format!("{} JSON 解析失败: {e}", path.display())))
+    serde_json::from_str(&text)
+        .map_err(|e| CliError(format!("{} JSON 解析失败: {e}", path.display())))
 }
 
 // ------------------------------------------------------------------
@@ -312,7 +325,10 @@ fn read_json(path: &Path) -> Result<Value, CliError> {
 
 /// 从目录构建 DatasetBundle：`*.json` 为条目（BundleEntry 形态），`dataset.json` 可选。
 /// 条目引用的服务自动聚合进声明；bundle 哈希在本端计算后随包上传（防篡改校验对齐）。
-pub fn build_bundle_from_dir(dir: &Path, dataset_override: Option<&str>) -> Result<DatasetBundle, CliError> {
+pub fn build_bundle_from_dir(
+    dir: &Path,
+    dataset_override: Option<&str>,
+) -> Result<DatasetBundle, CliError> {
     let meta_path = dir.join("dataset.json");
     let meta = if meta_path.exists() {
         Some(read_json(&meta_path)?)
@@ -325,7 +341,10 @@ pub fn build_bundle_from_dir(dir: &Path, dataset_override: Option<&str>) -> Resu
         .unwrap_or_else(|| "bulk-import".into());
     let dataset_id = dataset_override
         .map(String::from)
-        .or_else(|| meta.as_ref().and_then(|m| m["dataset_id"].as_str().map(String::from)))
+        .or_else(|| {
+            meta.as_ref()
+                .and_then(|m| m["dataset_id"].as_str().map(String::from))
+        })
         .unwrap_or_else(|| dir_name.clone());
 
     // 条目文件：排序保证确定性；跳过 dataset.json
@@ -346,8 +365,12 @@ pub fn build_bundle_from_dir(dir: &Path, dataset_override: Option<&str>) -> Resu
     let mut entries: Vec<BundleEntry> = Vec::new();
     for f in &files {
         let v: Value = read_json(f)?;
-        let entry: BundleEntry = serde_json::from_value(v.clone())
-            .map_err(|e| CliError(format!("{} 不是合法条目（BundleEntry 形态）: {e}", f.display())))?;
+        let entry: BundleEntry = serde_json::from_value(v.clone()).map_err(|e| {
+            CliError(format!(
+                "{} 不是合法条目（BundleEntry 形态）: {e}",
+                f.display()
+            ))
+        })?;
         entries.push(entry);
     }
 
@@ -482,10 +505,16 @@ mod tests {
         // 未验证证据 → 校验链（SSOT 门禁）如实拒绝（不绕行）
         let resolver = |_: &str| None;
         let err = crate::bundle::BundleImporter::validate(&bundle, &resolver).unwrap_err();
-        assert!(matches!(err, crate::bundle::BundleError::TestsNotPassed { .. }), "{err}");
+        assert!(
+            matches!(err, crate::bundle::BundleError::TestsNotPassed { .. }),
+            "{err}"
+        );
         // 模拟测试工作台产出证据后 → 校验链通过
         let mut evidenced = bundle;
-        evidenced.tests = BundleTests { verdict: TestVerdict::Pass, ..Default::default() };
+        evidenced.tests = BundleTests {
+            verdict: TestVerdict::Pass,
+            ..Default::default()
+        };
         evidenced.audit.content_hash = evidenced.compute_content_hash();
         crate::bundle::BundleImporter::validate(&evidenced, &resolver).unwrap();
 
@@ -513,10 +542,10 @@ mod tests {
     // export→import 往返内容一致 / 闸门一缺证据如实拒绝 / API filter 集成
     // ------------------------------------------------------------------
 
+    use crate::model::dataset::Meta;
     use crate::model::dataset::{DatasetKind, RuleDataset, Visibility};
     use crate::model::dependency::{DataDependencies, ServiceDecl, SourceBinding};
     use crate::model::entry::RuleEntry;
-    use crate::model::dataset::Meta;
     use crate::model::provenance::Provenance;
     use crate::model::version::Versioning;
     use crate::store::RuleStore;
@@ -547,7 +576,12 @@ mod tests {
                 }],
             }),
             event_schemas: vec![],
-            meta: Meta { created_at: "t".into(), created_by: "u".into(), updated_at: None, updated_by: None },
+            meta: Meta {
+                created_at: "t".into(),
+                created_by: "u".into(),
+                updated_at: None,
+                updated_by: None,
+            },
         }
     }
 
@@ -581,25 +615,37 @@ mod tests {
     }
 
     fn cli_args(base: &str, token: &str, cmd: Cmd) -> CliArgs {
-        CliArgs { base_url: base.into(), token: Some(token.into()), json: false, cmd }
+        CliArgs {
+            base_url: base.into(),
+            token: Some(token.into()),
+            json: false,
+            cmd,
+        }
     }
 
     /// run() 是阻塞 CLI 入口（ureq 同步请求）；测试内 server 与测试共享 current-thread
     /// runtime，必须放 spawn_blocking，否则测试线程被阻塞后 server 无法轮询 → 死锁。
     async fn run_blocking(base: &str, token: &str, cmd: Cmd) -> Result<(), CliError> {
         let args = cli_args(base, token, cmd);
-        tokio::task::spawn_blocking(move || run(args)).await.unwrap()
+        tokio::task::spawn_blocking(move || run(args))
+            .await
+            .unwrap()
     }
 
     #[tokio::test]
     async fn test_cli_end_to_end_roundtrip_via_rest() {
         use crate::model::auth::Role;
-        use crate::{AppState, router};
+        use crate::{router, AppState};
 
         // 1. 内存库 + 种子数据 + admin（导入端点要求管理员）
         let store = RuleStore::in_memory().unwrap();
         store
-            .ensure_default_tenant("org-evorule", "默认组织", "inst-001", "2026-08-22T00:00:00Z")
+            .ensure_default_tenant(
+                "org-evorule",
+                "默认组织",
+                "inst-001",
+                "2026-08-22T00:00:00Z",
+            )
             .unwrap();
         store
             .ensure_default_org("org-evorule", "默认组织", "2026-08-22T00:00:00Z")
@@ -609,7 +655,14 @@ mod tests {
         let state = AppState::new(store, "test-secret", "inst-001", "http://127.0.0.1:9");
         state
             .auth
-            .register(&state.store, "org-evorule", "cli-admin", "password123", Role::Admin, crate::api::unix_now())
+            .register(
+                &state.store,
+                "org-evorule",
+                "cli-admin",
+                "password123",
+                Role::Admin,
+                crate::api::unix_now(),
+            )
             .unwrap();
         let app = router(state);
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -636,21 +689,29 @@ mod tests {
 
         // 3. bulk-export：数据集条目 → 目录批 JSON
         let out_dir = std::env::temp_dir().join(format!("cli-e2e-out-{}", std::process::id()));
-        run_blocking(&base, &token, Cmd::EntriesBulkExport {
-            id: "ds-cli-e2e".into(),
-            dir: out_dir.to_string_lossy().to_string(),
-            version: None,
-        })
+        run_blocking(
+            &base,
+            &token,
+            Cmd::EntriesBulkExport {
+                id: "ds-cli-e2e".into(),
+                dir: out_dir.to_string_lossy().to_string(),
+                version: None,
+            },
+        )
         .await
         .unwrap();
         assert!(out_dir.join("e1.json").exists(), "bulk-export 应落 e1.json");
 
         // 4. bulk-import 不带证据 → 闸门一如实拒绝（含自助指引）
-        let err = run_blocking(&base, &token, Cmd::EntriesBulkImport {
-            dir: out_dir.to_string_lossy().to_string(),
-            dataset: Some("ds-cli-import".into()),
-            tests: None,
-        })
+        let err = run_blocking(
+            &base,
+            &token,
+            Cmd::EntriesBulkImport {
+                dir: out_dir.to_string_lossy().to_string(),
+                dataset: Some("ds-cli-import".into()),
+                tests: None,
+            },
+        )
         .await
         .unwrap_err();
         assert!(err.0.contains("沙箱验证未通过"), "{err}");
@@ -660,11 +721,15 @@ mod tests {
         std::fs::create_dir_all(&tmp).unwrap();
         let tests_file = tmp.join("tests.json");
         std::fs::write(&tests_file, json!({"verdict": "pass"}).to_string()).unwrap();
-        run_blocking(&base, &token, Cmd::EntriesBulkImport {
-            dir: out_dir.to_string_lossy().to_string(),
-            dataset: Some("ds-cli-import".into()),
-            tests: Some(tests_file.to_string_lossy().to_string()),
-        })
+        run_blocking(
+            &base,
+            &token,
+            Cmd::EntriesBulkImport {
+                dir: out_dir.to_string_lossy().to_string(),
+                dataset: Some("ds-cli-import".into()),
+                tests: Some(tests_file.to_string_lossy().to_string()),
+            },
+        )
         .await
         .unwrap();
 
@@ -674,7 +739,9 @@ mod tests {
             let token = token.clone();
             move || {
                 crate::cli::send(
-                    ureq::get(&format!("{base}/v1/datasets/ds-cli-import/entries?filter=domain:tax")),
+                    ureq::get(&format!(
+                        "{base}/v1/datasets/ds-cli-import/entries?filter=domain:tax"
+                    )),
                     Some(&token),
                     None,
                 )
@@ -695,7 +762,9 @@ mod tests {
             let token = token.clone();
             move || {
                 crate::cli::send(
-                    ureq::get(&format!("{base}/v1/datasets/ds-cli-import/entries?filter=noseg")),
+                    ureq::get(&format!(
+                        "{base}/v1/datasets/ds-cli-import/entries?filter=noseg"
+                    )),
                     Some(&token),
                     None,
                 )

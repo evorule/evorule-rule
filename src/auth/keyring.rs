@@ -15,7 +15,10 @@ use crate::store::{RuleStore, StoreError};
 /// 用 KeyRing 的 JWT 密钥构建双代 AuthService（active 签发，previous 验签兼容）。
 ///
 /// 返回 None 表示 JWT 作用域未配置 active 密钥（调用方应显式失败或回退环境变量注入）。
-pub fn auth_service_from_keyring(ring: &KeyRing, pbkdf2_iterations: u32) -> Option<crate::auth::AuthService> {
+pub fn auth_service_from_keyring(
+    ring: &KeyRing,
+    pbkdf2_iterations: u32,
+) -> Option<crate::auth::AuthService> {
     let active = ring.access_active(SecretScope::Jwt)?;
     let active_hex = hex_str(active);
     let previous = ring
@@ -75,7 +78,10 @@ mod tests {
     #[test]
     fn test_auth_service_from_ring_none_when_no_active() {
         let ring = KeyRing::empty();
-        assert!(auth_service_from_keyring(&ring, 1_000).is_none(), "无 active 返回 None");
+        assert!(
+            auth_service_from_keyring(&ring, 1_000).is_none(),
+            "无 active 返回 None"
+        );
     }
 
     #[test]
@@ -85,7 +91,9 @@ mod tests {
             .ensure_default_tenant("t", "组织", "inst", "2026-08-22T00:00:00Z")
             .expect("tenant");
         let mut ring = KeyRing::empty();
-        let audit = ring.rotate(SecretScope::Jwt, "2026-08-22T00:00:00Z", |_| random_key_bytes(24));
+        let audit = ring.rotate(SecretScope::Jwt, "2026-08-22T00:00:00Z", |_| {
+            random_key_bytes(24)
+        });
         assert_eq!(audit.action, "key.rotate");
         persist_key_audit(&store, audit).expect("persist");
         let audits = store.list_auth_audits("t", 100).expect("list");

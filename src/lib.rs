@@ -20,9 +20,9 @@ pub mod resolve;
 pub mod store;
 pub mod validate;
 
-pub use api::{AppState, ApiError, AuthContext, router};
+pub use api::{router, ApiError, AppState, AuthContext};
 pub use auth::{
-    ACCESS_TOKEN_TTL_SECS, AuthError, AuthService, AuthTokens, DEFAULT_PBKDF2_ITERATIONS,
+    AuthError, AuthService, AuthTokens, ACCESS_TOKEN_TTL_SECS, DEFAULT_PBKDF2_ITERATIONS,
     REFRESH_TOKEN_TTL_SECS,
 };
 pub use bundle::{
@@ -30,14 +30,14 @@ pub use bundle::{
     DatasetBundle, DomainSchemaResolver, EntryKind, ImportResult, TestVerdict, ViewRef,
     BUNDLE_SCHEMA_VERSION,
 };
-pub use model::auth::{Action, AuthAudit, Role, Tenant, TokenClaims, User, can};
+pub use llm_client::{LlmClient, LlmClientError, LlmOpRequest, LlmOpResponse, Operation};
+pub use model::auth::{can, Action, AuthAudit, Role, Tenant, TokenClaims, User};
 pub use model::dataset::{DatasetKind, RuleDataset};
 pub use model::entry::RuleEntry;
 pub use model::knowledge::KnowledgeEntry;
 pub use model::lifecycle::LifecycleStatus;
 pub use model::llm_audit::{LlmAuditFilter, LlmAuditStats, LlmOpAudit, OperationStat};
 pub use model::provenance::Provenance;
-pub use llm_client::{LlmClient, LlmOpResponse, LlmOpRequest, LlmClientError, Operation};
 pub use resolve::{EffectiveRange, ResolveError, VersionResolver};
 pub use store::{RuleStore, StoreError};
 pub use validate::{ValidationError, Validator};

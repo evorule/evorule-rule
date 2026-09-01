@@ -15,8 +15,8 @@ use axum::Json;
 use serde::Deserialize;
 
 use crate::api::handlers_auth::now_iso;
-use crate::api::{paginate, unix_now, AppState, ApiError, AuthContext, Page, PageQuery};
-use crate::model::auth::{Action, can, is_org_admin};
+use crate::api::{paginate, unix_now, ApiError, AppState, AuthContext, Page, PageQuery};
+use crate::model::auth::{can, is_org_admin, Action};
 use crate::model::dependency::{
     DataDependencies, IoContract, ServiceTemplate, ServiceTemplateRecord,
 };
@@ -70,7 +70,9 @@ pub async fn put_dataset_deps(
             unknown.join(", ")
         )));
     }
-    state.store.update_dataset_deps(&id, &deps, &ctx.user_id, &now_iso())?;
+    state
+        .store
+        .update_dataset_deps(&id, &deps, &ctx.user_id, &now_iso())?;
     Ok(Json(deps))
 }
 
@@ -152,7 +154,9 @@ pub async fn get_template(
         .get_service_template(&template_id)?
         .ok_or_else(|| ApiError::not_found(format!("服务模板 `{template_id}` 不存在")))?;
     if tpl.tenant_id != ctx.tenant_id {
-        return Err(ApiError::not_found(format!("服务模板 `{template_id}` 不存在")));
+        return Err(ApiError::not_found(format!(
+            "服务模板 `{template_id}` 不存在"
+        )));
     }
     Ok(Json(tpl))
 }
@@ -181,7 +185,9 @@ pub async fn bind_template(
         .get_service_template(&template_id)?
         .ok_or_else(|| ApiError::not_found(format!("服务模板 `{template_id}` 不存在")))?;
     if tpl.tenant_id != ctx.tenant_id {
-        return Err(ApiError::not_found(format!("服务模板 `{template_id}` 不存在")));
+        return Err(ApiError::not_found(format!(
+            "服务模板 `{template_id}` 不存在"
+        )));
     }
     Ok(Json(tpl.bind(&req.values)))
 }

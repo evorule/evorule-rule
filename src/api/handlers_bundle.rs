@@ -11,7 +11,7 @@ use axum::Json;
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::api::{unix_now, AppState, ApiError, AuthContext};
+use crate::api::{unix_now, ApiError, AppState, AuthContext};
 use crate::auth::iso_from_unix;
 use crate::bundle::{BundleImporter, BundleTests, DatasetBundle};
 use crate::model::auth::is_org_admin;
@@ -110,11 +110,7 @@ pub async fn export_with_tests(
 /// - 顶层以 `;` 分隔多段，依次应用（交集语义）：如 `?subset=ids:a,b;tag:core`；
 /// - `ids:` 值为逗号分隔 entry_id 列表（trim_by_ids，view_of 指向原版本）；
 /// - 非法段显式 400，不静默忽略；空裁剪结果由 BundleTrimmer 拒绝。
-fn trim(
-    bundle: &DatasetBundle,
-    spec: &str,
-    by: &str,
-) -> Result<Json<DatasetBundle>, ApiError> {
+fn trim(bundle: &DatasetBundle, spec: &str, by: &str) -> Result<Json<DatasetBundle>, ApiError> {
     let at = iso_from_unix(unix_now());
     let mut view: Option<DatasetBundle> = None;
     for seg in spec.split(';') {
@@ -128,30 +124,34 @@ fn trim(
             )
         })?;
         let current = view.as_ref().unwrap_or(bundle);
-        view = Some(match kind {
-            "tag" => crate::bundle::BundleTrimmer::trim_by_filter(current, None, &[value], by, &at),
-            "domain" => {
-                crate::bundle::BundleTrimmer::trim_by_filter(current, Some(value), &[], by, &at)
-            }
-            "ids" => {
-                let keep: Vec<String> = value
-                    .split(',')
-                    .map(str::trim)
-                    .filter(|s| !s.is_empty())
-                    .map(String::from)
-                    .collect();
-                if keep.is_empty() {
-                    return Err(ApiError::bad_request("ids: 列表为空"));
+        view = Some(
+            match kind {
+                "tag" => {
+                    crate::bundle::BundleTrimmer::trim_by_filter(current, None, &[value], by, &at)
                 }
-                crate::bundle::BundleTrimmer::trim_by_ids(current, &keep, by, &at)
+                "domain" => {
+                    crate::bundle::BundleTrimmer::trim_by_filter(current, Some(value), &[], by, &at)
+                }
+                "ids" => {
+                    let keep: Vec<String> = value
+                        .split(',')
+                        .map(str::trim)
+                        .filter(|s| !s.is_empty())
+                        .map(String::from)
+                        .collect();
+                    if keep.is_empty() {
+                        return Err(ApiError::bad_request("ids: 列表为空"));
+                    }
+                    crate::bundle::BundleTrimmer::trim_by_ids(current, &keep, by, &at)
+                }
+                other => {
+                    return Err(ApiError::bad_request(format!(
+                        "不支持的裁剪维度 `{other}`（tag|domain|ids）"
+                    )))
+                }
             }
-            other => {
-                return Err(ApiError::bad_request(format!(
-                    "不支持的裁剪维度 `{other}`（tag|domain|ids）"
-                )))
-            }
-        }
-        .map_err(|e| ApiError::bad_request(format!("裁剪失败: {e}")))?);
+            .map_err(|e| ApiError::bad_request(format!("裁剪失败: {e}")))?,
+        );
     }
     let view = view.ok_or_else(|| ApiError::bad_request("subset 为空"))?;
     Ok(Json(view))
@@ -176,7 +176,13 @@ pub async fn import_bundle(
     let at = iso_from_unix(unix_now());
     let result = state
         .store
-        .import_bundle(&req.bundle, &ctx.tenant_id, &ctx.user_id, &at, &state.instance_id)
+        .import_bundle(
+            &req.bundle,
+            &ctx.tenant_id,
+            &ctx.user_id,
+            &at,
+            &state.instance_id,
+        )
         .map_err(import_err)?;
     // 激活版本 = 导入后数据集的当前版本（bundle 版本链）
     let activated = state
@@ -210,9 +216,8 @@ pub async fn import_dry_run(
     }
     // D3 领域 schema resolver 与入库同源（store 领域目录），knowledge 条目预检口径一致
     let resolver = |uri: &str| state.store.lookup_domain_schema(uri);
-    let result = BundleImporter::validate(&req.bundle, &resolver).map_err(|e| {
-        ApiError::bad_request(format!("导入预检未通过（不静默）: {e}"))
-    })?;
+    let result = BundleImporter::validate(&req.bundle, &resolver)
+        .map_err(|e| ApiError::bad_request(format!("导入预检未通过（不静默）: {e}")))?;
     Ok(Json(serde_json::json!({
         "valid": true,
         "bundle_id": result.bundle_id,
