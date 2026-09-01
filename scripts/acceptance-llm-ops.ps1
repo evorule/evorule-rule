@@ -16,6 +16,8 @@
 #       故每 op 独立启动 evo-agent;gate two(llm_generated 只达 Draft)为 store 层强约束,
 #       由 evorule-rule 单测锁定(test_llm_generated_entry_cannot_leave_draft 等),本脚本不重复。
 
+param([switch]$RealLlm)
+
 $ErrorActionPreference = 'Stop'
 
 $agentExe = 'D:\evo-agent\target\debug\evo-agent.exe'
@@ -41,7 +43,8 @@ function Assert-True($Cond, $Label) {
 }
 
 function Start-Agent($MockContent) {
-  $env:EVO_AGENT_LLM_MOCK_CONTENT = $MockContent
+  # $MockContent 非空 → mock handler(离线契约验证);空 → 真实 handler(需 MINIMAX_API_KEY 等 env)
+  if ($MockContent) { $env:EVO_AGENT_LLM_MOCK_CONTENT = $MockContent }
   $script:agentProc = Start-Process -FilePath $agentExe `
     -ArgumentList @('serve', '--port', "$agentPort", '--no-auth') `
     -WorkingDirectory 'D:\evo-agent' -PassThru -WindowStyle Hidden
@@ -75,7 +78,8 @@ function Api($Method, $Path, $Token, $BodyObj) {
   $params = @{ Uri = "$base$Path"; Method = $Method; Headers = $headers; UseBasicParsing = $true }
   if ($null -ne $BodyObj) {
     $params['ContentType'] = 'application/json'
-    $params['Body'] = ($BodyObj | ConvertTo-Json -Depth 30 -Compress)
+    # PS 5.1 对字符串 Body 默认 Latin-1 编码,中文(LLM 产物回传)会被搅碎 — 必须显式 UTF-8 字节
+    $params['Body'] = [System.Text.Encoding]::UTF8.GetBytes(($BodyObj | ConvertTo-Json -Depth 30 -Compress))
   }
   return Invoke-RestMethod @params
 }
@@ -175,6 +179,43 @@ try {
   } catch {
     $code = [int]$_.Exception.Response.StatusCode
     Assert-True ($code -eq 400 -or $code -eq 404) "未知操作返回 400/404(实际 $code)"
+  }
+
+  # ---- 场景 7(可选,-RealLlm):真实 LLM 三操作(MiniMax;Key 仅经 env MINIMAX_API_KEY 注入,不落盘) ----
+  if ($RealLlm) {
+    if (-not $env:MINIMAX_API_KEY) { throw '场景 7 需要 env MINIMAX_API_KEY(一次性 Key,验收后作废)' }
+    Write-Host '[7] 真实 LLM 三操作(MiniMax MiniMax-Text-01)'
+    $env:MINIMAX_MODEL = 'MiniMax-Text-01'
+    Start-Agent ''
+    try {
+      $draft = Api 'POST' '/v1/llm/ops/draft_rule' $token @{
+        model = 'MiniMax-Text-01'; request_id = 'uv030-real-draft'
+        params = @{ 需求文本 = '订单金额大于 1000 且用户等级为 VIP 时,给予 95 折优惠'; 领域 = '电商促销' } }
+      Assert-True ($draft.status -eq 'completed') '真实 draft_rule: completed'
+      Assert-True ($null -ne $draft.result.rule) '真实 draft_rule: result.rule 为对象'
+      Assert-True ($draft.llm_generated.model -eq 'MiniMax-Text-01') '真实 draft_rule: 溯源 model'
+
+      $tests = Api 'POST' '/v1/llm/ops/gen_tests' $token @{
+        model = 'MiniMax-Text-01'; request_id = 'uv030-real-tests'
+        params = @{ rule = $draft.result.rule } }
+      Assert-True ($tests.status -eq 'completed') '真实 gen_tests: completed'
+      Assert-True ($tests.result.test_cases.Count -ge 1) "真实 gen_tests: test_cases≥1(实际 $($tests.result.test_cases.Count))"
+
+      $expl = Api 'POST' '/v1/llm/ops/explain_rule' $token @{
+        model = 'MiniMax-Text-01'; request_id = 'uv030-real-explain'
+        params = @{ rule = $draft.result.rule } }
+      Assert-True ($expl.status -eq 'completed') '真实 explain_rule: completed'
+      Assert-True ($expl.result.explanation -is [string] -and $expl.result.explanation.Length -gt 0) '真实 explain_rule: explanation 非空'
+
+      $audits3 = Api 'GET' '/v1/audits/llm?limit=50' $token $null
+      $realHits = @($audits3.items) | Where-Object { $_.model -eq 'MiniMax-Text-01' -and $_.status -eq 'completed' }
+      Assert-True ($realHits.Count -ge 3) "真实三操作落 LlmOpAudit(实际 $($realHits.Count) 条 model=MiniMax-Text-01)"
+    } finally {
+      Stop-Agent
+      Remove-Item Env:MINIMAX_MODEL -ErrorAction SilentlyContinue
+    }
+  } else {
+    Write-Host '[7] 跳过(未指定 -RealLlm;真实 LLM 验收需 -RealLlm + env MINIMAX_API_KEY)'
   }
 
   # ---- 收尾报告 ----
