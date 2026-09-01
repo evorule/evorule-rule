@@ -502,6 +502,17 @@ async fn admin_backend(
     Ok(Json(out))
 }
 
+/// GET /v1/health —— 存活探针(UV-031 V3-b 最小件):
+/// 无鉴权、无状态泄漏——仅返回 ok/服务名/版本号;供运维探活与告警基线使用,
+/// 不暴露租户/数据/后端信息(诊断类信息在鉴权后的 /v1/admin/backend)。
+async fn health() -> Json<Value> {
+    Json(serde_json::json!({
+        "ok": true,
+        "service": "evorule-rule",
+        "version": env!("CARGO_PKG_VERSION"),
+    }))
+}
+
 /// 构建 API 路由（44 号 §6 端点面，MVP 骨架）
 pub fn router(state: AppState) -> Router {
     let public = Router::new()
@@ -655,6 +666,12 @@ pub fn router(state: AppState) -> Router {
         .nest("/v1/auth", protected.clone())
         .nest("/v1", protected)
         .nest("/v1", bundle)
+        // 存活探针独立挂载于 /v1/health:不经过 require_auth 中间件(protected 已挂),
+        // 保证进程级 liveness 在认证体系异常时仍可探测
+        .nest(
+            "/v1",
+            Router::new().route("/health", get(health)),
+        )
         .with_state(state)
 }
 
@@ -790,6 +807,27 @@ mod tests {
         .await;
         assert_eq!(status, StatusCode::CONFLICT, "换负载需 409: {body}");
         assert_eq!(body["error"]["message"], "Idempotency-Key 复用但请求体不同");
+    }
+
+    #[tokio::test]
+    async fn test_health_no_auth() {
+        let (app, _state) = build_app();
+        // 无凭据可访问(存活探针必须脱离认证体系)
+        let (status, body) = send(app.clone(), "GET", "/v1/health", None, None).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["ok"], json!(true));
+        assert_eq!(body["service"], "evorule-rule");
+        assert!(body["version"].is_string(), "版本号应存在: {body}");
+        // 无状态泄漏:响应仅含 ok/service/version 三键
+        let keys: Vec<String> = body
+            .as_object()
+            .map(|o| o.keys().cloned().collect())
+            .unwrap();
+        assert_eq!(
+            keys,
+            vec!["ok", "service", "version"],
+            "不得泄漏其他状态字段: {body}"
+        );
     }
 
     #[tokio::test]
