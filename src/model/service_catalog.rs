@@ -68,6 +68,10 @@ const EMBEDDED_SERVICE_FILES: &[(&str, &str)] = &[
         "physics-services",
         include_str!("official_native_services.physics-services.embedded.json"),
     ),
+    (
+        "indicator-services",
+        include_str!("official_native_services.indicator-services.embedded.json"),
+    ),
 ];
 
 /// 官方预置原生服务种子（UV-029 声明文件化；UV-035 泛化至多插件聚合）。
