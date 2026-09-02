@@ -1064,6 +1064,195 @@ mod tests {
         );
     }
 
+    /// UV-051 生效基准前置校验：三层闸门（创建/更新/发布）
+    /// 缺口实证（W2.2 四场景实测）：缺省 auto 模式 + 无 law_ref → 此前要到
+    /// 部署执行域时才被导入校验 400 拒绝；治理侧 fail-fast 前移。
+    #[tokio::test]
+    async fn test_uv051_effective_basis_preflight_gates() {
+        let (app, state) = build_app();
+        let token = register_login(&app).await; // rule_engineer
+        let admin = admin_token(&state).await; // 审批者（发布）
+
+        // —— 闸门①：显式 auto + 无 law_ref → 创建即 400，错误含修复指引 ——
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/datasets",
+            Some(&token),
+            Some(json!({
+                "dataset_id": "ds-gate-01",
+                "name": "显式auto无锚",
+                "domain": ["tax"],
+                "version_selection": { "mode": "auto_by_effective_date" }
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+        let msg = body["error"]["message"].as_str().unwrap_or_default();
+        assert!(
+            msg.contains("effective_from") && msg.contains("PATCH /v1/datasets/ds-gate-01"),
+            "错误需含自诊断修复指引: {msg}"
+        );
+
+        // 显式 auto + 有锚（仅缺 effective_from 也算缺失）→ 仍 400
+        let (status, _) = send(
+            app.clone(),
+            "POST",
+            "/v1/datasets",
+            Some(&token),
+            Some(json!({
+                "dataset_id": "ds-gate-01b",
+                "name": "有锚无生效日",
+                "domain": ["tax"],
+                "law_ref": { "document_id": "com.example.x" },
+                "version_selection": { "mode": "auto_by_effective_date" }
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+
+        // —— 缺省模式无锚 → 允许创建（草稿工作流不阻断，留给发布闸门）——
+        let (status, _) = send(
+            app.clone(),
+            "POST",
+            "/v1/datasets",
+            Some(&token),
+            Some(json!({
+                "dataset_id": "ds-gate-02",
+                "name": "缺省模式草稿",
+                "domain": ["tax"]
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED);
+        // 条目 + 生命周期推进到 Active
+        let (status, _) = send(
+            app.clone(),
+            "POST",
+            "/v1/datasets/ds-gate-02/entries",
+            Some(&token),
+            Some(json!({
+                "entry_id": "rule-01",
+                "version": 1,
+                "domain": "tax",
+                "rule_body": { "rule_id": "gate-01", "transform": [{"type": "set", "params": {"attr": "x", "operation": "set", "value": 1}}] }
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED);
+        for (who, to) in [(&token, "candidate"), (&admin, "active")] {
+            let (status, body) = send(
+                app.clone(),
+                "PATCH",
+                "/v1/datasets/ds-gate-02/lifecycle",
+                Some(who),
+                Some(json!({ "to": to })),
+            )
+            .await;
+            assert_eq!(status, StatusCode::OK, "{body}");
+        }
+
+        // —— 闸门③：缺省 auto 无锚 → 发布 400（硬闸门，W2.2 缺口的直接复现）——
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/datasets/ds-gate-02/publish",
+            Some(&admin),
+            Some(json!({ "confirm": true })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+        let msg = body["error"]["message"].as_str().unwrap_or_default();
+        assert!(msg.contains("UV-051") && msg.contains("PATCH /v1/datasets/ds-gate-02"), "msg: {msg}");
+
+        // —— 修复路径：PATCH 补 law_ref → 发布成功（自愈指引可达）——
+        let (status, body) = send(
+            app.clone(),
+            "PATCH",
+            "/v1/datasets/ds-gate-02",
+            Some(&token),
+            Some(json!({
+                "law_ref": { "document_id": "com.example.gate", "effective_from": "2026-01-01" }
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/datasets/ds-gate-02/publish",
+            Some(&admin),
+            Some(json!({ "confirm": true })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["lifecycle"]["status"], "Published");
+
+        // —— pinned 模式豁免：锁定版本不依赖生效日期，无 law_ref 可发布 ——
+        let (status, _) = send(
+            app.clone(),
+            "POST",
+            "/v1/datasets",
+            Some(&token),
+            Some(json!({
+                "dataset_id": "ds-gate-03",
+                "name": "pinned豁免",
+                "domain": ["tax"],
+                "version_selection": { "mode": "pinned", "pinned_version": "v1" }
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED);
+        let (status, _) = send(
+            app.clone(),
+            "POST",
+            "/v1/datasets/ds-gate-03/entries",
+            Some(&token),
+            Some(json!({
+                "entry_id": "rule-01",
+                "version": 1,
+                "domain": "tax",
+                "rule_body": { "rule_id": "gate-03", "transform": [{"type": "set", "params": {"attr": "x", "operation": "set", "value": 1}}] }
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED);
+        for (who, to) in [(&token, "candidate"), (&admin, "active")] {
+            let (status, body) = send(
+                app.clone(),
+                "PATCH",
+                "/v1/datasets/ds-gate-03/lifecycle",
+                Some(who),
+                Some(json!({ "to": to })),
+            )
+            .await;
+            assert_eq!(status, StatusCode::OK, "{body}");
+        }
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/datasets/ds-gate-03/publish",
+            Some(&admin),
+            Some(json!({ "confirm": true })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["lifecycle"]["status"], "Published");
+
+        // —— 闸门②：PATCH 引入"显式 auto 无锚"错误配置 → 400 ——
+        let (status, body) = send(
+            app.clone(),
+            "PATCH",
+            "/v1/datasets/ds-gate-03",
+            Some(&token),
+            Some(json!({ "version_selection": { "mode": "auto_by_effective_date" } })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+        let msg = body["error"]["message"].as_str().unwrap_or_default();
+        assert!(msg.contains("ds-gate-03"), "msg: {msg}");
+    }
+
     #[tokio::test]
     async fn test_list_pagination_envelope() {
         let (app, _state) = build_app();
@@ -1288,6 +1477,12 @@ mod tests {
                 "name": "税务合规规则集",
                 "domain": ["tax"],
                 "tags": ["合规"],
+                // UV-051：种子代表合规形态数据集——携带生效基准（缺省 auto 模式发布闸门要求）
+                "law_ref": {
+                    "document_id": "com.example.tax",
+                    "law_version": "1.0.0",
+                    "effective_from": "2024-01-01"
+                }
             })),
         )
         .await;

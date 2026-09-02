@@ -23,6 +23,70 @@ use crate::model::version::{BumpKind, LawRef, VersionSelection, Versioning};
 // 数据集
 // ----------------------------------------------------------------------
 
+// —— 生效基准前置校验（UV-051，2026-09-02）——
+// 缺口实证（W2.2 四场景实测）：新建数据集 law_ref 缺省 + version_selection 缺省
+// （= auto_by_effective_date）→ 发布/导出无阻拦 → 部署到执行域时才被导入校验
+// 400 拒绝（"auto_by_effective_date 模式需快照包携带 law_ref.effective_from 作为
+// 生效基准"）。报错诚实但暴露过晚——治理侧在创建/更新/发布期 fail-fast 前移。
+// 三层闸门：
+//   ① 创建：显式选择 auto 模式却缺生效基准 → 400（配置错误，创建即可见）；
+//   ② 更新：PATCH 合并后显式 auto 模式缺生效基准 → 400（不允许经 PATCH 引入错误配置）；
+//   ③ 发布：auto 模式（含缺省）缺生效基准 → 400（硬闸门，与执行域导入校验口径一致；
+//      缺省模式草稿允许创建/编辑，但发布必拦）。
+
+/// 是否缺失生效基准（law_ref 缺失或 effective_from 缺失均视为缺失）
+fn missing_effective_basis(law_ref: &Option<LawRef>) -> bool {
+    match law_ref {
+        Some(lr) => lr.effective_from.is_none(),
+        None => true,
+    }
+}
+
+/// 生效基准缺失错误（含自诊断修复指引，遵循"系统自愈 + 用户可见"）
+fn effective_basis_error(dataset_id: &str) -> ApiError {
+    ApiError::bad_request(format!(
+        "生效基准缺失（UV-051 前置校验）：版本选择模式为 auto_by_effective_date（缺省即该模式），\
+         数据集 `{dataset_id}` 需携带 law_ref.effective_from 作为生效基准，\
+         否则部署到执行域时将被导入校验拒绝。\
+         修复指引：PATCH /v1/datasets/{dataset_id} 补充 law_ref（至少 document_id + effective_from，\
+         如 {{\"law_ref\":{{\"document_id\":\"…\",\"effective_from\":\"2026-01-01\"}}}}），\
+         或将 version_selection 切换为 pinned 并指定 pinned_version"
+    ))
+}
+
+/// 校验显式声明的 version_selection（创建/更新期闸门：只拦显式 auto 缺基准；
+/// 缺省模式留给发布闸门，不阻断草稿工作流）
+fn validate_explicit_selection(
+    dataset_id: &str,
+    version_selection: &Option<VersionSelection>,
+    law_ref: &Option<LawRef>,
+) -> Result<(), ApiError> {
+    if let Some(vs) = version_selection {
+        if vs.mode == crate::model::version::VersionSelectionMode::AutoByEffectiveDate
+            && missing_effective_basis(law_ref)
+        {
+            return Err(effective_basis_error(dataset_id));
+        }
+    }
+    Ok(())
+}
+
+/// 校验数据集发布就绪的生效基准（发布闸门：显式与缺省 auto 均拦截，口径与
+/// 执行域导入校验一致——见 evorule-bundle bundle.rs validate 第 5 步）
+fn validate_publish_effective_basis(ds: &crate::model::dataset::RuleDataset) -> Result<(), ApiError> {
+    let mode = ds
+        .version_selection
+        .as_ref()
+        .map(|vs| vs.mode)
+        .unwrap_or(crate::model::version::VersionSelectionMode::AutoByEffectiveDate);
+    if mode == crate::model::version::VersionSelectionMode::AutoByEffectiveDate
+        && missing_effective_basis(&ds.law_ref)
+    {
+        return Err(effective_basis_error(&ds.dataset_id));
+    }
+    Ok(())
+}
+
 #[derive(Deserialize)]
 pub struct CreateDatasetReq {
     pub dataset_id: String,
@@ -86,6 +150,8 @@ pub async fn create_dataset(
     if !can(ctx.role, Action::Create) {
         return Err(ApiError::forbidden("需要规则工程师及以上角色"));
     }
+    // UV-051 闸门①：显式 auto 模式缺生效基准 → 创建即拒（配置错误，创建即可见）
+    validate_explicit_selection(&req.dataset_id, &req.version_selection, &req.law_ref)?;
     let now = now_iso();
     let ds = RuleDataset {
         dataset_id: req.dataset_id,
@@ -226,6 +292,9 @@ pub async fn publish(
             "发布需二次确认：请求体须携带 confirm=true（防误发，34 号 §9-1）",
         ));
     }
+    // UV-051 闸门③：auto 模式（含缺省）缺生效基准 → 发布即拒（硬闸门，口径与
+    // 执行域导入校验一致；W2.2 实证该缺口此前要到部署时才 400 暴露）
+    validate_publish_effective_basis(&ds)?;
     let at = iso_from_unix(unix_now());
     let cause = req
         .reason
@@ -303,6 +372,9 @@ pub async fn update_dataset_meta(
     if let Some(vs) = req.version_selection {
         ds.version_selection = Some(vs);
     }
+    // UV-051 闸门②：PATCH 合并后显式 auto 模式缺生效基准 → 拒绝
+    //（不允许经 PATCH 引入"显式 auto 无锚"错误配置；缺省模式留给发布闸门）
+    validate_explicit_selection(&ds.dataset_id, &ds.version_selection, &ds.law_ref)?;
     let at = iso_from_unix(unix_now());
     ds.meta.updated_at = Some(at);
     ds.meta.updated_by = Some(ctx.user_id.clone());
