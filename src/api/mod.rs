@@ -1414,7 +1414,7 @@ mod tests {
             Some(json!({
                 "dataset_id": "ds-tax-01",
                 "version": "v1",
-                "tests": { "verdict": "pass", "subset": ["rule-01"], "fixtures": [] }
+                "tests": { "verdict": "pass", "subset": ["human:test"], "fixtures": [] }
             })),
         )
         .await;
@@ -1441,6 +1441,44 @@ mod tests {
         assert_eq!(
             body["tests"]["verdict"], "fail",
             "T0: 带证据导出 verdict=fail 如实带出"
+        );
+
+        // UV-080 B1: 零证据 pass（空 subset）→ 400 显式拒绝（防伪造，不静默）
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/bundles/export",
+            Some(&token),
+            Some(json!({
+                "dataset_id": "ds-tax-01",
+                "version": "v1",
+                "tests": { "verdict": "pass", "subset": [], "fixtures": [] }
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+        assert!(
+            body.to_string().contains("可追溯"),
+            "错误应指向可追溯标记缺失: {body}"
+        );
+
+        // UV-080 B1: 无前缀标记（不可追溯 subset 项）→ 400 显式拒绝
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/bundles/export",
+            Some(&token),
+            Some(json!({
+                "dataset_id": "ds-tax-01",
+                "version": "v1",
+                "tests": { "verdict": "pass", "subset": ["rule-01"], "fixtures": [] }
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+        assert!(
+            body.to_string().contains("可追溯"),
+            "错误应指向可追溯标记缺失: {body}"
         );
     }
 
@@ -2258,7 +2296,7 @@ mod tests {
             Some(json!({
                 "dataset_id": "ds-tax-01",
                 "version": "v1",
-                "tests": { "verdict": "pass", "subset": [], "fixtures": [] }
+                "tests": { "verdict": "pass", "subset": ["human:test"], "fixtures": [] }
             })),
         )
         .await;

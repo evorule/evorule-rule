@@ -13,7 +13,7 @@ use serde_json::Value;
 
 use crate::api::{unix_now, ApiError, AppState, AuthContext};
 use crate::auth::iso_from_unix;
-use crate::bundle::{BundleImporter, BundleTests, DatasetBundle};
+use crate::bundle::{BundleImporter, BundleTests, DatasetBundle, TestVerdict};
 use crate::model::auth::is_org_admin;
 use crate::store::StoreError;
 
@@ -84,6 +84,30 @@ pub async fn export_with_tests(
     Extension(ctx): Extension<AuthContext>,
     Json(req): Json<ExportReq>,
 ) -> Result<Json<DatasetBundle>, ApiError> {
+    // UV-080 B1: 证据形状校验(阶段一校验层·治理域侧)。
+    // verdict=pass 的导出必须携带可追溯证据标记——subset 非空且每项以
+    // `sandbox:<id>`(机器背书)或 `human:<actor>`(人工降级)开头,防绕过 console
+    // 手写"零证据 pass"伪造导出(console 侧已按此形状构造,此处为服务端
+    // enforcement——客户端纪律不构成校验)。verdict=fail 无此要求(fail 本身
+    // 即"未通过",无伪造风险)。
+    // 分层:本侧只管形状;`sandbox:` 引用的存在性+报告一致性由执行域 import 侧
+    // 校验(沙盒数据在执行域 workspace 元数据,治理域不可见——双闸各管一层)。
+    if req.tests.verdict == TestVerdict::Pass {
+        let traceable = !req.tests.subset.is_empty()
+            && req
+                .tests
+                .subset
+                .iter()
+                .all(|s| s.starts_with("sandbox:") || s.starts_with("human:"));
+        if !traceable {
+            return Err(ApiError::bad_request(
+                "证据校验失败:verdict=pass 的导出必须携带可追溯测试标记\
+                 (tests.subset 须非空,且每项为 sandbox:<沙盒ID> 或 human:<操作者>)。\
+                 机器背书请传入沙盒报告引用,人工背书请传 human:<操作者>\
+                 (显式降级,导入侧可追溯);verdict=fail 无此要求",
+            ));
+        }
+    }
     let ds = state
         .store
         .get_dataset(&req.dataset_id)?
