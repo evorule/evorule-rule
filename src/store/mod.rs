@@ -795,6 +795,12 @@ impl RuleStore {
     }
 
     /// 删除数据集（44 号 §4：仅 Draft/Rejected 态，admin 权限由 handler 把关）
+    ///
+    /// UV-090 双修复：
+    /// ① 子表全量清理——补齐三张漏网快照/版本表（entry_snapshots / dataset_versions /
+    ///    dataset_version_snapshots），否则 datasets 行删除被外键阻断（NO ACTION 无级联）→ 500；
+    /// ② 整流程包事务——修复前各 DELETE 独立自动提交，外键失败时已删条目不可回滚，
+    ///    形成半删除 + 条目数据静默丢失。现在任一步失败即整体回滚（tx 未 commit 即 Drop 回滚）。
     pub fn delete_dataset(&self, dataset_id: &str) -> Result<(), StoreError> {
         let ds = self
             .get_dataset(dataset_id)?
@@ -806,32 +812,47 @@ impl RuleStore {
                 status,
             });
         }
-        let conn = self.conn.lock().unwrap();
-        // 外键依赖顺序：state_history → entries（含 knowledge 平行表）→ datasets
-        conn.execute(
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction()?;
+        // 外键依赖顺序（子表全量，含快照/版本三表）：快照/版本 → state_history
+        // → entries（含 knowledge 平行表）→ datasets
+        tx.execute(
+            "DELETE FROM entry_snapshots WHERE dataset_id=?1",
+            params![dataset_id],
+        )?;
+        tx.execute(
+            "DELETE FROM dataset_versions WHERE dataset_id=?1",
+            params![dataset_id],
+        )?;
+        tx.execute(
+            "DELETE FROM dataset_version_snapshots WHERE dataset_id=?1",
+            params![dataset_id],
+        )?;
+        tx.execute(
             "DELETE FROM entry_state_history WHERE dataset_id=?1",
             params![dataset_id],
         )?;
-        conn.execute(
+        tx.execute(
             "DELETE FROM entries WHERE dataset_id=?1",
             params![dataset_id],
         )?;
-        conn.execute(
+        tx.execute(
             "DELETE FROM knowledge_state_history WHERE dataset_id=?1",
             params![dataset_id],
         )?;
-        conn.execute(
+        tx.execute(
             "DELETE FROM knowledge_snapshots WHERE dataset_id=?1",
             params![dataset_id],
         )?;
-        conn.execute(
+        tx.execute(
             "DELETE FROM knowledge_entries WHERE dataset_id=?1",
             params![dataset_id],
         )?;
-        conn.execute(
+        tx.execute(
             "DELETE FROM datasets WHERE dataset_id=?1",
             params![dataset_id],
         )?;
+        tx.commit()?;
         Ok(())
     }
 
@@ -4054,6 +4075,115 @@ mod tests {
         assert!(got.data_dependencies.unwrap().has_service("payroll_svc"));
         let list = store.list_datasets("org-evorule").unwrap();
         assert_eq!(list.len(), 1);
+    }
+
+    /// UV-090 ①：删除数据集必须清空全部子表（含修复前漏掉的三张快照/版本表）。
+    /// 修复前：entry_snapshots / dataset_versions / dataset_version_snapshots 漏清 →
+    /// datasets 行删除被外键（NO ACTION 无级联）阻断 → 500。
+    #[test]
+    fn test_delete_dataset_cleans_all_child_tables() {
+        let store = RuleStore::in_memory().unwrap();
+        store.create_dataset(&tax_dataset()).unwrap();
+
+        // 条目两版（产生 entries + entry_state_history 经状态转换 + entry_snapshots）
+        let mut e = draft_entry();
+        store.add_entry(&e).unwrap();
+        store
+            .transition_entry_status(
+                "ds-tax-2024",
+                "tax-001",
+                LifecycleStatus::Candidate,
+                "eng",
+                "t",
+                "送审",
+            )
+            .unwrap();
+        e.version = 2;
+        e.rule_body["description"] = serde_json::json!("税率调整后的新规则");
+        store.add_entry(&e).unwrap();
+
+        // 数据集版本推进（产生 dataset_versions + dataset_version_snapshots；推进后回 Draft 可删）
+        store
+            .create_dataset_version("ds-tax-2024", BumpKind::Major, "eng", "t")
+            .unwrap();
+
+        store.delete_dataset("ds-tax-2024").unwrap();
+
+        // 全部子表清空——三张快照/版本表是修复前漏掉的部分
+        let conn = store.conn.lock().unwrap();
+        for table in [
+            "datasets",
+            "entries",
+            "entry_state_history",
+            "entry_snapshots",
+            "dataset_versions",
+            "dataset_version_snapshots",
+            "knowledge_entries",
+            "knowledge_state_history",
+            "knowledge_snapshots",
+        ] {
+            let n: i64 = conn
+                .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| r.get(0))
+                .unwrap();
+            assert_eq!(n, 0, "{table} 应随数据集删除清空（UV-090 ①）");
+        }
+    }
+
+    /// UV-090 ②：删除失败必须整体回滚。修复前各 DELETE 独立自动提交——
+    /// 外键失败报 500 的同时 entries 已删且不可回滚（半删除 + 数据静默丢失）。
+    #[test]
+    fn test_delete_dataset_atomic_rollback_on_failure() {
+        let store = RuleStore::in_memory().unwrap();
+        store.create_dataset(&tax_dataset()).unwrap();
+        let mut e = draft_entry();
+        store.add_entry(&e).unwrap();
+        store
+            .transition_entry_status(
+                "ds-tax-2024",
+                "tax-001",
+                LifecycleStatus::Candidate,
+                "eng",
+                "t",
+                "送审",
+            )
+            .unwrap();
+
+        // 注入失败源：datasets 行删除前 ABORT（模拟外键阻断等任一步失败）
+        store
+            .conn
+            .lock()
+            .unwrap()
+            .execute(
+                "CREATE TRIGGER uv090_fail BEFORE DELETE ON datasets
+                 BEGIN SELECT RAISE(ABORT, 'uv090: simulated failure'); END",
+                [],
+            )
+            .unwrap();
+
+        assert!(
+            store.delete_dataset("ds-tax-2024").is_err(),
+            "注入的失败必须显式报错（fail-fast，禁止静默）"
+        );
+
+        // 原子性：整体回滚，条目/状态历史/快照原样保留——修复前此处 entries=0（数据丢失）
+        let conn = store.conn.lock().unwrap();
+        let entries: i64 = conn
+            .query_row("SELECT COUNT(*) FROM entries", [], |r| r.get(0))
+            .unwrap();
+        let history: i64 = conn
+            .query_row("SELECT COUNT(*) FROM entry_state_history", [], |r| r.get(0))
+            .unwrap();
+        let snapshots: i64 = conn
+            .query_row("SELECT COUNT(*) FROM entry_snapshots", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(entries, 1, "失败回滚后条目不得丢失（UV-090 ②）");
+        assert_eq!(history, 1, "失败回滚后状态历史不得丢失");
+        assert_eq!(snapshots, 1, "失败回滚后快照不得丢失");
+        drop(conn);
+        assert!(
+            store.get_dataset("ds-tax-2024").unwrap().is_some(),
+            "失败回滚后数据集行保留"
+        );
     }
 
     #[test]
