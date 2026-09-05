@@ -1187,7 +1187,10 @@ mod tests {
         .await;
         assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
         let msg = body["error"]["message"].as_str().unwrap_or_default();
-        assert!(msg.contains("UV-051") && msg.contains("PATCH /v1/datasets/ds-gate-02"), "msg: {msg}");
+        assert!(
+            msg.contains("UV-051") && msg.contains("PATCH /v1/datasets/ds-gate-02"),
+            "msg: {msg}"
+        );
 
         // —— 修复路径：PATCH 补 law_ref → 发布成功（自愈指引可达）——
         let (status, body) = send(

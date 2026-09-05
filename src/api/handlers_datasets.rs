@@ -73,7 +73,9 @@ fn validate_explicit_selection(
 
 /// 校验数据集发布就绪的生效基准（发布闸门：显式与缺省 auto 均拦截，口径与
 /// 执行域导入校验一致——见 evorule-bundle bundle.rs validate 第 5 步）
-fn validate_publish_effective_basis(ds: &crate::model::dataset::RuleDataset) -> Result<(), ApiError> {
+fn validate_publish_effective_basis(
+    ds: &crate::model::dataset::RuleDataset,
+) -> Result<(), ApiError> {
     let mode = ds
         .version_selection
         .as_ref()
