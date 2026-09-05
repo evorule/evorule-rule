@@ -14,7 +14,8 @@
 //
 // 说明：
 //   - 默认 SQLite 活跃引擎；`--features postgres` + `DATABASE_URL` 才尝试 PG（见 bootstrap_backend）
-//   - `--secret` 不提供则随机生成并在启动日志打印（重启需显式传入以保持 token 有效）
+//   - `--secret` 不提供则复用持久化密钥文件（与 --db 同目录 jwt_secret.key），
+//     首次启动自动随机生成并持久化——重启 token 保持有效（UV-092）；密钥不再打印到日志
 //   - 首次启动自动创建默认租户；同时提供 `--admin-user/--admin-password` 时自动引导管理员（幂等）
 
 use std::net::SocketAddr;
@@ -44,7 +45,7 @@ struct Cli {
     #[arg(long, default_value_t = 18081)]
     port: u16,
 
-    /// JWT 签名密钥（不提供则随机生成并打印；重启需显式传入以保持 token 有效）
+    /// JWT 签名密钥（不提供则复用持久化密钥文件 jwt_secret.key，首次自动随机生成并持久化；显式传入会覆盖持久化值）
     #[arg(long, env = "EVORULE_RULE_SECRET")]
     secret: Option<String>,
 
@@ -123,15 +124,37 @@ async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         tracing::info!("服务目录已存在，跳过官方预置");
     }
 
-    // 3. 密钥（未提供则随机生成并打印；白标/多实例需显式传入保持 token 有效）
+    // 3. 密钥（UV-092：优先级 = --secret 显式 > 持久化密钥文件 > 随机生成并持久化；
+    //    重启自动复用同一密钥，token 跨重启保持有效；密钥永不打印到日志——
+    //    安全边界与 rule.db 一致：持有文件系统读权限即持有库内口令哈希，同级信任面）
+    let secret_file = secret_file_path(&cli.db);
     let secret = match &cli.secret {
-        Some(s) if !s.is_empty() => s.clone(),
-        _ => {
-            let s = random_secret();
-            println!("GENERATED_SECRET={s}");
-            tracing::warn!("未提供 --secret，已随机生成（重启需显式传入以保持 token 有效）");
-            s
+        Some(s) if !s.is_empty() => {
+            persist_secret(&secret_file, s)?;
+            tracing::info!(
+                path = %secret_file.display(),
+                "已使用显式 --secret 并持久化（重启自动复用，token 保持有效）"
+            );
+            s.clone()
         }
+        _ => match load_secret(&secret_file)? {
+            Some(s) => {
+                tracing::info!(
+                    path = %secret_file.display(),
+                    "已加载持久化签名密钥（重启 token 保持有效）"
+                );
+                s
+            }
+            None => {
+                let s = random_secret();
+                persist_secret(&secret_file, &s)?;
+                tracing::info!(
+                    path = %secret_file.display(),
+                    "已生成随机签名密钥并持久化（重启自动复用，token 保持有效）"
+                );
+                s
+            }
+        },
     };
 
     // 4. 引导管理员（幂等：仅当租户内无该用户名时创建；B1：平台管理员，可管理 org）
@@ -202,4 +225,88 @@ fn random_secret() -> String {
     let mut bytes = [0u8; 32];
     rand::thread_rng().fill_bytes(&mut bytes);
     URL_SAFE_NO_PAD.encode(bytes)
+}
+
+/// 签名密钥持久化路径：与 SQLite 库同目录（data/jwt_secret.key，UV-092）
+fn secret_file_path(db: &str) -> std::path::PathBuf {
+    std::path::Path::new(db)
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or_else(|| std::path::Path::new("."))
+        .join("jwt_secret.key")
+}
+
+/// 读取持久化密钥（不存在/空白文件返回 None，视同缺失重新生成）
+fn load_secret(path: &std::path::Path) -> std::io::Result<Option<String>> {
+    match std::fs::read_to_string(path) {
+        Ok(s) => {
+            let s = s.trim().to_string();
+            if s.is_empty() {
+                Ok(None)
+            } else {
+                Ok(Some(s))
+            }
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
+/// 持久化密钥（幂等覆盖；保证父目录存在）
+fn persist_secret(path: &std::path::Path, secret: &str) -> std::io::Result<()> {
+    if let Some(parent) = path.parent() {
+        if !parent.as_os_str().is_empty() {
+            std::fs::create_dir_all(parent)?;
+        }
+    }
+    std::fs::write(path, secret)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// UV-092：密钥文件 读回一致 / 覆盖生效 / 缺失或空白视同缺失 / 路径与 --db 同目录
+    #[test]
+    fn test_secret_file_roundtrip_override_and_missing() {
+        let dir = std::env::temp_dir().join(format!(
+            "uv092-secret-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("jwt_secret.key");
+
+        // 1) 不存在 → None
+        assert!(load_secret(&path).unwrap().is_none());
+
+        // 2) 持久化 → 读回一致
+        let s1 = random_secret();
+        persist_secret(&path, &s1).unwrap();
+        assert_eq!(load_secret(&path).unwrap().as_deref(), Some(s1.as_str()));
+
+        // 3) 显式覆盖 → 新值生效（--secret 传入即覆盖持久化值的语义）
+        let s2 = random_secret();
+        persist_secret(&path, &s2).unwrap();
+        assert_eq!(load_secret(&path).unwrap().as_deref(), Some(s2.as_str()));
+
+        // 4) 空白文件 → None（防半写/损坏文件静默当密钥用）
+        std::fs::write(&path, "  \n").unwrap();
+        assert!(load_secret(&path).unwrap().is_none());
+
+        // 5) 路径派生：与 --db 同目录；无父目录时落到 ./
+        assert_eq!(
+            secret_file_path("./data/rule.db"),
+            std::path::Path::new("./data/jwt_secret.key")
+        );
+        assert_eq!(
+            secret_file_path("rule.db"),
+            std::path::Path::new("./jwt_secret.key")
+        );
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 }

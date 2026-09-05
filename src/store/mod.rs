@@ -3427,26 +3427,48 @@ impl RuleStore {
         }
     }
 
-    /// 删除数据集全部条目（导入覆盖用；不动数据集本身）
+    /// 删除数据集全部条目（导入覆盖用；不动数据集本身）。
+    /// UV-090 观察项收口：与 delete_dataset 同口径——整流程事务化 +
+    /// 四张快照/归因子表（entry_snapshots/knowledge_snapshots/dataset_versions/
+    /// dataset_version_snapshots）同步清理；旧实现"留存旧快照"属历史遗留语义，
+    /// 已按当前最佳实现删除（用户裁定 2026-09-05）
     fn delete_dataset_entries(&self, dataset_id: &str) -> Result<(), StoreError> {
-        let conn = self.conn.lock().unwrap();
-        conn.execute(
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction()?;
+        tx.execute(
             "DELETE FROM entry_state_history WHERE dataset_id=?1",
             params![dataset_id],
         )?;
-        conn.execute(
+        tx.execute(
             "DELETE FROM entries WHERE dataset_id=?1",
             params![dataset_id],
         )?;
         // Q12 R5：knowledge 平行表同步清空（导入可重试幂等，两表口径一致）
-        conn.execute(
+        tx.execute(
             "DELETE FROM knowledge_state_history WHERE dataset_id=?1",
             params![dataset_id],
         )?;
-        conn.execute(
+        tx.execute(
             "DELETE FROM knowledge_entries WHERE dataset_id=?1",
             params![dataset_id],
         )?;
+        tx.execute(
+            "DELETE FROM entry_snapshots WHERE dataset_id=?1",
+            params![dataset_id],
+        )?;
+        tx.execute(
+            "DELETE FROM knowledge_snapshots WHERE dataset_id=?1",
+            params![dataset_id],
+        )?;
+        tx.execute(
+            "DELETE FROM dataset_versions WHERE dataset_id=?1",
+            params![dataset_id],
+        )?;
+        tx.execute(
+            "DELETE FROM dataset_version_snapshots WHERE dataset_id=?1",
+            params![dataset_id],
+        )?;
+        tx.commit()?;
         Ok(())
     }
 
@@ -4206,6 +4228,74 @@ mod tests {
             store.get_dataset("ds-tax-2024").unwrap().is_some(),
             "失败回滚后数据集行保留"
         );
+    }
+
+    /// UV-090 观察项收口（2026-09-05）：导入覆盖辅助 delete_dataset_entries 与
+    /// delete_dataset 同口径——条目删除时四张快照/归因子表同步清理，数据集行保留。
+    /// 旧实现留存旧快照属历史遗留语义，已按用户裁定删除。
+    #[test]
+    fn test_delete_dataset_entries_cleans_snapshot_tables() {
+        let store = RuleStore::in_memory().unwrap();
+        store.create_dataset(&tax_dataset()).unwrap();
+
+        // 造齐条目侧 + 数据集侧快照/归因数据（同 UV-090 测试形状）
+        let mut e = draft_entry();
+        store.add_entry(&e).unwrap();
+        store
+            .transition_entry_status(
+                "ds-tax-2024",
+                "tax-001",
+                LifecycleStatus::Candidate,
+                "eng",
+                "t",
+                "送审",
+            )
+            .unwrap();
+        e.version = 2;
+        e.rule_body["description"] = serde_json::json!("税率调整后的新规则");
+        store.add_entry(&e).unwrap();
+        store
+            .create_dataset_version("ds-tax-2024", BumpKind::Major, "eng", "t")
+            .unwrap();
+
+        // 删除前数据充分性：快照/归因表确有数据（防空集假绿）
+        {
+            let conn = store.conn.lock().unwrap();
+            for table in [
+                "entries",
+                "entry_state_history",
+                "entry_snapshots",
+                "dataset_versions",
+                "dataset_version_snapshots",
+            ] {
+                let n: i64 = conn
+                    .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| r.get(0))
+                    .unwrap();
+                assert!(n > 0, "{table} 删除前应有数据（测试数据充分性）");
+            }
+        }
+
+        store.delete_dataset_entries("ds-tax-2024").unwrap();
+
+        // 八张条目/快照/归因相关表全清，数据集行保留（导入覆盖语义：仅清条目不动数据集）
+        let conn = store.conn.lock().unwrap();
+        for table in [
+            "entries",
+            "entry_state_history",
+            "entry_snapshots",
+            "knowledge_entries",
+            "knowledge_state_history",
+            "knowledge_snapshots",
+            "dataset_versions",
+            "dataset_version_snapshots",
+        ] {
+            let n: i64 = conn
+                .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| r.get(0))
+                .unwrap();
+            assert_eq!(n, 0, "{table} 应随条目删除清空（UV-090 观察项收口）");
+        }
+        drop(conn);
+        assert!(store.get_dataset("ds-tax-2024").unwrap().is_some());
     }
 
     #[test]
