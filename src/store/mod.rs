@@ -5,7 +5,7 @@
 //! - 索引：domain/tags（检索）、entry_id+version（版本链查询）、tenant_id+visibility（多租户，⑧）；
 //! - 约束：唯一性、不可变性（frozen 拒绝原地修改）、符号三方一致（导入/提交时校验，显式报错）。
 
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use thiserror::Error;
 
 /// PostgreSQL 生产后端（45 号批次1 §2）：仅 `--features postgres` 编译。
@@ -657,6 +657,12 @@ impl RuleStore {
             return Err(StoreError::DatasetExists(ds.dataset_id.clone()));
         }
         let conn = self.conn.lock().unwrap();
+        Self::insert_dataset_conn(&conn, ds)
+    }
+
+    /// 数据集行 INSERT 核心（UV-094 W1 提取）：纯 SQL 零拿锁，供 create_dataset
+    /// 与 import_bundle 大事务（`&Transaction` Deref `&Connection`）共用单一权威实现。
+    fn insert_dataset_conn(conn: &Connection, ds: &RuleDataset) -> Result<(), StoreError> {
         conn.execute(
             "INSERT INTO datasets
                (dataset_id, tenant_id, name, description, dataset_kind, domain, tags, visibility,
@@ -692,6 +698,15 @@ impl RuleStore {
     /// 取数据集
     pub fn get_dataset(&self, dataset_id: &str) -> Result<Option<RuleDataset>, StoreError> {
         let conn = self.conn.lock().unwrap();
+        Self::query_dataset_conn(&conn, dataset_id)
+    }
+
+    /// 数据集行查询核心（UV-094 W1 提取）：纯 SQL 零拿锁，供 get_dataset 与
+    /// import_bundle 大事务（事务内读可见本事务未提交写，读改一致）共用单一权威实现。
+    fn query_dataset_conn(
+        conn: &Connection,
+        dataset_id: &str,
+    ) -> Result<Option<RuleDataset>, StoreError> {
         let mut stmt = conn.prepare(
             "SELECT dataset_id, tenant_id, name, description, dataset_kind, domain, tags, visibility,
                     lifecycle, versioning, law_ref, version_selection, data_dependencies, event_schemas, meta
@@ -768,7 +783,17 @@ impl RuleStore {
     /// 整行更新数据集（PATCH：取→改→落库；版本链/生命周期由专用方法管理，不在此改）
     pub fn update_dataset(&self, ds: &RuleDataset) -> Result<(), StoreError> {
         let conn = self.conn.lock().unwrap();
-        let n = conn.execute(
+        let n = Self::update_dataset_row_conn(&conn, ds)?;
+        if n == 0 {
+            return Err(StoreError::DatasetNotFound(ds.dataset_id.clone()));
+        }
+        Ok(())
+    }
+
+    /// 数据集行 UPDATE 核心（UV-094 W1 提取）：返回影响行数（0=行不存在），
+    /// 语义由调用方裁定（update_dataset → DatasetNotFound；import 覆盖路径同口径）。
+    fn update_dataset_row_conn(conn: &Connection, ds: &RuleDataset) -> Result<usize, StoreError> {
+        Ok(conn.execute(
             "UPDATE datasets SET name=?1, description=?2, domain=?3, tags=?4, visibility=?5,
                     lifecycle=?6, versioning=?7, law_ref=?8, version_selection=?9,
                     data_dependencies=?10, event_schemas=?11, meta=?12
@@ -795,11 +820,7 @@ impl RuleStore {
                 serde_json::to_string(&ds.meta)?,
                 ds.dataset_id,
             ],
-        )?;
-        if n == 0 {
-            return Err(StoreError::DatasetNotFound(ds.dataset_id.clone()));
-        }
-        Ok(())
+        )?)
     }
 
     /// 删除数据集（44 号 §4：仅 Draft/Rejected 态，admin 权限由 handler 把关）
@@ -986,8 +1007,11 @@ impl RuleStore {
         // POST-bump 前当前 entries = 旧版本内容；先收集（list_* 内部自行加锁）再持锁写库。
         let rule_entries = self.list_entries(dataset_id, None)?;
         let knowledge_entries = self.list_knowledge_entries(dataset_id, None)?;
-        let conn = self.conn.lock().unwrap();
-        conn.execute(
+        // UV-094 W2：版本链推进/归因/全量快照三段写同生共死（修复前各自自动提交，
+        // 中途失败 = 版本已推进但归因/快照缺失，历史版本导出从此残缺）
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        tx.execute(
             "UPDATE datasets SET versioning=?1, lifecycle=?2, meta=?3 WHERE dataset_id=?4",
             params![
                 serde_json::to_string(&ds.versioning)?,
@@ -999,7 +1023,7 @@ impl RuleStore {
         // 归因行（45 号批次1）：记录"旧版本含哪些条目快照"；跨版本未变内容复用同哈希，
         // 归因行按 (version, content_hash) 唯一（与 pg.rs 幂等口径一致）。
         {
-            let mut stmt = conn.prepare(
+            let mut stmt = tx.prepare(
                 "INSERT INTO dataset_versions (dataset_id, version, entry_hash, entry_id, created_at)
                  VALUES (?1, ?2, ?3, ?4, ?5)
                  ON CONFLICT(dataset_id, version, entry_hash) DO NOTHING",
@@ -1026,7 +1050,7 @@ impl RuleStore {
         // 全量条目快照（B4）：完整条目 JSON 落库（含 provenance/domain/tags/绑定），
         // 历史版本导出据此重建；同 (dataset, version, entry) 幂等，重复推进不重复存储。
         {
-            let mut stmt = conn.prepare(
+            let mut stmt = tx.prepare(
                 "INSERT INTO dataset_version_snapshots
                     (dataset_id, version, entry_id, kind, content_hash, content_json, created_by, created_at)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
@@ -1057,6 +1081,7 @@ impl RuleStore {
                 ])?;
             }
         }
+        tx.commit()?;
         Ok(new_version)
     }
 
@@ -1066,9 +1091,22 @@ impl RuleStore {
 
     /// 新增条目：校验（数据集存在 + 类型匹配 + 符号三方一致 + LLM 边界 + 唯一性）
     pub fn add_entry(&self, entry: &RuleEntry) -> Result<(), StoreError> {
+        // UV-094 W2：快照落库与主表 INSERT 两步同生共死（修复前两步各自自动提交，
+        // 主表 INSERT 失败 = 孤儿快照残留）
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        self.add_rule_entry_conn(&tx, entry)?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// 条目写入核心（UV-094 W1 提取）：校验 + 快照去重 + 主表 INSERT，全部走参数连接零拿锁
+    /// （供 add_entry 与 import_bundle 大事务共用单一权威实现。锁纪律：内部禁止再拿
+    /// `self.conn`——resolver 只走 domain_schema_cache 锁，与 conn 单向不互锁）。
+    fn add_rule_entry_conn(&self, conn: &Connection, entry: &RuleEntry) -> Result<(), StoreError> {
         // 1) 数据集存在 + 类型匹配（Q12 R4：规则条目只进 rule_set 数据集）
-        let ds = self
-            .get_dataset(&entry.dataset_id)?
+        //    读走参数连接：import 大事务内可见本事务未提交写（覆盖导入先建/改数据集再插条目）
+        let ds = Self::query_dataset_conn(conn, &entry.dataset_id)?
             .ok_or_else(|| StoreError::DatasetNotFound(entry.dataset_id.clone()))?;
         if ds.dataset_kind != DatasetKind::RuleSet {
             return Err(StoreError::DatasetKindMismatch {
@@ -1101,7 +1139,6 @@ impl RuleStore {
         let resolver = |uri: &str| self.lookup_domain_schema(uri);
         BundleImporter::validate_entry(&bundle_entry, &declared_services, &resolver)?;
         // 4) 唯一性（entry_id + version 已由主键保证，此处显式检查以便友好报错）
-        let conn = self.conn.lock().unwrap();
         let exists: bool = conn.query_row(
             "SELECT EXISTS(SELECT 1 FROM entries WHERE dataset_id=?1 AND entry_id=?2 AND version=?3)",
             params![entry.dataset_id, entry.entry_id, entry.version],
@@ -1164,9 +1201,24 @@ impl RuleStore {
     /// 新增 knowledge 条目：校验（数据集存在且为 knowledge 类型 + D3 领域 schema 强校验
     /// 经 BundleImporter::validate_entry 同一 SSOT 门禁 + 唯一性），写入平行表。
     pub fn add_knowledge_entry(&self, entry: &KnowledgeEntry) -> Result<(), StoreError> {
+        // UV-094 W2：快照落库与主表 INSERT 两步同生共死（同 add_entry 口径）
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        self.add_knowledge_entry_conn(&tx, entry)?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// knowledge 条目写入核心（UV-094 W1 提取）：与 add_rule_entry_conn 同口径——
+    /// 校验 + 快照去重 + 主表 INSERT 全走参数连接零拿锁，供 add_knowledge_entry
+    /// 与 import_bundle 大事务共用单一权威实现。
+    fn add_knowledge_entry_conn(
+        &self,
+        conn: &Connection,
+        entry: &KnowledgeEntry,
+    ) -> Result<(), StoreError> {
         // 1) 数据集存在 + 类型匹配（数据条目只进 knowledge 数据集）
-        let ds = self
-            .get_dataset(&entry.dataset_id)?
+        let ds = Self::query_dataset_conn(conn, &entry.dataset_id)?
             .ok_or_else(|| StoreError::DatasetNotFound(entry.dataset_id.clone()))?;
         if ds.dataset_kind != DatasetKind::Knowledge {
             return Err(StoreError::DatasetKindMismatch {
@@ -1204,7 +1256,6 @@ impl RuleStore {
         let resolver = |uri: &str| self.lookup_domain_schema(uri);
         BundleImporter::validate_entry(&bundle_entry, &[], &resolver)?;
         // 5) 唯一性（主键保证，此处显式检查以便友好报错）
-        let conn = self.conn.lock().unwrap();
         let exists: bool = conn.query_row(
             "SELECT EXISTS(SELECT 1 FROM knowledge_entries WHERE dataset_id=?1 AND entry_id=?2 AND version=?3)",
             params![entry.dataset_id, entry.entry_id, entry.version],
@@ -1437,8 +1488,11 @@ impl RuleStore {
         };
         let resolver = |uri: &str| self.lookup_domain_schema(uri);
         BundleImporter::validate_entry(&bundle_entry, &[], &resolver)?;
-        let conn = self.conn.lock().unwrap();
-        conn.execute(
+        // UV-094 W2：快照落库与主表 UPDATE 同生共死（修复前快照先行独立提交，
+        // UPDATE 失败 = 孤儿快照残留）
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        tx.execute(
             "INSERT INTO knowledge_snapshots(dataset_id, content_hash, payload, created_at)
              VALUES (?1, ?2, ?3, ?4)
              ON CONFLICT(dataset_id, content_hash) DO NOTHING",
@@ -1449,7 +1503,7 @@ impl RuleStore {
                 epoch_ms_now(),
             ],
         )?;
-        let n = conn.execute(
+        let n = tx.execute(
             "UPDATE knowledge_entries SET status=?3, provenance=?4, domain=?5, tags=?6,
                     payload=?7, schema_ref=?8, governance=?9, content_hash=?10
              WHERE dataset_id=?1 AND entry_id=?2 AND version=?11",
@@ -1480,6 +1534,7 @@ impl RuleStore {
                 entry: entry.entry_id.clone(),
             });
         }
+        tx.commit()?;
         Ok(())
     }
 
@@ -1502,15 +1557,19 @@ impl RuleStore {
                 status: entry.status,
             });
         }
-        let conn = self.conn.lock().unwrap();
-        conn.execute(
+        // UV-094 W2：状态历史与主表两删同生共死（修复前历史先行独立提交，
+        // 主表 DELETE 失败 = 审计历史丢失而条目残留）
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        tx.execute(
             "DELETE FROM knowledge_state_history WHERE dataset_id=?1 AND entry_id=?2",
             params![dataset_id, entry_id],
         )?;
-        conn.execute(
+        tx.execute(
             "DELETE FROM knowledge_entries WHERE dataset_id=?1 AND entry_id=?2",
             params![dataset_id, entry_id],
         )?;
+        tx.commit()?;
         Ok(())
     }
 
@@ -1563,8 +1622,11 @@ impl RuleStore {
         }
         gov.lifecycle_timestamps = Some(ts);
         entry.governance = Some(gov);
-        let conn = self.conn.lock().unwrap();
-        conn.execute(
+        // UV-094 W2：状态 UPDATE 与审计历史 INSERT 同生共死（修复前两步独立提交，
+        // INSERT 失败 = 状态已变但审计历史缺失，only-append 审计链断档）
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        tx.execute(
             "UPDATE knowledge_entries SET status=?1, governance=?2
              WHERE dataset_id=?3 AND entry_id=?4 AND version=?5",
             params![
@@ -1575,7 +1637,7 @@ impl RuleStore {
                 entry.version,
             ],
         )?;
-        conn.execute(
+        tx.execute(
             "INSERT INTO knowledge_state_history
                 (dataset_id, entry_id, version, from_state, to_state, at, by, cause)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
@@ -1590,6 +1652,7 @@ impl RuleStore {
                 cause,
             ],
         )?;
+        tx.commit()?;
         Ok(())
     }
 
@@ -2046,9 +2109,12 @@ impl RuleStore {
         // 校验通过后原地更新
         Validator::validate_symbol_consistency(&ds, entry)?;
         Validator::validate_llm_boundary(entry)?;
-        let conn = self.conn.lock().unwrap();
+        // UV-094 W2：快照落库与主表 UPDATE 同生共死（修复前快照先行独立提交，
+        // UPDATE 失败 = 孤儿快照残留；同 knowledge 侧口径）
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         // 内容寻址快照去重落库（33 号 §6/C1）
-        conn.execute(
+        tx.execute(
             "INSERT INTO entry_snapshots(dataset_id, content_hash, rule_body, created_at)
              VALUES (?1, ?2, ?3, ?4)
              ON CONFLICT(dataset_id, content_hash) DO NOTHING",
@@ -2059,7 +2125,7 @@ impl RuleStore {
                 epoch_ms_now(),
             ],
         )?;
-        let n = conn.execute(
+        let n = tx.execute(
             "UPDATE entries SET status=?3, provenance=?4, domain=?5, tags=?6,
                     data_source_binding=?7, rule_body=?8, governance=?9, content_hash=?10
              WHERE dataset_id=?1 AND entry_id=?2 AND version=?11",
@@ -2087,6 +2153,7 @@ impl RuleStore {
         if n == 0 {
             return Err(StoreError::DatasetNotFound(entry.entry_id.clone()));
         }
+        tx.commit()?;
         Ok(())
     }
 
@@ -2439,15 +2506,19 @@ impl RuleStore {
                 status: entry.status,
             });
         }
-        let conn = self.conn.lock().unwrap();
-        conn.execute(
+        // UV-094 W2：状态历史与主表两删同生共死（修复前历史先行独立提交，
+        // 主表 DELETE 失败 = 审计历史丢失而条目残留；同 knowledge 侧口径）
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        tx.execute(
             "DELETE FROM entry_state_history WHERE dataset_id=?1 AND entry_id=?2",
             params![dataset_id, entry_id],
         )?;
-        conn.execute(
+        tx.execute(
             "DELETE FROM entries WHERE dataset_id=?1 AND entry_id=?2",
             params![dataset_id, entry_id],
         )?;
+        tx.commit()?;
         Ok(())
     }
 
@@ -2510,8 +2581,11 @@ impl RuleStore {
         }
         gov.lifecycle_timestamps = Some(ts);
         entry.governance = Some(gov);
-        let conn = self.conn.lock().unwrap();
-        conn.execute(
+        // UV-094 W2：状态 UPDATE 与审计历史 INSERT 同生共死（修复前两步独立提交，
+        // INSERT 失败 = 状态已变但审计历史缺失，only-append 审计链断档）
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        tx.execute(
             "UPDATE entries SET status=?1, governance=?2
              WHERE dataset_id=?3 AND entry_id=?4 AND version=?5",
             params![
@@ -2522,7 +2596,7 @@ impl RuleStore {
                 entry.version,
             ],
         )?;
-        conn.execute(
+        tx.execute(
             "INSERT INTO entry_state_history
                 (dataset_id, entry_id, version, from_state, to_state, at, by, cause)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
@@ -2537,6 +2611,7 @@ impl RuleStore {
                 cause,
             ],
         )?;
+        tx.commit()?;
         Ok(())
     }
 
@@ -2755,6 +2830,12 @@ impl RuleStore {
     /// 注册/更新服务目录条目（upsert，主键 service_name）
     pub fn upsert_service(&self, e: &ServiceCatalogEntry) -> Result<(), StoreError> {
         let conn = self.conn.lock().unwrap();
+        Self::upsert_service_conn(&conn, e)
+    }
+
+    /// 服务目录 upsert 核心（UV-094 W2 提取）：纯 SQL 走参数连接零拿锁——
+    /// 供 upsert_service 与 seed_official_services_if_empty 事务循环共用单一权威实现
+    fn upsert_service_conn(conn: &Connection, e: &ServiceCatalogEntry) -> Result<(), StoreError> {
         conn.execute(
             "INSERT INTO service_catalog
                (service_name, version, description, io_contract, sensitive, binding_hint,
@@ -2918,10 +2999,17 @@ impl RuleStore {
         if platform_count > 0 {
             return Ok(0);
         }
+        // UV-094 W2：seed 循环整体一个事务——中途失败整体回滚（修复前逐条独立提交，
+        // 失败 = 半 seed 状态：官方目录部分条目残留，count 预检失效且无法幂等重放）
         let mut inserted = 0usize;
-        for (name, sensitive, desc) in official_native_services() {
-            self.upsert_service(&official_entry(&name, sensitive, &desc, now))?;
-            inserted += 1;
+        {
+            let mut conn = self.conn.lock().unwrap();
+            let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+            for (name, sensitive, desc) in official_native_services() {
+                Self::upsert_service_conn(&tx, &official_entry(&name, sensitive, &desc, now))?;
+                inserted += 1;
+            }
+            tx.commit()?;
         }
         Ok(inserted)
     }
@@ -3269,7 +3357,10 @@ impl RuleStore {
     /// - 条目：按 `entry_kind` 分流——Rule → RuleEntry（entries 表）、Knowledge → KnowledgeEntry
     ///   （knowledge 平行表），治理版本=1，状态 Active；先清空旧条目再写入（可重试幂等）；
     /// - 混合 kind 的包显式拒绝（MVP 数据集类型单一，不静默混装）；
-    /// - 校验链任一失败 → 显式错误（35 号 §9 硬失败，不静默降级）。
+    /// - 校验链任一失败 → 显式错误（35 号 §9 硬失败，不静默降级）；
+    /// - **原子性（UV-094 W1）**：整个导入持一把锁包一个事务——删旧条目/更新数据集/
+    ///   逐条插入任一步失败即整体回滚，杜绝"旧数据已删+新数据不完整"的半状态；
+    ///   校验与 schema 预热在锁外完成（持锁期间零 FS I/O）。
     pub fn import_bundle(
         &self,
         bundle: &DatasetBundle,
@@ -3298,8 +3389,22 @@ impl RuleStore {
             DatasetKind::RuleSet
         };
         let did = &bundle.dataset.dataset_id;
-        let existing = self.get_dataset(did)?;
-        let mut ds = match existing {
+        // schema 预热（UV-094 W1）：对包内全部 schema_ref 显式解析——首次调用会读
+        // domain_schemas/ 目录并填充缓存；放在取锁前，导入持锁期间零 FS I/O。
+        for be in &bundle.entries {
+            if let Some(sr) = &be.schema_ref {
+                let _ = self.lookup_domain_schema(sr);
+            }
+        }
+
+        // —— 整个导入持一把锁包一个事务（UV-094 核心修复）——
+        // 修复前：删旧条目/更新数据集/逐条插入三步各自独立提交，任一步中途失败=
+        // 旧数据已删+新数据不完整（数据丢失/半状态），且锁在步间释放、并发读者可见半状态、
+        // 并发导入可交错。现在任一步失败 → tx Drop 整体回滚，库内状态严格保持导入前。
+        // Immediate：BEGIN 即取写锁——外部进程争用 fail-fast，不做延迟升级。
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        match Self::query_dataset_conn(&tx, did)? {
             Some(mut e) => {
                 // 覆盖导入：更新版本链/锚/依赖/可见性，记录导入 cause
                 e.name = bundle.dataset.name.clone();
@@ -3309,9 +3414,12 @@ impl RuleStore {
                 e.data_dependencies = bundle.data_dependencies.clone();
                 // B5：事件声明随包覆盖（导入 = 版本整体替换语义）
                 e.event_schemas = bundle.dataset.event_schemas.clone();
+                // UV-094 顺带修复：from-state 须在改状态前捕获（修复前先赋值再格式化，
+                // 历史恒记 "Active"，前一状态丢失 → 审计失真）
+                let prev = format!("{:?}", e.lifecycle.status);
                 e.lifecycle.status = LifecycleStatus::Active;
                 e.lifecycle.state_history.push(StateChange {
-                    from: format!("{:?}", e.lifecycle.status),
+                    from: prev,
                     to: format!("{:?}", LifecycleStatus::Active),
                     at: at.into(),
                     by: by.into(),
@@ -3323,47 +3431,53 @@ impl RuleStore {
                 });
                 e.meta.updated_at = Some(at.into());
                 e.meta.updated_by = Some(by.into());
-                // 清空旧条目（导入可重试幂等）
-                self.delete_dataset_entries(did)?;
-                e
+                // 清空旧条目（导入可重试幂等）——走事务连接，与数据集更新/条目插入
+                // 同生共死（修复前此处自带独立事务先行提交，是半状态窗口的源头）
+                Self::delete_dataset_entries_conn(&tx, did)?;
+                let n = Self::update_dataset_row_conn(&tx, &e)?;
+                if n == 0 {
+                    return Err(StoreError::DatasetNotFound(did.clone()));
+                }
             }
-            None => RuleDataset {
-                dataset_id: did.clone(),
-                name: bundle.dataset.name.clone(),
-                description: Some(format!("由快照包 {} 导入", bundle.bundle_id)),
-                dataset_kind,
-                domain: bundle.entries.iter().map(|e| e.domain.clone()).collect(),
-                tags: vec![],
-                tenant_id: tenant_id.into(),
-                visibility: Visibility::Private,
-                lifecycle: Lifecycle {
-                    status: LifecycleStatus::Active,
-                    state_history: vec![StateChange {
-                        from: format!("{:?}", LifecycleStatus::Draft),
-                        to: format!("{:?}", LifecycleStatus::Active),
-                        at: at.into(),
-                        by: by.into(),
-                        cause: format!(
-                            "导入快照包 {}（instance_id={}）",
-                            bundle.bundle_id, instance_id
-                        ),
-                        published_as: None,
-                    }],
-                },
-                versioning: bundle.dataset.versioning.clone(),
-                law_ref: bundle.dataset.law_ref.clone(),
-                version_selection: bundle.dataset.version_selection.clone(),
-                data_dependencies: bundle.data_dependencies.clone(),
-                event_schemas: bundle.dataset.event_schemas.clone(),
-                meta: Meta {
-                    created_at: at.into(),
-                    created_by: by.into(),
-                    updated_at: None,
-                    updated_by: None,
-                },
-            },
-        };
-        self.update_dataset_or_create(&mut ds)?;
+            None => {
+                let ds = RuleDataset {
+                    dataset_id: did.clone(),
+                    name: bundle.dataset.name.clone(),
+                    description: Some(format!("由快照包 {} 导入", bundle.bundle_id)),
+                    dataset_kind,
+                    domain: bundle.entries.iter().map(|e| e.domain.clone()).collect(),
+                    tags: vec![],
+                    tenant_id: tenant_id.into(),
+                    visibility: Visibility::Private,
+                    lifecycle: Lifecycle {
+                        status: LifecycleStatus::Active,
+                        state_history: vec![StateChange {
+                            from: format!("{:?}", LifecycleStatus::Draft),
+                            to: format!("{:?}", LifecycleStatus::Active),
+                            at: at.into(),
+                            by: by.into(),
+                            cause: format!(
+                                "导入快照包 {}（instance_id={}）",
+                                bundle.bundle_id, instance_id
+                            ),
+                            published_as: None,
+                        }],
+                    },
+                    versioning: bundle.dataset.versioning.clone(),
+                    law_ref: bundle.dataset.law_ref.clone(),
+                    version_selection: bundle.dataset.version_selection.clone(),
+                    data_dependencies: bundle.data_dependencies.clone(),
+                    event_schemas: bundle.dataset.event_schemas.clone(),
+                    meta: Meta {
+                        created_at: at.into(),
+                        created_by: by.into(),
+                        updated_at: None,
+                        updated_by: None,
+                    },
+                };
+                Self::insert_dataset_conn(&tx, &ds)?;
+            }
+        }
         // 条目落库（Q12 R5：按 entry_kind 分流入对应平行表）
         for be in &bundle.entries {
             match be.entry_kind {
@@ -3386,7 +3500,7 @@ impl RuleStore {
                             lifecycle_timestamps: None,
                         }),
                     };
-                    self.add_entry(&entry)?;
+                    self.add_rule_entry_conn(&tx, &entry)?;
                 }
                 EntryKind::Knowledge => {
                     // validate 链已保证 schema_ref 存在且 payload 过领域 schema（D3）
@@ -3412,63 +3526,53 @@ impl RuleStore {
                             lifecycle_timestamps: None,
                         }),
                     };
-                    self.add_knowledge_entry(&entry)?;
+                    self.add_knowledge_entry_conn(&tx, &entry)?;
                 }
             }
         }
+        // 全链写齐方提交：此前任一步失败均已随 tx Drop 整体回滚（UV-094）
+        tx.commit()?;
         Ok(result)
     }
 
-    /// 导入辅助：数据集存在则整行更新，否则新建
-    fn update_dataset_or_create(&self, ds: &mut RuleDataset) -> Result<(), StoreError> {
-        match self.get_dataset(&ds.dataset_id)? {
-            Some(_) => self.update_dataset(ds),
-            None => self.create_dataset(ds),
-        }
-    }
-
-    /// 删除数据集全部条目（导入覆盖用；不动数据集本身）。
-    /// UV-090 观察项收口：与 delete_dataset 同口径——整流程事务化 +
-    /// 四张快照/归因子表（entry_snapshots/knowledge_snapshots/dataset_versions/
-    /// dataset_version_snapshots）同步清理；旧实现"留存旧快照"属历史遗留语义，
-    /// 已按当前最佳实现删除（用户裁定 2026-09-05）
-    fn delete_dataset_entries(&self, dataset_id: &str) -> Result<(), StoreError> {
-        let mut conn = self.conn.lock().unwrap();
-        let tx = conn.transaction()?;
-        tx.execute(
+    /// 删除数据集全部条目核心（UV-094 W1）：纯 SQL 走参数连接，零拿锁、零自带事务——
+    /// 事务边界由调用方裁定（import_bundle 大事务内调用，与数据集更新/条目插入同生共死；
+    /// 独立使用须自行包事务，见测试 test_delete_dataset_entries_cleans_snapshot_tables）。
+    /// 清理口径与 delete_dataset 同（UV-090 收口）：八张条目/快照/归因子表全清，不动数据集行。
+    fn delete_dataset_entries_conn(conn: &Connection, dataset_id: &str) -> Result<(), StoreError> {
+        conn.execute(
             "DELETE FROM entry_state_history WHERE dataset_id=?1",
             params![dataset_id],
         )?;
-        tx.execute(
+        conn.execute(
             "DELETE FROM entries WHERE dataset_id=?1",
             params![dataset_id],
         )?;
         // Q12 R5：knowledge 平行表同步清空（导入可重试幂等，两表口径一致）
-        tx.execute(
+        conn.execute(
             "DELETE FROM knowledge_state_history WHERE dataset_id=?1",
             params![dataset_id],
         )?;
-        tx.execute(
+        conn.execute(
             "DELETE FROM knowledge_entries WHERE dataset_id=?1",
             params![dataset_id],
         )?;
-        tx.execute(
+        conn.execute(
             "DELETE FROM entry_snapshots WHERE dataset_id=?1",
             params![dataset_id],
         )?;
-        tx.execute(
+        conn.execute(
             "DELETE FROM knowledge_snapshots WHERE dataset_id=?1",
             params![dataset_id],
         )?;
-        tx.execute(
+        conn.execute(
             "DELETE FROM dataset_versions WHERE dataset_id=?1",
             params![dataset_id],
         )?;
-        tx.execute(
+        conn.execute(
             "DELETE FROM dataset_version_snapshots WHERE dataset_id=?1",
             params![dataset_id],
         )?;
-        tx.commit()?;
         Ok(())
     }
 
@@ -4179,7 +4283,7 @@ mod tests {
     fn test_delete_dataset_atomic_rollback_on_failure() {
         let store = RuleStore::in_memory().unwrap();
         store.create_dataset(&tax_dataset()).unwrap();
-        let mut e = draft_entry();
+        let e = draft_entry();
         store.add_entry(&e).unwrap();
         store
             .transition_entry_status(
@@ -4275,7 +4379,14 @@ mod tests {
             }
         }
 
-        store.delete_dataset_entries("ds-tax-2024").unwrap();
+        // UV-094 W1：delete_dataset_entries 已收口为 _conn 核心（零自带事务，事务边界
+        // 由调用方裁定）。本测试独立调用，自行包事务提交。
+        {
+            let mut conn = store.conn.lock().unwrap();
+            let tx = conn.transaction().unwrap();
+            RuleStore::delete_dataset_entries_conn(&tx, "ds-tax-2024").unwrap();
+            tx.commit().unwrap();
+        }
 
         // 八张条目/快照/归因相关表全清，数据集行保留（导入覆盖语义：仅清条目不动数据集）
         let conn = store.conn.lock().unwrap();
@@ -4296,6 +4407,555 @@ mod tests {
         }
         drop(conn);
         assert!(store.get_dataset("ds-tax-2024").unwrap().is_some());
+    }
+
+    // UV-094 W1 回归锚定：导入覆盖链整体事务——中途失败必须整体回滚，
+    // 杜绝"旧数据已删+新数据不完整"的半状态（触发器注入法同 UV-090 模式）
+
+    fn uv094_count(store: &RuleStore, table: &str) -> i64 {
+        let conn = store.conn.lock().unwrap();
+        conn.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| r.get(0))
+            .unwrap()
+    }
+
+    /// 造齐覆盖导入前置状态：数据集 + 条目2版 + 状态历史 + 快照/归因（同 UV-090 测试形状）
+    fn uv094_seed_covered_dataset(store: &RuleStore) {
+        let mut ds = tax_dataset();
+        // 导入校验（UV-051）：auto 模式需生效基准——夹具对齐 roundtrip 测试，
+        // 否则导入在前置校验段即被拒，触发器注入的失败源永远走不到
+        ds.law_ref = Some(crate::model::version::LawRef {
+            document_id: "gov-tax-2023-001".into(),
+            law_version: None,
+            effective_from: Some("2024-01-01".into()),
+            effective_to: None,
+        });
+        store.create_dataset(&ds).unwrap();
+        let mut e = draft_entry();
+        store.add_entry(&e).unwrap();
+        store
+            .transition_entry_status(
+                "ds-tax-2024",
+                "tax-001",
+                LifecycleStatus::Candidate,
+                "eng",
+                "t",
+                "送审",
+            )
+            .unwrap();
+        e.version = 2;
+        e.rule_body["description"] = serde_json::json!("税率调整后的新规则");
+        store.add_entry(&e).unwrap();
+        store
+            .create_dataset_version("ds-tax-2024", BumpKind::Major, "eng", "t")
+            .unwrap();
+    }
+
+    /// 覆盖导入在条目插入段失败 → 整体回滚（修复前：删旧已提交+插新失败=数据丢失半状态）
+    #[test]
+    fn test_import_bundle_atomic_rollback_on_entry_insert_failure() {
+        use crate::bundle::{BundleTests, TestVerdict};
+        let store = RuleStore::in_memory().unwrap();
+        uv094_seed_covered_dataset(&store);
+
+        // 导入前状态捕获（充分性：确有旧数据可丢）
+        let (entries, history, snaps, versions, version_snaps) = (
+            uv094_count(&store, "entries"),
+            uv094_count(&store, "entry_state_history"),
+            uv094_count(&store, "entry_snapshots"),
+            uv094_count(&store, "dataset_versions"),
+            uv094_count(&store, "dataset_version_snapshots"),
+        );
+        assert!(entries >= 2 && history >= 1 && snaps >= 1 && versions >= 1 && version_snaps >= 1);
+        let ds_before = store.get_dataset("ds-tax-2024").unwrap().unwrap();
+        let history_len_before = ds_before.lifecycle.state_history.len();
+
+        // 导出真包（同数据集 → 走覆盖导入路径）
+        let tests = BundleTests {
+            subset: vec![],
+            fixtures: vec![],
+            verdict: TestVerdict::Pass,
+        };
+        let bundle = store
+            .export_bundle("ds-tax-2024", &tests, "publisher-01", "t2", "org-evorule")
+            .unwrap();
+
+        // 注入失败源：新条目 INSERT 即 ABORT（DELETE/UPDATE 不受影响——
+        // 正是修复前"删旧已提交、插新失败"的数据丢失窗口）
+        {
+            let conn = store.conn.lock().unwrap();
+            conn.execute(
+                "CREATE TRIGGER uv094_fail BEFORE INSERT ON entries
+                 BEGIN SELECT RAISE(ABORT, 'uv094-simulated-entry-failure'); END",
+                [],
+            )
+            .unwrap();
+        }
+
+        let err = store
+            .import_bundle(&bundle, "org-evorule", "importer", "t2", "inst-01")
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("uv094-simulated-entry-failure"),
+            "失败源应可追溯: {err}"
+        );
+
+        // 整体回滚断言：五表=导入前（修复前 entries=0 半删除、数据集行被覆盖）
+        assert_eq!(
+            uv094_count(&store, "entries"),
+            entries,
+            "旧条目必须原样保留"
+        );
+        assert_eq!(uv094_count(&store, "entry_state_history"), history);
+        assert_eq!(uv094_count(&store, "entry_snapshots"), snaps);
+        assert_eq!(uv094_count(&store, "dataset_versions"), versions);
+        assert_eq!(
+            uv094_count(&store, "dataset_version_snapshots"),
+            version_snaps
+        );
+        let ds_after = store.get_dataset("ds-tax-2024").unwrap().unwrap();
+        assert_eq!(
+            ds_after.lifecycle.state_history.len(),
+            history_len_before,
+            "导入 cause 的审计行必须随事务回滚"
+        );
+        assert_eq!(
+            ds_after.meta.updated_by, ds_before.meta.updated_by,
+            "数据集行不得被失败的覆盖导入触碰"
+        );
+    }
+
+    /// 覆盖导入在数据集行更新段失败 → 整体回滚（修复前：步骤②失败=旧条目已删=条目全丢）
+    #[test]
+    fn test_import_bundle_atomic_rollback_on_dataset_update_failure() {
+        use crate::bundle::{BundleTests, TestVerdict};
+        let store = RuleStore::in_memory().unwrap();
+        uv094_seed_covered_dataset(&store);
+
+        let (entries, history, snaps, versions, version_snaps) = (
+            uv094_count(&store, "entries"),
+            uv094_count(&store, "entry_state_history"),
+            uv094_count(&store, "entry_snapshots"),
+            uv094_count(&store, "dataset_versions"),
+            uv094_count(&store, "dataset_version_snapshots"),
+        );
+        assert!(entries >= 2 && history >= 1 && snaps >= 1 && versions >= 1 && version_snaps >= 1);
+
+        let tests = BundleTests {
+            subset: vec![],
+            fixtures: vec![],
+            verdict: TestVerdict::Pass,
+        };
+        let bundle = store
+            .export_bundle("ds-tax-2024", &tests, "publisher-01", "t2", "org-evorule")
+            .unwrap();
+
+        // 注入失败源：数据集行 UPDATE 即 ABORT（发生在删旧条目之后——
+        // 正是修复前"步骤②失败=旧条目已删"的第二个窗口）
+        {
+            let conn = store.conn.lock().unwrap();
+            conn.execute(
+                "CREATE TRIGGER uv094_fail BEFORE UPDATE ON datasets
+                 BEGIN SELECT RAISE(ABORT, 'uv094-simulated-dataset-failure'); END",
+                [],
+            )
+            .unwrap();
+        }
+
+        let err = store
+            .import_bundle(&bundle, "org-evorule", "importer", "t2", "inst-01")
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("uv094-simulated-dataset-failure"),
+            "失败源应可追溯: {err}"
+        );
+
+        // 整体回滚：删旧条目虽已执行，但必须随事务回滚复原
+        assert_eq!(
+            uv094_count(&store, "entries"),
+            entries,
+            "旧条目必须原样保留"
+        );
+        assert_eq!(uv094_count(&store, "entry_state_history"), history);
+        assert_eq!(uv094_count(&store, "entry_snapshots"), snaps);
+        assert_eq!(uv094_count(&store, "dataset_versions"), versions);
+        assert_eq!(
+            uv094_count(&store, "dataset_version_snapshots"),
+            version_snaps
+        );
+    }
+
+    // ==================================================================
+    // UV-094 W2 家族回归：同族多写函数事务化——任一步失败必须整体回滚
+    // （触发器注入法，同 UV-090/UV-094 W1 模式；各测试独立 store 无串扰）
+    // ==================================================================
+
+    /// add_entry：主表 INSERT 失败 → 快照必须随事务回滚（修复前快照先行提交=孤儿快照）
+    #[test]
+    fn test_add_entry_atomic_rollback_on_main_insert_failure() {
+        let store = RuleStore::in_memory().unwrap();
+        store.create_dataset(&tax_dataset()).unwrap();
+        assert_eq!(uv094_count(&store, "entry_snapshots"), 0);
+        {
+            let conn = store.conn.lock().unwrap();
+            conn.execute(
+                "CREATE TRIGGER uv094w2_fail BEFORE INSERT ON entries
+                 BEGIN SELECT RAISE(ABORT, 'uv094w2-simulated-main-insert-failure'); END",
+                [],
+            )
+            .unwrap();
+        }
+        let err = store.add_entry(&draft_entry()).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("uv094w2-simulated-main-insert-failure"),
+            "失败源应可追溯: {err}"
+        );
+        assert_eq!(
+            uv094_count(&store, "entry_snapshots"),
+            0,
+            "失败回滚后不得残留孤儿快照"
+        );
+        assert_eq!(uv094_count(&store, "entries"), 0);
+    }
+
+    /// add_knowledge_entry：主表 INSERT 失败 → 快照必须随事务回滚（knowledge 侧同口径）
+    #[test]
+    fn test_add_knowledge_entry_atomic_rollback_on_main_insert_failure() {
+        let (store, dir) = file_store_with_body_schema();
+        store.create_dataset(&knowledge_dataset()).unwrap();
+        assert_eq!(uv094_count(&store, "knowledge_snapshots"), 0);
+        {
+            let conn = store.conn.lock().unwrap();
+            conn.execute(
+                "CREATE TRIGGER uv094w2_fail BEFORE INSERT ON knowledge_entries
+                 BEGIN SELECT RAISE(ABORT, 'uv094w2-simulated-knowledge-insert-failure'); END",
+                [],
+            )
+            .unwrap();
+        }
+        let err = store.add_knowledge_entry(&knowledge_entry()).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("uv094w2-simulated-knowledge-insert-failure"),
+            "失败源应可追溯: {err}"
+        );
+        assert_eq!(
+            uv094_count(&store, "knowledge_snapshots"),
+            0,
+            "失败回滚后不得残留孤儿快照"
+        );
+        assert_eq!(uv094_count(&store, "knowledge_entries"), 0);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// transition_entry_status：审计历史 INSERT 失败 → 状态 UPDATE 必须随事务回滚
+    /// （修复前状态已变但审计历史缺失，only-append 审计链断档）
+    #[test]
+    fn test_transition_entry_status_atomic_rollback_on_history_failure() {
+        let store = RuleStore::in_memory().unwrap();
+        store.create_dataset(&tax_dataset()).unwrap();
+        store.add_entry(&draft_entry()).unwrap();
+        {
+            let conn = store.conn.lock().unwrap();
+            conn.execute(
+                "CREATE TRIGGER uv094w2_fail BEFORE INSERT ON entry_state_history
+                 BEGIN SELECT RAISE(ABORT, 'uv094w2-simulated-history-failure'); END",
+                [],
+            )
+            .unwrap();
+        }
+        let err = store
+            .transition_entry_status(
+                "ds-tax-2024",
+                "tax-001",
+                LifecycleStatus::Candidate,
+                "eng",
+                "t",
+                "送审",
+            )
+            .unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("uv094w2-simulated-history-failure"),
+            "失败源应可追溯: {err}"
+        );
+        let got = store
+            .get_latest_entry("ds-tax-2024", "tax-001")
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            got.status,
+            Some(LifecycleStatus::Draft),
+            "状态必须随事务回滚保持 Draft"
+        );
+        assert_eq!(uv094_count(&store, "entry_state_history"), 0);
+    }
+
+    /// transition_knowledge_entry_status：审计历史 INSERT 失败 → 状态 UPDATE 必须随事务回滚
+    #[test]
+    fn test_transition_knowledge_entry_status_atomic_rollback_on_history_failure() {
+        let (store, dir) = file_store_with_body_schema();
+        store.create_dataset(&knowledge_dataset()).unwrap();
+        store.add_knowledge_entry(&knowledge_entry()).unwrap();
+        {
+            let conn = store.conn.lock().unwrap();
+            conn.execute(
+                "CREATE TRIGGER uv094w2_fail BEFORE INSERT ON knowledge_state_history
+                 BEGIN SELECT RAISE(ABORT, 'uv094w2-simulated-khistory-failure'); END",
+                [],
+            )
+            .unwrap();
+        }
+        let err = store
+            .transition_knowledge_entry_status(
+                "ds-rpsm-assets",
+                "body-001",
+                LifecycleStatus::Candidate,
+                "eng",
+                "t",
+                "送审",
+            )
+            .unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("uv094w2-simulated-khistory-failure"),
+            "失败源应可追溯: {err}"
+        );
+        let got = store
+            .get_latest_knowledge_entry("ds-rpsm-assets", "body-001")
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            got.status,
+            Some(LifecycleStatus::Draft),
+            "状态必须随事务回滚保持 Draft"
+        );
+        assert_eq!(uv094_count(&store, "knowledge_state_history"), 0);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// delete_entry：主表 DELETE 失败 → 状态历史删除必须随事务回滚
+    /// （修复前历史已删而条目残留=审计丢失）
+    #[test]
+    fn test_delete_entry_atomic_rollback_on_main_delete_failure() {
+        let store = RuleStore::in_memory().unwrap();
+        store.create_dataset(&tax_dataset()).unwrap();
+        store.add_entry(&draft_entry()).unwrap();
+        store
+            .transition_entry_status(
+                "ds-tax-2024",
+                "tax-001",
+                LifecycleStatus::Candidate,
+                "eng",
+                "t",
+                "送审",
+            )
+            .unwrap();
+        let mut e2 = draft_entry();
+        e2.version = 2;
+        e2.rule_body["description"] = serde_json::json!("第二版草稿");
+        store.add_entry(&e2).unwrap();
+        assert_eq!(uv094_count(&store, "entry_state_history"), 1);
+        {
+            let conn = store.conn.lock().unwrap();
+            conn.execute(
+                "CREATE TRIGGER uv094w2_fail BEFORE DELETE ON entries
+                 BEGIN SELECT RAISE(ABORT, 'uv094w2-simulated-delete-failure'); END",
+                [],
+            )
+            .unwrap();
+        }
+        let err = store.delete_entry("ds-tax-2024", "tax-001").unwrap_err();
+        assert!(
+            err.to_string().contains("uv094w2-simulated-delete-failure"),
+            "失败源应可追溯: {err}"
+        );
+        assert_eq!(
+            uv094_count(&store, "entry_state_history"),
+            1,
+            "状态历史必须随事务回滚复原"
+        );
+        assert_eq!(uv094_count(&store, "entries"), 2, "条目必须原样保留");
+    }
+
+    /// delete_knowledge_entry：主表 DELETE 失败 → 状态历史删除必须随事务回滚
+    #[test]
+    fn test_delete_knowledge_entry_atomic_rollback_on_main_delete_failure() {
+        let (store, dir) = file_store_with_body_schema();
+        store.create_dataset(&knowledge_dataset()).unwrap();
+        store.add_knowledge_entry(&knowledge_entry()).unwrap();
+        store
+            .transition_knowledge_entry_status(
+                "ds-rpsm-assets",
+                "body-001",
+                LifecycleStatus::Candidate,
+                "eng",
+                "t",
+                "送审",
+            )
+            .unwrap();
+        let mut e2 = knowledge_entry();
+        e2.version = 2;
+        e2.payload = serde_json::json!({ "mass": 2.0 });
+        store.add_knowledge_entry(&e2).unwrap();
+        assert_eq!(uv094_count(&store, "knowledge_state_history"), 1);
+        {
+            let conn = store.conn.lock().unwrap();
+            conn.execute(
+                "CREATE TRIGGER uv094w2_fail BEFORE DELETE ON knowledge_entries
+                 BEGIN SELECT RAISE(ABORT, 'uv094w2-simulated-kdelete-failure'); END",
+                [],
+            )
+            .unwrap();
+        }
+        let err = store
+            .delete_knowledge_entry("ds-rpsm-assets", "body-001")
+            .unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("uv094w2-simulated-kdelete-failure"),
+            "失败源应可追溯: {err}"
+        );
+        assert_eq!(
+            uv094_count(&store, "knowledge_state_history"),
+            1,
+            "状态历史必须随事务回滚复原"
+        );
+        assert_eq!(
+            uv094_count(&store, "knowledge_entries"),
+            2,
+            "条目必须原样保留"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// update_draft_entry：主表 UPDATE 失败 → 新快照必须随事务回滚（修复前=孤儿快照）
+    #[test]
+    fn test_update_draft_entry_atomic_rollback_on_update_failure() {
+        let store = RuleStore::in_memory().unwrap();
+        store.create_dataset(&tax_dataset()).unwrap();
+        store.add_entry(&draft_entry()).unwrap();
+        assert_eq!(uv094_count(&store, "entry_snapshots"), 1);
+        let mut e = draft_entry();
+        e.rule_body["description"] = serde_json::json!("修改后的规则");
+        {
+            let conn = store.conn.lock().unwrap();
+            conn.execute(
+                "CREATE TRIGGER uv094w2_fail BEFORE UPDATE ON entries
+                 BEGIN SELECT RAISE(ABORT, 'uv094w2-simulated-update-failure'); END",
+                [],
+            )
+            .unwrap();
+        }
+        let err = store.update_draft_entry(&e).unwrap_err();
+        assert!(
+            err.to_string().contains("uv094w2-simulated-update-failure"),
+            "失败源应可追溯: {err}"
+        );
+        assert_eq!(
+            uv094_count(&store, "entry_snapshots"),
+            1,
+            "新内容快照必须随事务回滚，不得残留孤儿"
+        );
+    }
+
+    /// update_draft_knowledge_entry：主表 UPDATE 失败 → 新快照必须随事务回滚
+    #[test]
+    fn test_update_draft_knowledge_entry_atomic_rollback_on_update_failure() {
+        let (store, dir) = file_store_with_body_schema();
+        store.create_dataset(&knowledge_dataset()).unwrap();
+        store.add_knowledge_entry(&knowledge_entry()).unwrap();
+        assert_eq!(uv094_count(&store, "knowledge_snapshots"), 1);
+        let mut e = knowledge_entry();
+        e.payload = serde_json::json!({ "mass": 2.0 });
+        {
+            let conn = store.conn.lock().unwrap();
+            conn.execute(
+                "CREATE TRIGGER uv094w2_fail BEFORE UPDATE ON knowledge_entries
+                 BEGIN SELECT RAISE(ABORT, 'uv094w2-simulated-kupdate-failure'); END",
+                [],
+            )
+            .unwrap();
+        }
+        let err = store.update_draft_knowledge_entry(&e).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("uv094w2-simulated-kupdate-failure"),
+            "失败源应可追溯: {err}"
+        );
+        assert_eq!(
+            uv094_count(&store, "knowledge_snapshots"),
+            1,
+            "新内容快照必须随事务回滚，不得残留孤儿"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// create_dataset_version：归因 INSERT 失败 → 版本链推进必须随事务回滚
+    /// （修复前版本已推进但归因/快照缺失，历史版本导出从此残缺）
+    #[test]
+    fn test_create_dataset_version_atomic_rollback_on_attribution_failure() {
+        let store = RuleStore::in_memory().unwrap();
+        store.create_dataset(&tax_dataset()).unwrap();
+        store.add_entry(&draft_entry()).unwrap();
+        let before = store.get_dataset("ds-tax-2024").unwrap().unwrap();
+        assert_eq!(uv094_count(&store, "dataset_versions"), 0);
+        assert_eq!(uv094_count(&store, "dataset_version_snapshots"), 0);
+        {
+            let conn = store.conn.lock().unwrap();
+            conn.execute(
+                "CREATE TRIGGER uv094w2_fail BEFORE INSERT ON dataset_versions
+                 BEGIN SELECT RAISE(ABORT, 'uv094w2-simulated-attribution-failure'); END",
+                [],
+            )
+            .unwrap();
+        }
+        let err = store
+            .create_dataset_version("ds-tax-2024", BumpKind::Major, "eng", "t")
+            .unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("uv094w2-simulated-attribution-failure"),
+            "失败源应可追溯: {err}"
+        );
+        let after = store.get_dataset("ds-tax-2024").unwrap().unwrap();
+        assert_eq!(
+            after.versioning.current, before.versioning.current,
+            "版本链必须随事务回滚保持原版本"
+        );
+        assert_eq!(
+            after.lifecycle.status, before.lifecycle.status,
+            "生命周期必须随事务回滚"
+        );
+        assert_eq!(uv094_count(&store, "dataset_versions"), 0);
+        assert_eq!(uv094_count(&store, "dataset_version_snapshots"), 0);
+    }
+
+    /// seed_official_services_if_empty：循环中途失败 → 整体回滚
+    /// （修复前逐条独立提交=半 seed 残留，count 预检失效且无法幂等重放）
+    #[test]
+    fn test_seed_official_services_atomic_rollback_mid_loop() {
+        let store = RuleStore::in_memory().unwrap();
+        {
+            let conn = store.conn.lock().unwrap();
+            conn.execute(
+                "CREATE TRIGGER uv094w2_fail BEFORE INSERT ON service_catalog
+                 WHEN NEW.service_name = 'llm_advisor'
+                 BEGIN SELECT RAISE(ABORT, 'uv094w2-simulated-seed-failure'); END",
+                [],
+            )
+            .unwrap();
+        }
+        let err = store.seed_official_services_if_empty("t").unwrap_err();
+        assert!(
+            err.to_string().contains("uv094w2-simulated-seed-failure"),
+            "失败源应可追溯: {err}"
+        );
+        assert_eq!(
+            uv094_count(&store, "service_catalog"),
+            0,
+            "中途失败必须整体回滚，不得残留半 seed"
+        );
     }
 
     #[test]
