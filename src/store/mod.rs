@@ -52,6 +52,9 @@ pub enum StoreError {
     #[error("数据集 `{0}` 不存在")]
     DatasetNotFound(String),
 
+    #[error("数据集 `{0}` 已存在（dataset_id 唯一）")]
+    DatasetExists(String),
+
     #[error("数据集 `{dataset}` 进入 Published 必须走独立发布审批（publish_dataset），不能经通用状态迁移")]
     PublishRequiresApproval { dataset: String },
 
@@ -648,6 +651,11 @@ impl RuleStore {
 
     /// 创建数据集
     pub fn create_dataset(&self, ds: &RuleDataset) -> Result<(), StoreError> {
+        // UV-091：存在性预检——重复 dataset_id 显式 409 冲突，
+        // 修复前裸 INSERT 落 SQLite UNIQUE 约束错误 → catch-all 500（错误码语义失真）
+        if self.get_dataset(&ds.dataset_id)?.is_some() {
+            return Err(StoreError::DatasetExists(ds.dataset_id.clone()));
+        }
         let conn = self.conn.lock().unwrap();
         conn.execute(
             "INSERT INTO datasets
@@ -4075,6 +4083,20 @@ mod tests {
         assert!(got.data_dependencies.unwrap().has_service("payroll_svc"));
         let list = store.list_datasets("org-evorule").unwrap();
         assert_eq!(list.len(), 1);
+    }
+
+    /// UV-091：重复 dataset_id 必须显式冲突，不得落 SQLite UNIQUE → catch-all 500。
+    #[test]
+    fn test_create_dataset_duplicate_id_conflict() {
+        let store = RuleStore::in_memory().unwrap();
+        store.create_dataset(&tax_dataset()).unwrap();
+        let err = store.create_dataset(&tax_dataset()).unwrap_err();
+        assert!(
+            matches!(err, StoreError::DatasetExists(ref id) if id == "ds-tax-2024"),
+            "期望 DatasetExists，实际: {err:?}"
+        );
+        // 原数据集不受影响
+        assert!(store.get_dataset("ds-tax-2024").unwrap().is_some());
     }
 
     /// UV-090 ①：删除数据集必须清空全部子表（含修复前漏掉的三张快照/版本表）。

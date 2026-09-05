@@ -244,6 +244,9 @@ impl From<crate::store::StoreError> for ApiError {
     fn from(e: crate::store::StoreError) -> Self {
         match e {
             crate::store::StoreError::DatasetNotFound(id) => ApiError::not_found(format!("数据集 `{id}` 不存在")),
+            crate::store::StoreError::DatasetExists(id) => {
+                ApiError::conflict(format!("数据集 `{id}` 已存在（dataset_id 唯一）"))
+            }
             crate::store::StoreError::TenantNotFound(t) => ApiError::bad_request(format!("租户 `{t}` 不存在")),
             crate::store::StoreError::OrgNotFound(o) => ApiError::not_found(format!("组织 `{o}` 不存在")),
             crate::store::StoreError::OrgAlreadyExists(o) => {
@@ -937,6 +940,27 @@ mod tests {
         .await;
         assert_eq!(status, StatusCode::CREATED, "{body}");
         assert_eq!(body["lifecycle"]["status"], "Draft");
+
+        // UV-091：重复 dataset_id → 409 冲突（修复前落 catch-all 500）
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/datasets",
+            Some(&token),
+            Some(json!({
+                "dataset_id": "ds-tax-01",
+                "name": "税务合规规则集（重复）",
+                "domain": ["tax"],
+                "tags": ["合规"],
+                "visibility": "private",
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CONFLICT, "{body}");
+        assert!(body["error"]["message"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("已存在"));
 
         // 列表
         let (status, body) = send(app.clone(), "GET", "/v1/datasets", Some(&token), None).await;
