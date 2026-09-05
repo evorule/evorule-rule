@@ -8,6 +8,36 @@ evorule-rule 的所有显著变更都记录在此文件。
 
 ---
 
+## [0.3.1] - 2026-09-06
+
+**治理域数据一致性收口** — 导入/删除链事务化 + JWT 密钥持久化 + 导出证据形状校验
+
+### 🛠 修复
+
+**事务化与数据完整性(UV-090/UV-094)**
+
+- delete_dataset 清理补全三张快照/归因表(entry_snapshots/dataset_versions/dataset_version_snapshots) + 整流程事务化,杜绝"报错但部分提交"的半删除数据丢失
+- import_bundle 覆盖导入单锁单事务 + 同族 10 函数(create_dataset_version/transition×2/add×2/update_draft×2/delete×2/seed)事务化;conn → _conn 核心,锁外预热 schema,锁内零 FS I/O
+- 覆盖导入审计历史 from-state 误记修复(前一状态不再恒记 Active)
+
+**错误码语义(UV-091)**
+
+- create_dataset 存在性预检:重复 dataset_id 显式 409 Conflict,不再落入 catch-all 500
+
+**认证体验(UV-092)**
+
+- JWT 签名密钥持久化:首次启动 CSPRNG 随机生成落盘 `jwt_secret.key`,重启自动复用,token 重启后保持有效;优先级 = 显式 `--secret` > 密钥文件 > 随机生成;密钥不再打印到日志
+
+### 🔒 安全(UV-080)
+
+- export 侧证据形状校验:`verdict=pass` 必带可追溯标记(`sandbox:<id>` / `human:<actor>`),封死零证据 pass 伪造导出;fail 无要求
+
+### ⚙ 变更(UV-051)
+
+- 治理侧生效基准三层前置校验:部署期 400 前移为创建/更新/发布期 fail-fast
+
+---
+
 ## [0.3.0] - 2026-09-02
 
 **数据治理系统功能扩展** — 双层租户 + 查询表达式 + 历史版本快照 + 事件 schema + 数据资产化 + 服务目录种子声明文件化
