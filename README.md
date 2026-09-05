@@ -46,7 +46,7 @@
 >
 > **版本策略**：生态内各仓版本号**独立发展、独立发布**，互不强求一致。
 >
-> 本仓 lib **暂未发布到 crates.io**，请从源码构建使用。
+> 本仓已发布到 crates.io（lib + 双 bin）：`cargo add evorule-rule` 引入库；`cargo install evorule-rule --bin evorule-rule-serve` 安装治理服务；`cargo install evorule-rule --bin evorule-rule-cli` 安装 CLI。也可从源码构建使用。
 
 ---
 

@@ -36,6 +36,10 @@ evorule-rule 的所有显著变更都记录在此文件。
 
 - 治理侧生效基准三层前置校验:部署期 400 前移为创建/更新/发布期 fail-fast
 
+### 📦 发布
+
+- 首次发布到 crates.io:lib + 双 bin(`evorule-rule-serve` / `evorule-rule-cli`),repository 链回 gitee 主仓
+
 ---
 
 ## [0.3.0] - 2026-09-02
