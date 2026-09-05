@@ -134,8 +134,8 @@ pub fn run(args: CliArgs) -> Result<(), CliError> {
             print_body(&body, json_mode);
             let items = body["items"].as_array().cloned().unwrap_or_default();
             println!(
-                "{:<24} {:<12} {:<10} {:<10} {}",
-                "DATASET_ID", "KIND", "STATUS", "VERSION", "NAME"
+                "{:<24} {:<12} {:<10} {:<10} NAME",
+                "DATASET_ID", "KIND", "STATUS", "VERSION"
             );
             for ds in &items {
                 println!(
@@ -399,7 +399,7 @@ pub fn build_bundle_from_dir(
             name: meta
                 .as_ref()
                 .and_then(|m| m["name"].as_str().map(String::from))
-                .unwrap_or_else(|| dir_name),
+                .unwrap_or(dir_name),
             tenant_id: String::new(), // 导入侧以调用方租户为准（租户隔离，不信任包内声明）
             instance_id: "cli-bulk-import".into(),
             versioning: Default::default(),

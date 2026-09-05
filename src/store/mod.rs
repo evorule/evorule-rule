@@ -3144,8 +3144,8 @@ impl RuleStore {
     /// q 匹配两段式（Q12 交付边界收口 B，FTS5 trigram 全文索引，中文 3-gram 可命中）：
     /// - q ≥3 字符：走 `knowledge_fts` 索引（trigram 对 ASCII 大小写不敏感、中文按 3-gram 子串命中）；
     /// - q <3 字符：trigram 无法索引，退回进程内 contains 扫描（匹配域一致，口径不变）。
-    /// FTS 命中按 (dataset_id, entry_id) 归并且仅取最新版本行 —— 与条目迭代（每条目最新版）口径一致，
-    /// 避免"旧版本命中、最新版已不含 q"的幽灵结果。FTS 不可用即报错（fail-fast），不做静默降级。
+    ///   FTS 命中按 (dataset_id, entry_id) 归并且仅取最新版本行 —— 与条目迭代（每条目最新版）口径一致，
+    ///   避免"旧版本命中、最新版已不含 q"的幽灵结果。FTS 不可用即报错（fail-fast），不做静默降级。
     pub fn search_knowledge_entries(
         &self,
         tenant_id: &str,

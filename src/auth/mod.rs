@@ -675,8 +675,7 @@ mod tests {
     fn seeded(store: &RuleStore) -> String {
         store
             .ensure_default_tenant("tenant_a", "示例组织", "inst-001", "2026-08-22T00:00:00Z")
-            .expect("tenant")
-            .tenant_id;
+            .expect("tenant");
         // B1：登录/注册要求 org 行存在（双层租户）
         store
             .ensure_default_org("tenant_a", "示例组织", "2026-08-22T00:00:00Z")

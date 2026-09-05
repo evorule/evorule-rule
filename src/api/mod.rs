@@ -96,6 +96,7 @@ impl AppState {
     /// - `--features postgres` 且 `DATABASE_URL` 可用时，运行 `PgStore::smoke_check()`
     ///   （建池+迁移+最小 CRUD 往返）作为启动门控；
     /// - 冒烟成功 → 标注 Postgres + 探针详情；失败或未启用 → 回落到 SQLite 但如实记录原因。
+    ///
     /// 返回诊断描述（供启动日志与 `/v1/admin/backend`）。
     pub async fn bootstrap_backend(self) -> Self {
         #[cfg(feature = "postgres")]
