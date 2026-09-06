@@ -14,25 +14,25 @@ evorule-rule 的所有显著变更都记录在此文件。
 
 ### 🛠 修复
 
-**事务化与数据完整性(UV-090/UV-094)**
+**事务化与数据完整性(/)**
 
 - delete_dataset 清理补全三张快照/归因表(entry_snapshots/dataset_versions/dataset_version_snapshots) + 整流程事务化,杜绝"报错但部分提交"的半删除数据丢失
 - import_bundle 覆盖导入单锁单事务 + 同族 10 函数(create_dataset_version/transition×2/add×2/update_draft×2/delete×2/seed)事务化;conn → _conn 核心,锁外预热 schema,锁内零 FS I/O
 - 覆盖导入审计历史 from-state 误记修复(前一状态不再恒记 Active)
 
-**错误码语义(UV-091)**
+**错误码语义**
 
 - create_dataset 存在性预检:重复 dataset_id 显式 409 Conflict,不再落入 catch-all 500
 
-**认证体验(UV-092)**
+**认证体验**
 
 - JWT 签名密钥持久化:首次启动 CSPRNG 随机生成落盘 `jwt_secret.key`,重启自动复用,token 重启后保持有效;优先级 = 显式 `--secret` > 密钥文件 > 随机生成;密钥不再打印到日志
 
-### 🔒 安全(UV-080)
+### 🔒 安全
 
 - export 侧证据形状校验:`verdict=pass` 必带可追溯标记(`sandbox:<id>` / `human:<actor>`),封死零证据 pass 伪造导出;fail 无要求
 
-### ⚙ 变更(UV-051)
+### ⚙ 变更
 
 - 治理侧生效基准三层前置校验:部署期 400 前移为创建/更新/发布期 fail-fast
 
@@ -69,7 +69,7 @@ evorule-rule 的所有显著变更都记录在此文件。
 - knowledge_entries FTS5 trigram 全文索引(存量库幂等回填)
 - 条目逐版本载荷端点 `GET /entries/{id}/versions/{version}`
 
-**服务目录与种子(UV-029/035/037)**
+**服务目录与种子**
 
 - 官方原生服务种子接入声明文件:嵌入副本(源仓 SSOT 经 sync 脚本同步)+ OFFICIAL_NATIVE_SERVICES 常量退役改运行时解析 + 副本 schema 守卫测试
 - 多插件聚合:嵌入副本按插件分文件,service_catalog 嵌入副本登记表(新增插件零改动聚合,声明序 = 执行侧挂载链序,跨插件服务名全局唯一 fail-fast)
@@ -78,8 +78,8 @@ evorule-rule 的所有显著变更都记录在此文件。
 **门禁与运维**
 
 - 入库门禁接 BundleImporter::validate_entry(执行侧同口径 SSOT,C8)
-- `GET /v1/health` 存活探针:无鉴权独立挂载,仅返回 ok / service / version 三键防状态泄漏(UV-031)
-- LLM 三操作契约验收脚本:链路 B 端到端 6 场景 26 断言,LLM 不可达如实报错(UV-030 V1)
+- `GET /v1/health` 存活探针:无鉴权独立挂载,仅返回 ok / service / version 三键防状态泄漏
+- LLM 三操作契约验收脚本:链路 B 端到端 6 场景 26 断言,LLM 不可达如实报错
 
 ### 🔄 变更
 
@@ -136,10 +136,10 @@ evorule-rule 的所有显著变更都记录在此文件。
 
 **密钥管理(45 号批次1,设计稿 45 号)**
 
-- K1:`model/secret.rs` `SecretScope` 五类(APIKey / JwtSigning / Tenant / User / Service) + `SecretKey` + `KeyRing` 双代容器 + `rotate()` 双代轮换(HS256 保持兼容)
+- K1:`model/secret.rs` `SecretScope` 五类(APIKey / JwtSigning / Tenant / User / Service) + `SecretKey` + `KeyRing` 双代容器 + `rotate` 双代轮换(HS256 保持兼容)
 - K3:`derive_salt_from_secret` HKDF 盐基元
 - K4:`AuthService` 双代验签(active 优先 / previous 兜底;签发用 active;轮换后旧 token 仍兼容)
-- K6:`keyring.rs` 便捷封装(`KeyRing` → `AuthService`);`key.rotate()` 审计落库
+- K6:`keyring.rs` 便捷封装(`KeyRing` → `AuthService`);`key.rotate` 审计落库
 - `persist_key_audit` 持久化轮换事件
 
 **数据模型层(决策点 ①,设计稿 31 号,基础)**
