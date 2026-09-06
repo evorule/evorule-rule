@@ -15,7 +15,7 @@
 // 说明：
 //   - 默认 SQLite 活跃引擎；`--features postgres` + `DATABASE_URL` 才尝试 PG（见 bootstrap_backend）
 //   - `--secret` 不提供则复用持久化密钥文件（与 --db 同目录 jwt_secret.key），
-//     首次启动自动随机生成并持久化——重启 token 保持有效（UV-092）；密钥不再打印到日志
+//     首次启动自动随机生成并持久化——重启 token 保持有效（）；密钥不再打印到日志
 //   - 首次启动自动创建默认租户；同时提供 `--admin-user/--admin-password` 时自动引导管理员（幂等）
 
 use std::net::SocketAddr;
@@ -124,7 +124,7 @@ async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         tracing::info!("服务目录已存在，跳过官方预置");
     }
 
-    // 3. 密钥（UV-092：优先级 = --secret 显式 > 持久化密钥文件 > 随机生成并持久化；
+    // 3. 密钥（：优先级 = --secret 显式 > 持久化密钥文件 > 随机生成并持久化；
     //    重启自动复用同一密钥，token 跨重启保持有效；密钥永不打印到日志——
     //    安全边界与 rule.db 一致：持有文件系统读权限即持有库内口令哈希，同级信任面）
     let secret_file = secret_file_path(&cli.db);
@@ -227,7 +227,7 @@ fn random_secret() -> String {
     URL_SAFE_NO_PAD.encode(bytes)
 }
 
-/// 签名密钥持久化路径：与 SQLite 库同目录（data/jwt_secret.key，UV-092）
+/// 签名密钥持久化路径：与 SQLite 库同目录（data/jwt_secret.key，）
 fn secret_file_path(db: &str) -> std::path::PathBuf {
     std::path::Path::new(db)
         .parent()
@@ -266,7 +266,7 @@ fn persist_secret(path: &std::path::Path, secret: &str) -> std::io::Result<()> {
 mod tests {
     use super::*;
 
-    /// UV-092：密钥文件 读回一致 / 覆盖生效 / 缺失或空白视同缺失 / 路径与 --db 同目录
+    /// ：密钥文件 读回一致 / 覆盖生效 / 缺失或空白视同缺失 / 路径与 --db 同目录
     #[test]
     fn test_secret_file_roundtrip_override_and_missing() {
         let dir = std::env::temp_dir().join(format!(

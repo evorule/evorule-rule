@@ -1,6 +1,6 @@
-﻿# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 EvoRule Project
-# evorule-rule — UV-030 V1 LLM 三操作契约验收脚本(可复现,无 Key;链路 B:rule → evo-agent 37 号契约)
+# evorule-rule — V1 LLM 三操作契约验收脚本(可复现,无 Key;链路 B:rule → evo-agent 37 号契约)
 #
 # 场景:
 #   [1..3] 三操作契约 E2E:rule 代理 /v1/llm/ops/{op} → evo-agent serve(mock 内容)
@@ -221,10 +221,10 @@ try {
   # ---- 收尾报告 ----
   Write-Host ''
   if ($failures.Count -eq 0) {
-    Write-Host '=== UV-030 V1 验收:全部通过 ===' -ForegroundColor Green
+    Write-Host '=== V1 验收:全部通过 ===' -ForegroundColor Green
     exit 0
   } else {
-    Write-Host "=== UV-030 V1 验收:$($failures.Count) 项失败 ===" -ForegroundColor Red
+    Write-Host "=== V1 验收:$($failures.Count) 项失败 ===" -ForegroundColor Red
     $failures | ForEach-Object { Write-Host "  - $_" }
     exit 1
   }

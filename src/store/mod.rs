@@ -146,7 +146,7 @@ pub enum StoreError {
     KnowledgeMissingSchemaRef { entry: String },
 }
 
-/// 条目二态视图（Q12 R4）：顶层 `/entries/{id}` 路由跨表（规则/知识平行表）定位后的统一返回
+/// 条目二态视图（R4）：顶层 `/entries/{id}` 路由跨表（规则/知识平行表）定位后的统一返回
 #[derive(Debug, Clone)]
 pub enum AnyEntry {
     Rule(RuleEntry),
@@ -198,7 +198,7 @@ impl AnyEntry {
 pub struct RuleStore {
     /// rusqlite `Connection` 为 Send 但非 Sync，axum 跨线程共享需 `Mutex` 包裹
     conn: std::sync::Mutex<Connection>,
-    /// 领域 schema 目录（Q12 D3）：`{db 同级}/domain_schemas/` 下 *.json，
+    /// 领域 schema 目录（D3）：`{db 同级}/domain_schemas/` 下 *.json，
     /// 以 schema `$id`（缺省取文件名）为 `schema_ref` URI 索引。bundle 仓不内置领域，宿主注入。
     domain_schema_dir: Option<std::path::PathBuf>,
     /// 领域 schema 缓存（懒加载一次；新增 schema 需重启生效——MVP 如实标注）
@@ -238,7 +238,7 @@ type ServiceCatalogRow = (
 impl RuleStore {
     /// 打开（或创建）数据库文件
     ///
-    /// 领域 schema 目录（Q12 D3）：与 db 文件同级的 `domain_schemas/`（内存库无目录，resolver 未命中 = 拒绝）。
+    /// 领域 schema 目录（D3）：与 db 文件同级的 `domain_schemas/`（内存库无目录，resolver 未命中 = 拒绝）。
     pub fn open(path: &str) -> Result<Self, StoreError> {
         let conn = Connection::open(path)?;
         let domain_schema_dir = std::path::Path::new(path)
@@ -265,7 +265,7 @@ impl RuleStore {
         Ok(store)
     }
 
-    /// 领域 schema 解析（Q12 D3，bundle SSOT 门禁注入点）：
+    /// 领域 schema 解析（D3，bundle SSOT 门禁注入点）：
     /// 按目录索引查 `schema_ref` URI；未命中返回 None（门禁显式拒绝，不静默放行）。
     ///
     /// 索引键：schema 的 `$id` 字段（**必须是合法 URI**，jsonschema 校验器强制——裸词如
@@ -651,7 +651,7 @@ impl RuleStore {
 
     /// 创建数据集
     pub fn create_dataset(&self, ds: &RuleDataset) -> Result<(), StoreError> {
-        // UV-091：存在性预检——重复 dataset_id 显式 409 冲突，
+        // ：存在性预检——重复 dataset_id 显式 409 冲突，
         // 修复前裸 INSERT 落 SQLite UNIQUE 约束错误 → catch-all 500（错误码语义失真）
         if self.get_dataset(&ds.dataset_id)?.is_some() {
             return Err(StoreError::DatasetExists(ds.dataset_id.clone()));
@@ -660,7 +660,7 @@ impl RuleStore {
         Self::insert_dataset_conn(&conn, ds)
     }
 
-    /// 数据集行 INSERT 核心（UV-094 W1 提取）：纯 SQL 零拿锁，供 create_dataset
+    /// 数据集行 INSERT 核心（提取）：纯 SQL 零拿锁，供 create_dataset
     /// 与 import_bundle 大事务（`&Transaction` Deref `&Connection`）共用单一权威实现。
     fn insert_dataset_conn(conn: &Connection, ds: &RuleDataset) -> Result<(), StoreError> {
         conn.execute(
@@ -701,7 +701,7 @@ impl RuleStore {
         Self::query_dataset_conn(&conn, dataset_id)
     }
 
-    /// 数据集行查询核心（UV-094 W1 提取）：纯 SQL 零拿锁，供 get_dataset 与
+    /// 数据集行查询核心（提取）：纯 SQL 零拿锁，供 get_dataset 与
     /// import_bundle 大事务（事务内读可见本事务未提交写，读改一致）共用单一权威实现。
     fn query_dataset_conn(
         conn: &Connection,
@@ -790,7 +790,7 @@ impl RuleStore {
         Ok(())
     }
 
-    /// 数据集行 UPDATE 核心（UV-094 W1 提取）：返回影响行数（0=行不存在），
+    /// 数据集行 UPDATE 核心（提取）：返回影响行数（0=行不存在），
     /// 语义由调用方裁定（update_dataset → DatasetNotFound；import 覆盖路径同口径）。
     fn update_dataset_row_conn(conn: &Connection, ds: &RuleDataset) -> Result<usize, StoreError> {
         Ok(conn.execute(
@@ -825,7 +825,7 @@ impl RuleStore {
 
     /// 删除数据集（44 号 §4：仅 Draft/Rejected 态，admin 权限由 handler 把关）
     ///
-    /// UV-090 双修复：
+    /// 双修复：
     /// ① 子表全量清理——补齐三张漏网快照/版本表（entry_snapshots / dataset_versions /
     ///    dataset_version_snapshots），否则 datasets 行删除被外键阻断（NO ACTION 无级联）→ 500；
     /// ② 整流程包事务——修复前各 DELETE 独立自动提交，外键失败时已删条目不可回滚，
@@ -929,7 +929,7 @@ impl RuleStore {
             .collect()
     }
 
-    /// 浏览口径列表（Q12 交付边界收口 A，V3 反转）：本租户全部 + 他租户 Public+Published。
+    /// 浏览口径列表（交付边界收口 A，V3 反转）：本租户全部 + 他租户 Public+Published。
     ///
     /// 与 [`Self::list_datasets`]（租户内严格口径，供检索/内部迭代）不同，本方法面向
     /// `GET /datasets` 浏览端点：他租户数据集仅在 `visibility=public` **且**
@@ -1003,11 +1003,11 @@ impl RuleStore {
         // 元数据更新时间
         ds.meta.updated_at = Some(at.into());
         ds.meta.updated_by = Some(by.into());
-        // 内容归因落库（45 号批次1）+ 版本级全量条目快照落库（B4 段B：解锁历史版本导出）。
+        // 内容归因落库（45 号批次1）+ 版本级全量条目快照落库（段B：解锁历史版本导出）。
         // POST-bump 前当前 entries = 旧版本内容；先收集（list_* 内部自行加锁）再持锁写库。
         let rule_entries = self.list_entries(dataset_id, None)?;
         let knowledge_entries = self.list_knowledge_entries(dataset_id, None)?;
-        // UV-094 W2：版本链推进/归因/全量快照三段写同生共死（修复前各自自动提交，
+        // W2：版本链推进/归因/全量快照三段写同生共死（修复前各自自动提交，
         // 中途失败 = 版本已推进但归因/快照缺失，历史版本导出从此残缺）
         let mut conn = self.conn.lock().unwrap();
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -1047,7 +1047,7 @@ impl RuleStore {
                 ])?;
             }
         }
-        // 全量条目快照（B4）：完整条目 JSON 落库（含 provenance/domain/tags/绑定），
+        // 全量条目快照：完整条目 JSON 落库（含 provenance/domain/tags/绑定），
         // 历史版本导出据此重建；同 (dataset, version, entry) 幂等，重复推进不重复存储。
         {
             let mut stmt = tx.prepare(
@@ -1091,7 +1091,7 @@ impl RuleStore {
 
     /// 新增条目：校验（数据集存在 + 类型匹配 + 符号三方一致 + LLM 边界 + 唯一性）
     pub fn add_entry(&self, entry: &RuleEntry) -> Result<(), StoreError> {
-        // UV-094 W2：快照落库与主表 INSERT 两步同生共死（修复前两步各自自动提交，
+        // W2：快照落库与主表 INSERT 两步同生共死（修复前两步各自自动提交，
         // 主表 INSERT 失败 = 孤儿快照残留）
         let mut conn = self.conn.lock().unwrap();
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -1100,11 +1100,11 @@ impl RuleStore {
         Ok(())
     }
 
-    /// 条目写入核心（UV-094 W1 提取）：校验 + 快照去重 + 主表 INSERT，全部走参数连接零拿锁
+    /// 条目写入核心（提取）：校验 + 快照去重 + 主表 INSERT，全部走参数连接零拿锁
     /// （供 add_entry 与 import_bundle 大事务共用单一权威实现。锁纪律：内部禁止再拿
     /// `self.conn`——resolver 只走 domain_schema_cache 锁，与 conn 单向不互锁）。
     fn add_rule_entry_conn(&self, conn: &Connection, entry: &RuleEntry) -> Result<(), StoreError> {
-        // 1) 数据集存在 + 类型匹配（Q12 R4：规则条目只进 rule_set 数据集）
+        // 1) 数据集存在 + 类型匹配（R4：规则条目只进 rule_set 数据集）
         //    读走参数连接：import 大事务内可见本事务未提交写（覆盖导入先建/改数据集再插条目）
         let ds = Self::query_dataset_conn(conn, &entry.dataset_id)?
             .ok_or_else(|| StoreError::DatasetNotFound(entry.dataset_id.clone()))?;
@@ -1195,13 +1195,13 @@ impl RuleStore {
     }
 
     // ------------------------------------------------------------------
-    // Knowledge 条目 CRUD 与生命周期（Q12 数据资产化 R3，方案 D：平行表 + 治理链复用）
+    // Knowledge 条目 CRUD 与生命周期（数据资产化 R3，方案 D：平行表 + 治理链复用）
     // ------------------------------------------------------------------
 
     /// 新增 knowledge 条目：校验（数据集存在且为 knowledge 类型 + D3 领域 schema 强校验
     /// 经 BundleImporter::validate_entry 同一 SSOT 门禁 + 唯一性），写入平行表。
     pub fn add_knowledge_entry(&self, entry: &KnowledgeEntry) -> Result<(), StoreError> {
-        // UV-094 W2：快照落库与主表 INSERT 两步同生共死（同 add_entry 口径）
+        // W2：快照落库与主表 INSERT 两步同生共死（同 add_entry 口径）
         let mut conn = self.conn.lock().unwrap();
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         self.add_knowledge_entry_conn(&tx, entry)?;
@@ -1209,7 +1209,7 @@ impl RuleStore {
         Ok(())
     }
 
-    /// knowledge 条目写入核心（UV-094 W1 提取）：与 add_rule_entry_conn 同口径——
+    /// knowledge 条目写入核心（提取）：与 add_rule_entry_conn 同口径——
     /// 校验 + 快照去重 + 主表 INSERT 全走参数连接零拿锁，供 add_knowledge_entry
     /// 与 import_bundle 大事务共用单一权威实现。
     fn add_knowledge_entry_conn(
@@ -1488,7 +1488,7 @@ impl RuleStore {
         };
         let resolver = |uri: &str| self.lookup_domain_schema(uri);
         BundleImporter::validate_entry(&bundle_entry, &[], &resolver)?;
-        // UV-094 W2：快照落库与主表 UPDATE 同生共死（修复前快照先行独立提交，
+        // W2：快照落库与主表 UPDATE 同生共死（修复前快照先行独立提交，
         // UPDATE 失败 = 孤儿快照残留）
         let mut conn = self.conn.lock().unwrap();
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -1557,7 +1557,7 @@ impl RuleStore {
                 status: entry.status,
             });
         }
-        // UV-094 W2：状态历史与主表两删同生共死（修复前历史先行独立提交，
+        // W2：状态历史与主表两删同生共死（修复前历史先行独立提交，
         // 主表 DELETE 失败 = 审计历史丢失而条目残留）
         let mut conn = self.conn.lock().unwrap();
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -1622,7 +1622,7 @@ impl RuleStore {
         }
         gov.lifecycle_timestamps = Some(ts);
         entry.governance = Some(gov);
-        // UV-094 W2：状态 UPDATE 与审计历史 INSERT 同生共死（修复前两步独立提交，
+        // W2：状态 UPDATE 与审计历史 INSERT 同生共死（修复前两步独立提交，
         // INSERT 失败 = 状态已变但审计历史缺失，only-append 审计链断档）
         let mut conn = self.conn.lock().unwrap();
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -1881,7 +1881,7 @@ impl RuleStore {
         Ok(result)
     }
 
-    /// knowledge 条目内容级 diff（Q12 R4，与 entry_content_diff 同语义：payload 刻定内容）
+    /// knowledge 条目内容级 diff（R4，与 entry_content_diff 同语义：payload 刻定内容）
     pub fn knowledge_entry_content_diff(
         &self,
         dataset_id: &str,
@@ -2109,7 +2109,7 @@ impl RuleStore {
         // 校验通过后原地更新
         Validator::validate_symbol_consistency(&ds, entry)?;
         Validator::validate_llm_boundary(entry)?;
-        // UV-094 W2：快照落库与主表 UPDATE 同生共死（修复前快照先行独立提交，
+        // W2：快照落库与主表 UPDATE 同生共死（修复前快照先行独立提交，
         // UPDATE 失败 = 孤儿快照残留；同 knowledge 侧口径）
         let mut conn = self.conn.lock().unwrap();
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -2403,12 +2403,12 @@ impl RuleStore {
         }
     }
 
-    /// 按任意链内版本导出快照包（B4 段B：解除"MVP 仅当前版本"限制）。
+    /// 按任意链内版本导出快照包（段B：解除"MVP 仅当前版本"限制）。
     ///
     /// - 当前版本 → 活条目导出（同 [`Self::export_bundle`]）；
     /// - 历史版本 → `dataset_version_snapshots` 全量快照重建（升版时刻留档，与当时内容一致）；
     /// - 版本不在链中 → `DatasetNotFound` 语义不适用，走 `VersionSnapshotMissing` 前先校验链；
-    /// - 历史版本无快照（B4 启用前升版的存量库）→ `VersionSnapshotMissing` 显式拒绝，不伪造。
+    /// - 历史版本无快照（启用前升版的存量库）→ `VersionSnapshotMissing` 显式拒绝，不伪造。
     pub fn export_bundle_at(
         &self,
         dataset_id: &str,
@@ -2506,7 +2506,7 @@ impl RuleStore {
                 status: entry.status,
             });
         }
-        // UV-094 W2：状态历史与主表两删同生共死（修复前历史先行独立提交，
+        // W2：状态历史与主表两删同生共死（修复前历史先行独立提交，
         // 主表 DELETE 失败 = 审计历史丢失而条目残留；同 knowledge 侧口径）
         let mut conn = self.conn.lock().unwrap();
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -2581,7 +2581,7 @@ impl RuleStore {
         }
         gov.lifecycle_timestamps = Some(ts);
         entry.governance = Some(gov);
-        // UV-094 W2：状态 UPDATE 与审计历史 INSERT 同生共死（修复前两步独立提交，
+        // W2：状态 UPDATE 与审计历史 INSERT 同生共死（修复前两步独立提交，
         // INSERT 失败 = 状态已变但审计历史缺失，only-append 审计链断档）
         let mut conn = self.conn.lock().unwrap();
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -2833,7 +2833,7 @@ impl RuleStore {
         Self::upsert_service_conn(&conn, e)
     }
 
-    /// 服务目录 upsert 核心（UV-094 W2 提取）：纯 SQL 走参数连接零拿锁——
+    /// 服务目录 upsert 核心（提取）：纯 SQL 走参数连接零拿锁——
     /// 供 upsert_service 与 seed_official_services_if_empty 事务循环共用单一权威实现
     fn upsert_service_conn(conn: &Connection, e: &ServiceCatalogEntry) -> Result<(), StoreError> {
         conn.execute(
@@ -2999,7 +2999,7 @@ impl RuleStore {
         if platform_count > 0 {
             return Ok(0);
         }
-        // UV-094 W2：seed 循环整体一个事务——中途失败整体回滚（修复前逐条独立提交，
+        // W2：seed 循环整体一个事务——中途失败整体回滚（修复前逐条独立提交，
         // 失败 = 半 seed 状态：官方目录部分条目残留，count 预检失效且无法幂等重放）
         let mut inserted = 0usize;
         {
@@ -3138,10 +3138,10 @@ impl RuleStore {
         Ok(out)
     }
 
-    /// knowledge 数据条目检索（Q12 段2 P3）：与 [`Self::search_entries`] 同语义同过滤口径，
+    /// knowledge 数据条目检索（段2 P3）：与 [`Self::search_entries`] 同语义同过滤口径，
     /// 消除"rule 有过滤、knowledge 无过滤"的不对称。q 匹配域：entry_id/provenance/payload。
     ///
-    /// q 匹配两段式（Q12 交付边界收口 B，FTS5 trigram 全文索引，中文 3-gram 可命中）：
+    /// q 匹配两段式（交付边界收口 B，FTS5 trigram 全文索引，中文 3-gram 可命中）：
     /// - q ≥3 字符：走 `knowledge_fts` 索引（trigram 对 ASCII 大小写不敏感、中文按 3-gram 子串命中）；
     /// - q <3 字符：trigram 无法索引，退回进程内 contains 扫描（匹配域一致，口径不变）。
     ///   FTS 命中按 (dataset_id, entry_id) 归并且仅取最新版本行 —— 与条目迭代（每条目最新版）口径一致，
@@ -3358,7 +3358,7 @@ impl RuleStore {
     ///   （knowledge 平行表），治理版本=1，状态 Active；先清空旧条目再写入（可重试幂等）；
     /// - 混合 kind 的包显式拒绝（MVP 数据集类型单一，不静默混装）；
     /// - 校验链任一失败 → 显式错误（35 号 §9 硬失败，不静默降级）；
-    /// - **原子性（UV-094 W1）**：整个导入持一把锁包一个事务——删旧条目/更新数据集/
+    /// - **原子性**：整个导入持一把锁包一个事务——删旧条目/更新数据集/
     ///   逐条插入任一步失败即整体回滚，杜绝"旧数据已删+新数据不完整"的半状态；
     ///   校验与 schema 预热在锁外完成（持锁期间零 FS I/O）。
     pub fn import_bundle(
@@ -3389,7 +3389,7 @@ impl RuleStore {
             DatasetKind::RuleSet
         };
         let did = &bundle.dataset.dataset_id;
-        // schema 预热（UV-094 W1）：对包内全部 schema_ref 显式解析——首次调用会读
+        // schema 预热：对包内全部 schema_ref 显式解析——首次调用会读
         // domain_schemas/ 目录并填充缓存；放在取锁前，导入持锁期间零 FS I/O。
         for be in &bundle.entries {
             if let Some(sr) = &be.schema_ref {
@@ -3397,7 +3397,7 @@ impl RuleStore {
             }
         }
 
-        // —— 整个导入持一把锁包一个事务（UV-094 核心修复）——
+        // —— 整个导入持一把锁包一个事务（核心修复）——
         // 修复前：删旧条目/更新数据集/逐条插入三步各自独立提交，任一步中途失败=
         // 旧数据已删+新数据不完整（数据丢失/半状态），且锁在步间释放、并发读者可见半状态、
         // 并发导入可交错。现在任一步失败 → tx Drop 整体回滚，库内状态严格保持导入前。
@@ -3414,7 +3414,7 @@ impl RuleStore {
                 e.data_dependencies = bundle.data_dependencies.clone();
                 // B5：事件声明随包覆盖（导入 = 版本整体替换语义）
                 e.event_schemas = bundle.dataset.event_schemas.clone();
-                // UV-094 顺带修复：from-state 须在改状态前捕获（修复前先赋值再格式化，
+                // 顺带修复：from-state 须在改状态前捕获（修复前先赋值再格式化，
                 // 历史恒记 "Active"，前一状态丢失 → 审计失真）
                 let prev = format!("{:?}", e.lifecycle.status);
                 e.lifecycle.status = LifecycleStatus::Active;
@@ -3478,7 +3478,7 @@ impl RuleStore {
                 Self::insert_dataset_conn(&tx, &ds)?;
             }
         }
-        // 条目落库（Q12 R5：按 entry_kind 分流入对应平行表）
+        // 条目落库（R5：按 entry_kind 分流入对应平行表）
         for be in &bundle.entries {
             match be.entry_kind {
                 EntryKind::Rule => {
@@ -3530,15 +3530,15 @@ impl RuleStore {
                 }
             }
         }
-        // 全链写齐方提交：此前任一步失败均已随 tx Drop 整体回滚（UV-094）
+        // 全链写齐方提交：此前任一步失败均已随 tx Drop 整体回滚（）
         tx.commit()?;
         Ok(result)
     }
 
-    /// 删除数据集全部条目核心（UV-094 W1）：纯 SQL 走参数连接，零拿锁、零自带事务——
+    /// 删除数据集全部条目核心：纯 SQL 走参数连接，零拿锁、零自带事务——
     /// 事务边界由调用方裁定（import_bundle 大事务内调用，与数据集更新/条目插入同生共死；
     /// 独立使用须自行包事务，见测试 test_delete_dataset_entries_cleans_snapshot_tables）。
-    /// 清理口径与 delete_dataset 同（UV-090 收口）：八张条目/快照/归因子表全清，不动数据集行。
+    /// 清理口径与 delete_dataset 同（收口）：八张条目/快照/归因子表全清，不动数据集行。
     fn delete_dataset_entries_conn(conn: &Connection, dataset_id: &str) -> Result<(), StoreError> {
         conn.execute(
             "DELETE FROM entry_state_history WHERE dataset_id=?1",
@@ -3809,7 +3809,7 @@ impl RuleStore {
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
 
-    /// 某 org 的全部成员（B1 成员管理列表）
+    /// 某 org 的全部成员（成员管理列表）
     pub fn list_user_orgs_in_org(&self, org_id: &str) -> Result<Vec<UserOrg>, StoreError> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
@@ -3828,7 +3828,7 @@ impl RuleStore {
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
 
-    /// 按用户名全局查用户（B1 跨 org 登录用；同用户名多行视为歧义，返回冲突错误）
+    /// 按用户名全局查用户（跨 org 登录用；同用户名多行视为歧义，返回冲突错误）
     pub fn get_user_by_username_any(&self, username: &str) -> Result<Option<User>, StoreError> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
@@ -4211,7 +4211,7 @@ mod tests {
         assert_eq!(list.len(), 1);
     }
 
-    /// UV-091：重复 dataset_id 必须显式冲突，不得落 SQLite UNIQUE → catch-all 500。
+    /// ：重复 dataset_id 必须显式冲突，不得落 SQLite UNIQUE → catch-all 500。
     #[test]
     fn test_create_dataset_duplicate_id_conflict() {
         let store = RuleStore::in_memory().unwrap();
@@ -4225,7 +4225,7 @@ mod tests {
         assert!(store.get_dataset("ds-tax-2024").unwrap().is_some());
     }
 
-    /// UV-090 ①：删除数据集必须清空全部子表（含修复前漏掉的三张快照/版本表）。
+    /// ①：删除数据集必须清空全部子表（含修复前漏掉的三张快照/版本表）。
     /// 修复前：entry_snapshots / dataset_versions / dataset_version_snapshots 漏清 →
     /// datasets 行删除被外键（NO ACTION 无级联）阻断 → 500。
     #[test]
@@ -4273,11 +4273,11 @@ mod tests {
             let n: i64 = conn
                 .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| r.get(0))
                 .unwrap();
-            assert_eq!(n, 0, "{table} 应随数据集删除清空（UV-090 ①）");
+            assert_eq!(n, 0, "{table} 应随数据集删除清空（①）");
         }
     }
 
-    /// UV-090 ②：删除失败必须整体回滚。修复前各 DELETE 独立自动提交——
+    /// ②：删除失败必须整体回滚。修复前各 DELETE 独立自动提交——
     /// 外键失败报 500 的同时 entries 已删且不可回滚（半删除 + 数据静默丢失）。
     #[test]
     fn test_delete_dataset_atomic_rollback_on_failure() {
@@ -4324,7 +4324,7 @@ mod tests {
         let snapshots: i64 = conn
             .query_row("SELECT COUNT(*) FROM entry_snapshots", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(entries, 1, "失败回滚后条目不得丢失（UV-090 ②）");
+        assert_eq!(entries, 1, "失败回滚后条目不得丢失（②）");
         assert_eq!(history, 1, "失败回滚后状态历史不得丢失");
         assert_eq!(snapshots, 1, "失败回滚后快照不得丢失");
         drop(conn);
@@ -4334,7 +4334,7 @@ mod tests {
         );
     }
 
-    /// UV-090 观察项收口（2026-09-05）：导入覆盖辅助 delete_dataset_entries 与
+    /// 观察项收口（2026-09-05）：导入覆盖辅助 delete_dataset_entries 与
     /// delete_dataset 同口径——条目删除时四张快照/归因子表同步清理，数据集行保留。
     /// 旧实现留存旧快照属历史遗留语义，已按用户裁定删除。
     #[test]
@@ -4342,7 +4342,7 @@ mod tests {
         let store = RuleStore::in_memory().unwrap();
         store.create_dataset(&tax_dataset()).unwrap();
 
-        // 造齐条目侧 + 数据集侧快照/归因数据（同 UV-090 测试形状）
+        // 造齐条目侧 + 数据集侧快照/归因数据（同 测试形状）
         let mut e = draft_entry();
         store.add_entry(&e).unwrap();
         store
@@ -4379,7 +4379,7 @@ mod tests {
             }
         }
 
-        // UV-094 W1：delete_dataset_entries 已收口为 _conn 核心（零自带事务，事务边界
+        // W1：delete_dataset_entries 已收口为 _conn 核心（零自带事务，事务边界
         // 由调用方裁定）。本测试独立调用，自行包事务提交。
         {
             let mut conn = store.conn.lock().unwrap();
@@ -4403,14 +4403,14 @@ mod tests {
             let n: i64 = conn
                 .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| r.get(0))
                 .unwrap();
-            assert_eq!(n, 0, "{table} 应随条目删除清空（UV-090 观察项收口）");
+            assert_eq!(n, 0, "{table} 应随条目删除清空（观察项收口）");
         }
         drop(conn);
         assert!(store.get_dataset("ds-tax-2024").unwrap().is_some());
     }
 
-    // UV-094 W1 回归锚定：导入覆盖链整体事务——中途失败必须整体回滚，
-    // 杜绝"旧数据已删+新数据不完整"的半状态（触发器注入法同 UV-090 模式）
+    // W1 回归锚定：导入覆盖链整体事务——中途失败必须整体回滚，
+    // 杜绝"旧数据已删+新数据不完整"的半状态（触发器注入法同 模式）
 
     fn uv094_count(store: &RuleStore, table: &str) -> i64 {
         let conn = store.conn.lock().unwrap();
@@ -4418,10 +4418,10 @@ mod tests {
             .unwrap()
     }
 
-    /// 造齐覆盖导入前置状态：数据集 + 条目2版 + 状态历史 + 快照/归因（同 UV-090 测试形状）
+    /// 造齐覆盖导入前置状态：数据集 + 条目2版 + 状态历史 + 快照/归因（同 测试形状）
     fn uv094_seed_covered_dataset(store: &RuleStore) {
         let mut ds = tax_dataset();
-        // 导入校验（UV-051）：auto 模式需生效基准——夹具对齐 roundtrip 测试，
+        // 导入校验（）：auto 模式需生效基准——夹具对齐 roundtrip 测试，
         // 否则导入在前置校验段即被拒，触发器注入的失败源永远走不到
         ds.law_ref = Some(crate::model::version::LawRef {
             document_id: "gov-tax-2023-001".into(),
@@ -4585,8 +4585,8 @@ mod tests {
     }
 
     // ==================================================================
-    // UV-094 W2 家族回归：同族多写函数事务化——任一步失败必须整体回滚
-    // （触发器注入法，同 UV-090/UV-094 W1 模式；各测试独立 store 无串扰）
+    // W2 家族回归：同族多写函数事务化——任一步失败必须整体回滚
+    // （触发器注入法，同 /W1 模式；各测试独立 store 无串扰）
     // ==================================================================
 
     /// add_entry：主表 INSERT 失败 → 快照必须随事务回滚（修复前快照先行提交=孤儿快照）
@@ -4964,7 +4964,7 @@ mod tests {
         use crate::model::service_catalog::BindingHint;
 
         let store = RuleStore::in_memory().unwrap();
-        // 官方 seed：预置全部插件原生服务（UV-035 聚合,数量随嵌入副本联动,防硬编码漂移）;重复 seed 幂等
+        // 官方 seed：预置全部插件原生服务（聚合,数量随嵌入副本联动,防硬编码漂移）;重复 seed 幂等
         let official_count = official_native_services().len();
         assert!(official_count >= 7, "官方原生服务种子不应少于 7");
         assert_eq!(

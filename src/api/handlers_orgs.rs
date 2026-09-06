@@ -3,7 +3,7 @@
 //! 平台层：POST/GET /v1/orgs（仅 PlatformAdmin）；
 //! 成员层：POST/GET /v1/orgs/{org_id}/members（PlatformAdmin 或该 org 的 admin）。
 //! 语义说明：wire 字段沿用 `tenant_id`（= org id，零迁移）；成员指派入 auth 审计
-//! （action=assign_role，UV-017「授权变更入审计链」同口径）。
+//! （action=assign_role，「授权变更入审计链」同口径）。
 
 use axum::extract::{Extension, Path, State};
 use axum::http::StatusCode;
@@ -106,7 +106,7 @@ pub async fn add_member(
     state
         .store
         .upsert_user_org_role(&org_id, &req.user_id, role, &created_at)?;
-    // 授权变更入审计（UV-017 同口径）
+    // 授权变更入审计（同口径）
     state.auth.record_audit(
         &state.store,
         &org_id,

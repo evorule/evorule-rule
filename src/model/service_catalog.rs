@@ -55,7 +55,7 @@ fn default_version() -> String {
     "1.0.0".into()
 }
 
-/// 嵌入副本登记表（UV-035 泛化）：新增插件 = 在此追加一项
+/// 嵌入副本登记表（泛化）：新增插件 = 在此追加一项
 /// `(插件 id, include_str! 嵌入副本)`，聚合函数与守卫测试零改动
 /// （副本由 evorule-server `scripts/sync-native-services.ps1` 同步）。
 /// 声明序 = 聚合序，与执行侧挂载链声明序一致。
@@ -74,7 +74,7 @@ const EMBEDDED_SERVICE_FILES: &[(&str, &str)] = &[
     ),
 ];
 
-/// 官方预置原生服务种子（UV-029 声明文件化；UV-035 泛化至多插件聚合）。
+/// 官方预置原生服务种子（声明文件化；泛化至多插件聚合）。
 ///
 /// SSOT = evorule-server 仓各插件目录 `plugins/<id>/official_native_services.json`；
 /// 本仓持有各插件嵌入副本（由 evorule-server `scripts/sync-native-services.ps1`
@@ -148,7 +148,7 @@ pub fn official_entry(
 mod tests {
     use super::*;
 
-    /// UV-029 嵌入副本守卫（UV-035 泛化至多插件聚合）：各副本可解析且 schema
+    /// 嵌入副本守卫（泛化至多插件聚合）：各副本可解析且 schema
     /// 合法（字段齐全、非空、name 全局唯一、聚合序 = 登记表声明序）。
     /// 与源仓 SSOT 的内容一致性由同步脚本
     /// （evorule-server `scripts/sync-native-services.ps1`：复制 + 双侧守卫）保证。

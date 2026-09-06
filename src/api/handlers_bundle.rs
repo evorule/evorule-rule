@@ -33,7 +33,7 @@ pub struct ExportQuery {
 /// 无快照的存量历史版本显式拒绝，不伪造历史内容。
 ///
 /// **T0 决策（2026-08-24）**：GET 无法承载 tests 数组 → 无证据导出统一显式 `unverified()`（verdict=fail），
-/// 不默认 Pass；带真实沙箱证据的导出走 `POST /bundles/export`（T0 决策：矛盾 A 推荐方案）。
+/// 不默认 Pass；带真实沙箱证据的导出走 `POST /bundles/export`（决策：矛盾 A 推荐方案）。
 pub async fn export_version(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
@@ -61,7 +61,7 @@ pub async fn export_version(
     }
 }
 
-/// 带证据导出请求体（T0 决策：矛盾 A —— POST 承载 tests 数组）
+/// 带证据导出请求体（决策：矛盾 A —— POST 承载 tests 数组）
 #[derive(Deserialize)]
 pub struct ExportReq {
     pub dataset_id: String,
@@ -74,17 +74,17 @@ pub struct ExportReq {
     pub subset: Option<String>,
 }
 
-/// POST /bundles/export —— 带真实闸门一证据的导出（T0 决策 2026-08-24）
+/// POST /bundles/export —— 带真实闸门一证据的导出（决策 2026-08-24）
 ///
 /// - 调用方（console-cloud 测试工作台）先跑确定性执行产出 verdict，再带进本请求；
-/// - 缺省/未验证证据由调用方负责显式标注（verdict=fail），本端点**不默认 Pass**（T0）；
+/// - 缺省/未验证证据由调用方负责显式标注（verdict=fail），本端点**不默认 Pass**；
 /// - 权限：与 GET export_version 一致（本租户可导出；发布/交付权威仍在治理层 D12）。
 pub async fn export_with_tests(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
     Json(req): Json<ExportReq>,
 ) -> Result<Json<DatasetBundle>, ApiError> {
-    // UV-080 B1: 证据形状校验(阶段一校验层·治理域侧)。
+    // B1: 证据形状校验(阶段一校验层·治理域侧)。
     // verdict=pass 的导出必须携带可追溯证据标记——subset 非空且每项以
     // `sandbox:<id>`(机器背书)或 `human:<actor>`(人工降级)开头,防绕过 console
     // 手写"零证据 pass"伪造导出(console 侧已按此形状构造,此处为服务端
@@ -129,7 +129,7 @@ pub async fn export_with_tests(
     }
 }
 
-/// 裁剪视图：解析 `tag:core` / `domain:tax` / `ids:id1,id2` 语法（Q12 段2 P2，D3 定案）
+/// 裁剪视图：解析 `tag:core` / `domain:tax` / `ids:id1,id2` 语法（段2 P2，D3 定案）
 ///
 /// - 顶层以 `;` 分隔多段，依次应用（交集语义）：如 `?subset=ids:a,b;tag:core`；
 /// - `ids:` 值为逗号分隔 entry_id 列表（trim_by_ids，view_of 指向原版本）；

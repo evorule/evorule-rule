@@ -506,7 +506,7 @@ async fn admin_backend(
     Ok(Json(out))
 }
 
-/// GET /v1/health —— 存活探针(UV-031 V3-b 最小件):
+/// GET /v1/health —— 存活探针(V3-b 最小件):
 /// 无鉴权、无状态泄漏——仅返回 ok/服务名/版本号;供运维探活与告警基线使用,
 /// 不暴露租户/数据/后端信息(诊断类信息在鉴权后的 /v1/admin/backend)。
 async fn health() -> Json<Value> {
@@ -942,7 +942,7 @@ mod tests {
         assert_eq!(status, StatusCode::CREATED, "{body}");
         assert_eq!(body["lifecycle"]["status"], "Draft");
 
-        // UV-091：重复 dataset_id → 409 冲突（修复前落 catch-all 500）
+        // ：重复 dataset_id → 409 冲突（修复前落 catch-all 500）
         let (status, body) = send(
             app.clone(),
             "POST",
@@ -997,7 +997,7 @@ mod tests {
         let (app, _state) = build_app();
         let token = register_login(&app).await;
 
-        // 创建带 law_ref + version_selection 的数据集（T6 偏差修复：导出 bundle 不再缺字段）
+        // 创建带 law_ref + version_selection 的数据集（偏差修复：导出 bundle 不再缺字段）
         let (status, body) = send(
             app.clone(),
             "POST",
@@ -1089,8 +1089,8 @@ mod tests {
         );
     }
 
-    /// UV-051 生效基准前置校验：三层闸门（创建/更新/发布）
-    /// 缺口实证（W2.2 四场景实测）：缺省 auto 模式 + 无 law_ref → 此前要到
+    /// 生效基准前置校验：三层闸门（创建/更新/发布）
+    /// 缺口实证（四场景实测）：缺省 auto 模式 + 无 law_ref → 此前要到
     /// 部署执行域时才被导入校验 400 拒绝；治理侧 fail-fast 前移。
     #[tokio::test]
     async fn test_uv051_effective_basis_preflight_gates() {
@@ -1189,7 +1189,7 @@ mod tests {
         assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
         let msg = body["error"]["message"].as_str().unwrap_or_default();
         assert!(
-            msg.contains("UV-051") && msg.contains("PATCH /v1/datasets/ds-gate-02"),
+            msg.contains("") && msg.contains("PATCH /v1/datasets/ds-gate-02"),
             "msg: {msg}"
         );
 
@@ -1471,7 +1471,7 @@ mod tests {
             "T0: 带证据导出 verdict=fail 如实带出"
         );
 
-        // UV-080 B1: 零证据 pass（空 subset）→ 400 显式拒绝（防伪造，不静默）
+        // B1: 零证据 pass（空 subset）→ 400 显式拒绝（防伪造，不静默）
         let (status, body) = send(
             app.clone(),
             "POST",
@@ -1490,7 +1490,7 @@ mod tests {
             "错误应指向可追溯标记缺失: {body}"
         );
 
-        // UV-080 B1: 无前缀标记（不可追溯 subset 项）→ 400 显式拒绝
+        // B1: 无前缀标记（不可追溯 subset 项）→ 400 显式拒绝
         let (status, body) = send(
             app.clone(),
             "POST",
@@ -1543,7 +1543,7 @@ mod tests {
                 "name": "税务合规规则集",
                 "domain": ["tax"],
                 "tags": ["合规"],
-                // UV-051：种子代表合规形态数据集——携带生效基准（缺省 auto 模式发布闸门要求）
+                // ：种子代表合规形态数据集——携带生效基准（缺省 auto 模式发布闸门要求）
                 "law_ref": {
                     "document_id": "com.example.tax",
                     "law_version": "1.0.0",
@@ -2233,7 +2233,7 @@ mod tests {
         );
 
         // 平台官方目录 seed（模拟 main.rs 启动预置全部插件原生服务；
-        // UV-035 聚合后数量随嵌入副本联动,防硬编码漂移）
+        // 聚合后数量随嵌入副本联动,防硬编码漂移）
         let official_count = crate::model::service_catalog::official_native_services().len();
         let seeded = state
             .store
@@ -2818,7 +2818,7 @@ mod tests {
         assert_eq!(status, StatusCode::OK, "{body}");
         assert_eq!(entry_ids(&body), vec!["pub-1"], "{body}");
 
-        // V3 反转（Q12 交付边界收口 A）：浏览列表混入他租户 Public+Published 数据集
+        // V3 反转（交付边界收口 A）：浏览列表混入他租户 Public+Published 数据集
         let (status, body) = send(app.clone(), "GET", "/v1/datasets", Some(&bob), None).await;
         assert_eq!(status, StatusCode::OK, "{body}");
         assert_eq!(entry_ids_dataset_list(&body), vec!["ds-cross"], "{body}");
@@ -2950,7 +2950,7 @@ mod tests {
         .await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
 
-        // knowledge 数据集裁剪：entry_kind/schema_ref 保留（T2）
+        // knowledge 数据集裁剪：entry_kind/schema_ref 保留
         state
             .store
             .create_dataset(&ds_fixture(

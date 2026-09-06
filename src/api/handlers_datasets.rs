@@ -23,8 +23,8 @@ use crate::model::version::{BumpKind, LawRef, VersionSelection, Versioning};
 // 数据集
 // ----------------------------------------------------------------------
 
-// —— 生效基准前置校验（UV-051，2026-09-02）——
-// 缺口实证（W2.2 四场景实测）：新建数据集 law_ref 缺省 + version_selection 缺省
+// —— 生效基准前置校验（，2026-09-02）——
+// 缺口实证（四场景实测）：新建数据集 law_ref 缺省 + version_selection 缺省
 // （= auto_by_effective_date）→ 发布/导出无阻拦 → 部署到执行域时才被导入校验
 // 400 拒绝（"auto_by_effective_date 模式需快照包携带 law_ref.effective_from 作为
 // 生效基准"）。报错诚实但暴露过晚——治理侧在创建/更新/发布期 fail-fast 前移。
@@ -45,7 +45,7 @@ fn missing_effective_basis(law_ref: &Option<LawRef>) -> bool {
 /// 生效基准缺失错误（含自诊断修复指引，遵循"系统自愈 + 用户可见"）
 fn effective_basis_error(dataset_id: &str) -> ApiError {
     ApiError::bad_request(format!(
-        "生效基准缺失（UV-051 前置校验）：版本选择模式为 auto_by_effective_date（缺省即该模式），\
+        "生效基准缺失（前置校验）：版本选择模式为 auto_by_effective_date（缺省即该模式），\
          数据集 `{dataset_id}` 需携带 law_ref.effective_from 作为生效基准，\
          否则部署到执行域时将被导入校验拒绝。\
          修复指引：PATCH /v1/datasets/{dataset_id} 补充 law_ref（至少 document_id + effective_from，\
@@ -107,7 +107,7 @@ pub struct CreateDatasetReq {
     /// 版本选择双模式（可选；缺省 = auto_by_effective_date）
     #[serde(default)]
     pub version_selection: Option<VersionSelection>,
-    /// 数据集类型（Q12 R1，可选；缺省 = rule_set。创建后不可变更）
+    /// 数据集类型（R1，可选；缺省 = rule_set。创建后不可变更）
     #[serde(default)]
     pub dataset_kind: Option<DatasetKind>,
 }
@@ -120,7 +120,7 @@ pub async fn list_datasets(
     if !can(ctx.role, Action::View) {
         return Err(ApiError::forbidden("无查看权限"));
     }
-    // 浏览口径（Q12 交付边界收口 A，V3 反转）：本租户全部 + 他租户 Public+Published
+    // 浏览口径（交付边界收口 A，V3 反转）：本租户全部 + 他租户 Public+Published
     let ds = state.store.list_datasets_browsable(&ctx.tenant_id)?;
     Ok(paginate(ds, page.limit, page.offset))
 }
@@ -152,7 +152,7 @@ pub async fn create_dataset(
     if !can(ctx.role, Action::Create) {
         return Err(ApiError::forbidden("需要规则工程师及以上角色"));
     }
-    // UV-051 闸门①：显式 auto 模式缺生效基准 → 创建即拒（配置错误，创建即可见）
+    // 闸门①：显式 auto 模式缺生效基准 → 创建即拒（配置错误，创建即可见）
     validate_explicit_selection(&req.dataset_id, &req.version_selection, &req.law_ref)?;
     let now = now_iso();
     let ds = RuleDataset {
@@ -191,7 +191,7 @@ pub async fn get_dataset(
         .get_dataset(&id)?
         .ok_or_else(|| ApiError::not_found("数据集不存在"))?;
     // 数据隔离（⑧）：本租户可见；跨租户 **Public+Published**（34 号 §3 双条件）只读可见
-    // （Q12 段2 P4/V1：与 search_datasets 跨租户检索口径一致；写操作仍被租户+角色拦截）
+    // （段2 P4/V1：与 search_datasets 跨租户检索口径一致；写操作仍被租户+角色拦截）
     if ds.tenant_id != ctx.tenant_id && !state.store.is_publicly_pullable(&id)? {
         return Err(ApiError::not_found("数据集不存在"));
     }
@@ -294,7 +294,7 @@ pub async fn publish(
             "发布需二次确认：请求体须携带 confirm=true（防误发，34 号 §9-1）",
         ));
     }
-    // UV-051 闸门③：auto 模式（含缺省）缺生效基准 → 发布即拒（硬闸门，口径与
+    // 闸门③：auto 模式（含缺省）缺生效基准 → 发布即拒（硬闸门，口径与
     // 执行域导入校验一致；W2.2 实证该缺口此前要到部署时才 400 暴露）
     validate_publish_effective_basis(&ds)?;
     let at = iso_from_unix(unix_now());
@@ -374,7 +374,7 @@ pub async fn update_dataset_meta(
     if let Some(vs) = req.version_selection {
         ds.version_selection = Some(vs);
     }
-    // UV-051 闸门②：PATCH 合并后显式 auto 模式缺生效基准 → 拒绝
+    // 闸门②：PATCH 合并后显式 auto 模式缺生效基准 → 拒绝
     //（不允许经 PATCH 引入"显式 auto 无锚"错误配置；缺省模式留给发布闸门）
     validate_explicit_selection(&ds.dataset_id, &ds.version_selection, &ds.law_ref)?;
     let at = iso_from_unix(unix_now());
@@ -575,7 +575,7 @@ pub struct AddEntryReq {
     pub provenance: Option<Provenance>,
 }
 
-/// knowledge 数据条目请求体（Q12 R4：payload + schema_ref 必填，与规则条目互斥）
+/// knowledge 数据条目请求体（R4：payload + schema_ref 必填，与规则条目互斥）
 #[derive(Deserialize)]
 pub struct AddKnowledgeEntryReq {
     pub entry_id: String,
