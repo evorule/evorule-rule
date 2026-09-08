@@ -264,7 +264,7 @@ See [CHANGELOG](CHANGELOG.md) for authoritative status.
 
 AGPL-3.0-or-later — consistent with [evorule core repo](https://gitee.com/evorule/evorule).
 
-This repo adopts the EvoRule **dual-license** architecture: AGPL-3.0-or-later for open-source compliance, plus a free commercial exemption (FCL) and a paid commercial license for closed-source use. See [DUAL_LICENSE.md](DUAL_LICENSE.md) for the three-option guide, [FREE_COMMERCIAL_LICENSE.md](FREE_COMMERCIAL_LICENSE.md) (eligible: individuals / <$10M revenue / government / academia / non-profit), and [COMMERCIAL_LICENSE.md](COMMERCIAL_LICENSE.md) (paid). The `core_eval.json` constitution remains **CC0-1.0 public domain**.
+This repo adopts the EvoRule **dual-license** architecture: AGPL-3.0-or-later for open-source compliance, plus a free commercial exemption (FCL) and a paid commercial license for closed-source use. See [DUAL_LICENSE.md](DUAL_LICENSE.md) for the three-option guide, [FREE_COMMERCIAL_LICENSE.md](FREE_COMMERCIAL_LICENSE.md) (eligible: individuals / enterprises with annual revenue below CNY ¥100 million / government / academia / non-profit), and [COMMERCIAL_LICENSE.md](COMMERCIAL_LICENSE.md) (paid). The `core_eval.json` constitution remains **CC0-1.0 public domain**.
 
 Commercial licensing: evorulelab@gmail.com
 
@@ -530,7 +530,9 @@ CLI 导入走 `/v1/bundles/import` 同一校验链——与 API、入库门禁**
 
 AGPL-3.0-or-later — 与 [evorule 基础仓](https://gitee.com/evorule/evorule) 一致。
 
-商业许可另议：evorulelab@gmail.com
+本仓采用 EvoRule **双许可**架构：开源合规走 AGPL-3.0-or-later；闭源使用可走 FCL 免费豁免（资格：个人 / 年营收 < ¥1 亿企业 / 政府 / 高校 / 非营利）或付费商业许可。三选项指引见 [DUAL_LICENSE.md](DUAL_LICENSE.md)；`core_eval.json` 宪法为 **CC0-1.0 公有领域**。
+
+商业许可：evorulelab@gmail.com
 
 ## 联系方式
 
