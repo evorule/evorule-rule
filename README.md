@@ -6,6 +6,282 @@
   This file is part of EvoRule Rule, licensed under GNU Affero General Public License v3 or later.
 -->
 
+![EvoRule Rule — rule asset governance layer](assets/evorule-rule-banner.svg)
+
+<div align="center">
+
+# EvoRule Rule
+
+**Rule asset governance layer — JSON rule library + standalone governance service**
+
+> Complete governance lifecycle for rule assets: datasets → lifecycle → approval publishing → version snapshots → snapshot package exchange → audit traceability
+
+<br>
+
+[![Version](https://img.shields.io/badge/version-0.3.1-green.svg)](CHANGELOG.md)
+[![License](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue.svg)](LICENSE)
+[![Tests](https://img.shields.io/badge/tests-128%20passed%20%C2%B7%202026--09--05-brightgreen.svg)](#testing--verification)
+[![Built with](https://img.shields.io/badge/built--with-Axum%200.8-blue.svg)](https://github.com/tokio-rs/axum)
+[![Storage](https://img.shields.io/badge/storage-SQLite%20%7C%20PostgreSQL-orange.svg)](#dual-storage-backends)
+
+**Language / 语言**: [English](#english) · [中文 / Chinese](#chinese)
+
+</div>
+
+---
+
+<a id="english"></a>
+
+## Experience & Navigation
+
+[Quick Start](#quick-start) ·
+[Architecture](#architecture) ·
+[API Overview](#api-overview) ·
+[Core Capabilities](#core-capabilities) ·
+[Dual Storage Backends](#dual-storage-backends) ·
+[Testing & Verification](#testing--verification) ·
+[Roadmap](#roadmap)
+
+---
+
+> ## ✅ v0.3.1 — Released (2026-09-06)
+>
+> This repo **releases independently**, not tied to other repos' release cadence; version numbers correspond only to this repo's [CHANGELOG](CHANGELOG.md).
+>
+> **0.3.1**: Governance domain data consistency closure — import/delete chain transactionalized (`import_bundle` single-lock single tx + 10 same-family functions + from-state mis-recording fix); `delete_dataset` snapshot-table cleanup completed; duplicate-create 409 semantics; JWT signing key persistence (restart survives re-login); export evidence shape validation (blocks zero-evidence pass forgery); effectiveness baseline 3-tier pre-validation.
+>
+> **0.3.0** (2026-09-02): Dual-layer tenant + five-role system; entry query expression (server-side filtering); historical version snapshots persisted + arbitrary-version snapshot package export; dataset-level push event schema declaration; knowledge data asset integration (FTS5 trigram full-text search); CLI import/export subcommands; service directory seed file declaration (multi-plugin aggregation); `/v1/health` liveness probe; full dependency on crates.io stable releases.
+>
+> **0.2.0** (first public release): Data governance MVP + REST API + auth + LLM client + PostgreSQL schema + key management.
+>
+> **Version strategy**: Version numbers across ecosystem repos **develop independently, release independently**, not required to match.
+>
+> This repo is published on [crates.io](https://crates.io/crates/evorule-rule) (lib + dual bins): `cargo add evorule-rule` for the library; `cargo install evorule-rule --bin evorule-rule-serve` for the governance service; `cargo install evorule-rule --bin evorule-rule-cli` for the CLI client. Can also build from source.
+
+---
+
+## One-Liner Positioning
+
+**EvoRule Rule = The "warehouse + governance console" for rule assets.**
+
+The [evorule core repo](https://gitee.com/evorule/evorule) handles rule **execution** (TCB / Reactor / Governance); this repo handles rule **asset management** — storage, versioning, dependency, retrieval, approval publishing, snapshot package exchange, and audit tracing — plus a standalone HTTP governance service and CLI client. **This repo does NOT replace the core repo; rules are ultimately executed by the core engine.**
+
+**Who it's for**:
+
+- Rule engineers who need **versioned storage + approval workflow** for rule assets
+- Platform admins who need **multi-tenant / multi-org isolation**
+- Integrators who want to plug governance into their own frontend (e.g., [evorule-console-cloud](https://gitee.com/evorule/evorule-console-cloud)'s GovernanceBackend)
+- LLM app developers who need **LLM-assisted operations with operation-level audit logging**
+
+---
+
+## Architecture
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│            evorule-rule-serve process (default 127.0.0.1:18081) │
+├────────────────────────────────────────────────────────────────┤
+│  axum HTTP + CORS · Bearer auth middleware · Idempotency-Key     │
+├────────────────────────────────────────────────────────────────┤
+│  api/             auth / datasets / entries / deps / search / bundles │
+│  ├── auth          register / login / refresh / logout / me       │
+│  ├── orgs          platform/org dual-layer tenant + org mgmt      │
+│  ├── datasets      CRUD / publish / version / metadata / eventschema │
+│  ├── entries       CRUD / submit-candidate / approve / diff       │
+│  ├── deps          dependency read/write + service template reg  │
+│  ├── search        dataset / entry search (FTS5 trigram full-text)│
+│  ├── bundle        snapshot package export / import / validate   │
+│  ├── llm           LLM named-operation proxy + op-level audit    │
+│  ├── keys          API key issuance / revocation                  │
+│  └── admin/backend self-check (active storage engine + probe results)│
+├────────────────────────────────────────────────────────────────┤
+│  auth/            JWT dual-generation rotation + jti blacklist + constant-time compare │
+│  model/           seven data models + key management (KeyRing dual-gen container) │
+│  resolve/         version resolution (auto_by_effective_date / pinned) │
+│  validate/        admission gate (same-caliber validation as execution side) │
+│  bundle/          snapshot package validation chain (SSOT = crates.io evorule-bundle) │
+│  llm_client/      evo-agent serve proxy client                   │
+│  cli.rs + bin/    evorule-rule-cli pure REST command-line client  │
+├────────────────────────────────────────────────────────────────┤
+│  store/           SQLite (default, rusqlite bundled)                │
+│                   PostgreSQL (optional, --features postgres + sqlx)  │
+├────────────────────────────────────────────────────────────────┤
+│  crates.io deps: evorule-bundle 0.3.0 · evorule-hash 0.1.3       │
+└────────────────────────────────────────────────────────────────┘
+```
+
+**Key constraints**:
+
+- Snapshot package validation chain's **single source of truth is [evorule-bundle](https://crates.io/crates/evorule-bundle)** — this repo and the execution side share the same validation caliber; import/export never has two standards
+- Default SQLite active engine; PostgreSQL available as production-grade optional backend (`--features postgres` compile-gated, doesn't drag down default build)
+- First-run auto-bootstrap: default tenant + default org + official service directory pre-seeded (idempotent) + JWT signing key randomly generated and persisted (restart preserves token validity; key never printed to logs)
+
+---
+
+## Quick Start
+
+### 1. Build
+
+```bash
+git clone https://gitee.com/evorule/evorule-rule.git
+cd evorule-rule
+cargo build --release
+```
+
+Produces two binaries:
+
+| Binary | Role |
+|---|---|
+| `evorule-rule-serve` | Standalone governance service (REST API) |
+| `evorule-rule-cli` | Governance service command-line client (pure REST, no direct DB connection) |
+
+### 2. Start Governance Service
+
+```bash
+evorule-rule-serve --db ./data/rule.db --port 18081 \
+    --admin-user admin --admin-password <your-admin-password> \
+    --allowed-origins "http://localhost:5174"
+```
+
+- `--db`: SQLite path (parent dir auto-created; JWT key file lands in same dir)
+- `--allowed-origins`: CORS whitelist (not provided = same-origin only)
+- First run auto-creates default tenant/org and bootstraps `platform_admin` admin (idempotent)
+- PostgreSQL: `cargo build --release --features postgres` + env var `DATABASE_URL`, startup auto smoke-probe gated
+
+### 3. Login for Token
+
+```bash
+curl -X POST http://127.0.0.1:18081/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username": "admin", "password": "<your-admin-password>"}'
+```
+
+### 4. CLI Operations
+
+```bash
+# Auth via environment vars: EVORULE_RULE_URL / EVORULE_RULE_TOKEN
+evorule-rule-cli datasets list
+evorule-rule-cli datasets export ds-tax-2024 --out bundle.json
+evorule-rule-cli datasets import bundle.json
+evorule-rule-cli entries bulk-import ./my-dataset --dataset ds-new --tests tests.json
+```
+
+CLI import uses `/v1/bundles/import` same validation chain — identical SSOT with API and admission gate.
+
+---
+
+## API Overview
+
+All mounted under `/v1` (except health), **50+ routes**, by functional domain:
+
+| Domain | Representative Endpoints | Notes |
+|---|---|---|
+| Auth | `POST /v1/auth/register` `/login` `/refresh` `/logout` · `GET /me` | Bearer token + jti blacklist revocation |
+| Orgs & Tenants | `/v1/orgs` family | platform/org dual-layer tenant, five roles (viewer / rule_engineer / approver / org_admin / platform_admin) |
+| Datasets | `/v1/datasets` CRUD · `POST/{id}/publish` · version/metadata/event-schema | Five-state lifecycle +二次确认 publish + tenant isolation |
+| Entries | `/v1/datasets/{id}/entries?filter=` · `/v1/entries/{id}` family | Server-side query expression filtering, submit-candidate / approve, per-version payload, content-level diff |
+| Dependencies | `/v1/deps` family | Dependency graph read/write + service template registration / detail / binding |
+| Search | `GET /v1/search/datasets` `/search/entries` | Paginated `{items, next_cursor}`; entries FTS5 trigram full-text |
+| Snapshot Packages | `POST /v1/bundles/export` `/import` | Export / trim / import / dry-run; `export_bundle_at` supports historical version export |
+| LLM | `POST /v1/llm/ops/{operation}` · audit queries | Proxies to evo-agent serve; operation-level audit logged, LLM unreachability reported honestly (never fabricated) |
+| Keys | `/v1/api_keys` family + `DELETE /{id}` | Issue / revoke |
+| Ops | `GET /v1/health` · `GET /v1/admin/backend` | Health no-auth returns ok/service/version three-key anti-info-leak |
+
+Cross-cutting capabilities: `Idempotency-Key` idempotency middleware (same-key same-payload returns cached / different payload 409 / concurrent in-flight 409), full-chain audit (auth / lifecycle / llm three audit query categories).
+
+---
+
+## Core Capabilities
+
+| Capability | Status | Description |
+|---|---|---|
+| Dataset & Entry Governance | ✅ | Seven data models (dataset / entry / provenance / dependency / lifecycle / governance / version) |
+| Five-State Lifecycle | ✅ | Entry submit-candidate → approve → publish flow, publish requires 二次 confirmation, tenant-isolation guard |
+| Version Management | ✅ | Dataset version snapshots persisted + per-version payload endpoints + `export_bundle_at` historical version export |
+| Dual-Layer Tenant | ✅ | platform/org two-level + five roles + cross-tenant Public+Published read-only visibility |
+| Snapshot Package Exchange | ✅ | Export / trim / import / dry-run; validation chain SSOT = evorule-bundle (crates.io) |
+| Content-Addressed | ✅ | Entry content hash snapshots + dedup stats + content-level diff |
+| Query Expression | ✅ | EntryFilter server-side filtering (`?filter=`) |
+| Full-Text Search | ✅ | knowledge_entries FTS5 trigram index (existing DB idempotent backfill) |
+| Auth & Keys | ✅ | JWT dual-generation rotation (active signs / previous fallback) + jti blacklist + KeyRing dual-gen container + HKDF salt-based derivation |
+| LLM Named Operations | ✅ | Proxy evo-agent serve, operation-level audit logged, unreachability reported honestly never fabricated |
+| Dual Storage Backend | ✅ | SQLite default + PostgreSQL optional (12 core tables real integration tested) |
+| Idempotency Protection | ✅ | `Idempotency-Key` middleware |
+
+---
+
+## Dual Storage Backends
+
+| | SQLite (default) | PostgreSQL (optional) |
+|---|---|---|
+| Enable method | Zero config | `--features postgres` compile + `DATABASE_URL` |
+| Positioning | MVP / dev / single-machine | Production-grade |
+| Dependency | rusqlite (bundled) — no system sqlite dependency | sqlx (async + migrations embedded, compile-gated, doesn't drag default build) |
+| Startup behavior | Opens directly | Smoke-probe gated: create pool + migrations + minimal CRUD round-trip, failure falls back gracefully to SQLite, **never faked** |
+| Self-check | — | `GET /v1/admin/backend` real-time reports active backend + probe results |
+
+---
+
+## Testing & Verification
+
+- **128 passed / 0 failed / 2 ignored** (`cargo test --workspace`, default features, measured 2026-09-05)
+- **`cargo clippy --workspace --all-targets -- -D warnings` clean** (measured 2026-09-05, 11 lint issues fixed)
+- PostgreSQL integration tests require a real PG instance, gated by `--features postgres` (ignored test cases exist for this purpose)
+- LLM 3-operation contract acceptance scripts: end-to-end 6 scenarios 26 assertions (`scripts/`)
+- Governance-domain acceptance scripts: `scripts/acceptance-governance.ps1`, `scripts/acceptance-llm-ops.ps1`
+
+---
+
+## Documentation
+
+Organized per [Diátaxis](https://diataxis.fr/) framework, see [docs/](docs/introduction.md):
+
+| What you want to do | Where to look |
+|---|---|
+| First contact, want to get running | [docs/tutorial/](docs/tutorial/) |
+| Have a specific problem to solve | [docs/how-to/](docs/how-to/) |
+| Look up API / config / commands | [docs/reference/](docs/reference/) |
+| Want to understand why it's designed this way | [docs/explanation/](docs/explanation/) |
+| Important technical decisions | [docs/adr/](docs/adr/) |
+| Build / deploy / ops | [docs/operations/](docs/operations/) |
+
+Full directory listing at [docs/SUMMARY.md](docs/SUMMARY.md) (mdbook render entry point).
+
+---
+
+## Roadmap
+
+- **v0.2** ✅ (2026-08-22): Data governance MVP + REST API + auth + LLM client + PG schema + key management
+- **v0.3** ✅ (2026-09-02): Dual-layer tenant five roles + query expression + historical version snapshots + event schema + knowledge assetization + service directory declarative file
+- **Next**: Data source binding contract validation (coordinated with evorule-server) · LLM service integration (evo-agent serve wired through) · governance-domain defect fix consolidation into patch versions
+- **Later**: Performance baseline · white-label + Dockerization · production-ready evaluation
+
+See [CHANGELOG](CHANGELOG.md) for authoritative status.
+
+---
+
+## License
+
+AGPL-3.0-or-later — consistent with [evorule core repo](https://gitee.com/evorule/evorule).
+
+This repo adopts the EvoRule **dual-license** architecture: AGPL-3.0-or-later for open-source compliance, plus a free commercial exemption (FCL) and a paid commercial license for closed-source use. See [DUAL_LICENSE.md](DUAL_LICENSE.md) for the three-option guide, [FREE_COMMERCIAL_LICENSE.md](FREE_COMMERCIAL_LICENSE.md) (eligible: individuals / <$10M revenue / government / academia / non-profit), and [COMMERCIAL_LICENSE.md](COMMERCIAL_LICENSE.md) (paid). The `core_eval.json` constitution remains **CC0-1.0 public domain**.
+
+Commercial licensing: evorulelab@gmail.com
+
+## Contact
+
+- **Gitee**: <https://gitee.com/evorule/evorule-rule>
+- **Organization**: [Gitee @evorule](https://gitee.com/evorule)
+- **Email**: evorulelab@gmail.com
+
+---
+
+_This repo is EvoRule ecosystem's data governance layer. Rules do not speak; they only run. We are among the first witnesses._
+
+---
+
+<a id="chinese"></a>
+
 <div align="center">
 
 # EvoRule Rule
@@ -16,7 +292,7 @@
 
 <br>
 
-[![Version](https://img.shields.io/badge/version-0.3.0-green.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.3.1-green.svg)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue.svg)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-128%20passed%20%C2%B7%202026--09--05-brightgreen.svg)](#测试与验证)
 [![Built with](https://img.shields.io/badge/built--with-Axum%200.8-blue.svg)](https://github.com/tokio-rs/axum)
@@ -168,7 +444,7 @@ CLI 导入走 `/v1/bundles/import` 同一校验链——与 API、入库门禁**
 |---|---|---|
 | 认证 | `POST /v1/auth/register` `/login` `/refresh` `/logout` · `GET /me` | Bearer token + jti 黑名单吊销 |
 | 组织与租户 | `/v1/orgs` 族 | platform/org 双层租户，五角色（viewer / rule_engineer / approver / org_admin / platform_admin） |
-| 数据集 | `/v1/datasets` CRUD · `POST /{id}/publish` · 版本/元数据/事件 schema | 五态生命周期 + 二次确认发布 + 租户隔离 |
+| 数据集 | `/v1/datasets` CRUD · `POST/{id}/publish` · 版本/元数据/事件 schema | 五态生命周期 + 二次确认发布 + 租户隔离 |
 | 条目 | `/v1/datasets/{id}/entries?filter=` · `/v1/entries/{id}` 族 | 查询表达式服务端过滤、submit-candidate / approve、逐版本载荷、内容级 diff |
 | 依赖 | `/v1/deps` 族 | 依赖图读写 + 服务模板注册 / 详情 / 绑定 |
 | 检索 | `GET /v1/search/datasets` `/search/entries` | 分页 `{items, next_cursor}`；条目 FTS5 trigram 全文 |
