@@ -185,4 +185,73 @@ mod tests {
             pos += 1;
         }
     }
+
+    /// 快照守卫：聚合种子与仓内字面量期望表**逐条全等**
+    /// （name + sensitive + description + 顺序）。
+    ///
+    /// 背景：本文件曾只断言 name 唯一性与 2 个 head 顺序，
+    /// `sensitive`/`description`/非 head 条目的增删改处于**零守卫**状态——
+    /// 而 `sensitive` 是治理权威字段（驱动「敏感服务禁直调、须走审批链」的 403 门禁），
+    /// SSOT 改动后忘记跑同步脚本 → 治理侧目录**静默低报敏感性**，所有测试仍全绿。
+    ///
+    /// 本测试把期望表固化为代码：任何副本改动（含正常同步）都会让本测试红，
+    /// 强制开发者**显式**更新期望表并随改动一同评审——守卫从「宣称存在」变为真实存在。
+    /// 同步流程：SSOT 改动 → 跑 sync-native-services.ps1 → 本测试红 → 按新副本更新
+    /// [`EXPECTED_SERVICES`] → 测试绿。SSOT 与副本漂移另由脚本 `--verify` 模式 + CI job 把关。
+    #[test]
+    fn test_embedded_native_services_snapshot() {
+        /// 快照期望表（聚合序 = EMBEDDED_SERVICE_FILES 声明序：
+        /// demo-services → physics-services → indicator-services）。
+        /// 条目 = (name, sensitive, description)，与 SSOT 声明文件逐字对应。
+        const EXPECTED_SERVICES: &[(&str, bool, &str)] = &[
+            // ---- demo-services ----
+            ("inverse_kinematics_solver", false, "机器人逆运动学求解(Phase 1 原生)"),
+            ("robot_move_joints", false, "机器人关节移动(确定性,Phase 1 原生)"),
+            ("llm_advisor", true, "LLM 建议服务(sensitive:涉及外部 LLM API)"),
+            ("shadow_ik_solver", false, "影子 IK 求解(对照验证)"),
+            ("sampling_service", false, "采样服务"),
+            ("rule_sandbox", false, "规则沙箱验证服务"),
+            ("config_persist", false, "规则热加载持久化服务"),
+            // ---- physics-services ----
+            ("physics_simulate", false, "确定性物理仿真推进(刚体+辛积分器,vendored rpsm-core 内核)"),
+            ("physics_energy", false, "物理系统总机械能计算(确定性)"),
+            ("physics_grav_band", false, "有界重力带(分层势场)仿真推进与逃逸判定(确定性)"),
+            // ---- indicator-services ----
+            ("indicator_sma", false, "简单移动平均 SMA(窗口 N,pandas rolling(N).mean() 语义,warmup 期 null)"),
+            ("indicator_ema", false, "指数移动平均 EMA(span N,pandas ewm(span=N, adjust=False) 语义,递推逐位对齐)"),
+            ("indicator_macd", false, "MACD 快慢线与柱(默认 12/26/9,三组 ewm(span, adjust=False) 组合)"),
+            ("indicator_rsi", false, "RSI(默认 14,Wilder 平滑 ewm(alpha=1/N, adjust=False),分类语义与参考实现逐分支对齐)"),
+        ];
+
+        let seed = official_native_services();
+        assert_eq!(
+            seed.len(),
+            EXPECTED_SERVICES.len(),
+            "条目数漂移 — 嵌入副本与快照期望表不一致：\
+             若为正常同步请更新 EXPECTED_SERVICES 并评审；否则运行 \
+             evorule-server scripts/sync-native-services.ps1 重新同步"
+        );
+        for (i, ((name, sensitive, description), (exp_name, exp_sensitive, exp_desc))) in
+            seed.iter().zip(EXPECTED_SERVICES.iter()).enumerate()
+        {
+            assert_eq!(
+                name, exp_name,
+                "第 {i} 条服务名漂移 — 请重新同步或显式更新快照期望表"
+            );
+            assert_eq!(
+                sensitive, exp_sensitive,
+                "服务 {name} 的 sensitive 标记漂移 — sensitive 是治理权威字段\
+                 （驱动敏感服务 403 直调门禁），任何变更必须显式评审快照期望表"
+            );
+            assert_eq!(
+                description, exp_desc,
+                "服务 {name} 的 description 漂移 — 请重新同步或显式更新快照期望表"
+            );
+        }
+        // 权威标记显式断言（C6）：治理侧 403 门禁依赖此值，漂移即红。
+        assert!(
+            seed.iter().any(|(n, s, _)| n == "llm_advisor" && *s),
+            "llm_advisor 必须 sensitive=true（C6 治理权威）"
+        );
+    }
 }

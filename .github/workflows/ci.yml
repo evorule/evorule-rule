@@ -36,6 +36,25 @@ jobs:
       - name: cargo clippy --workspace
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+  # ===== 原生服务声明漂移检查（UV-180/P0-2 · 零 cargo 依赖）=====
+  # 治理侧嵌入副本 = 本仓 src/model/*.embedded.json；
+  # SSOT = evorule-server plugins/*/official_native_services.json。
+  # fail-closed：漂移即红灯。修复 = 运行 evorule-server/scripts/sync-native-services.ps1 同步。
+  native-services-sync:
+    name: Native services drift check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout evorule-server（SSOT 侧，取同步脚本）
+        uses: actions/checkout@v4
+        with:
+          repository: evorule/evorule-server
+          ref: main
+          path: evorule-server
+      - name: 逐字节校验嵌入副本 vs SSOT
+        shell: pwsh
+        run: pwsh -NoProfile -File evorule-server/scripts/sync-native-services.ps1 -Verify -RepoRule "${{ github.workspace }}"
+
   # ===== Rust tests =====
   test:
     name: Rust Tests
