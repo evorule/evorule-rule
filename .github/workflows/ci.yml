@@ -48,7 +48,9 @@ jobs:
       - name: Checkout evorule-server（SSOT 侧，取同步脚本）
         uses: actions/checkout@v4
         with:
-          repository: evorule/evorule-server
+          # 改从 Gitee 主仓 checkout(2026-09-16 整改): 原指向 GitHub 镜像侧,
+          # 镜像同步慢/失败会误报漂移红灯; Gitee 为权威源, 无此依赖。
+          repository: https://gitee.com/evorule/evorule-server.git
           ref: main
           path: evorule-server
       - name: 逐字节校验嵌入副本 vs SSOT
