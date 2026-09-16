@@ -70,7 +70,7 @@
 
 ## 🐛 报告 Bug
 
-使用 [Gitee Issues](https://gitee.com/evorulelab/evorule/issues)。
+使用 [Gitee Issues](https://gitee.com/evorule/evorule/issues)。
 
 **报告模板**:
 ```markdown
@@ -97,7 +97,7 @@
 
 ## 💡 功能建议
 
-也用 [Gitee Issues](https://gitee.com/evorulelab/evorule/issues),标签 `enhancement`。
+也用 [Gitee Issues](https://gitee.com/evorule/evorule/issues),标签 `enhancement`。
 
 **建议模板**:
 ```markdown
@@ -241,9 +241,9 @@ cargo kani -p evorule-tcb --features kani
 
 ## 📞 联系方式
 
-- **Gitee**: https://gitee.com/evorulelab/evorule/issues
+- **Gitee**: https://gitee.com/evorule/evorule/issues
 - **邮箱**: evorulelab@gmail.com
-- **组织**: [EvoRule Lab](https://gitee.com/evorulelab)
+- **组织**: [EvoRule](https://gitee.com/evorule)
 
 ---
 

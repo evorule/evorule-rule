@@ -35,3 +35,6 @@ desktop.ini
 .workbuddy/
 logs/
 .trae/
+
+# dev/test runtime logs
+dev-test*.log

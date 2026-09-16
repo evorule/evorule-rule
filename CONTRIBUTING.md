@@ -73,7 +73,7 @@
 
 ## 🐛 Reporting Bugs
 
-Use [Gitee Issues](https://gitee.com/evorulelab/evorule/issues) (preferred) or
+Use [Gitee Issues](https://gitee.com/evorule/evorule/issues) (preferred) or
 GitHub Issues for international contributors.
 
 **Report template**:
@@ -245,9 +245,9 @@ All `.rs` files must include the SPDX header:
 
 ## 📞 Contact
 
-- **Gitee**: https://gitee.com/evorulelab/evorule/issues
+- **Gitee**: https://gitee.com/evorule/evorule/issues
 - **Email**: evorulelab@gmail.com
-- **Org**: [EvoRule Lab](https://gitee.com/evorulelab)
+- **Org**: [EvoRule](https://gitee.com/evorule)
 
 ---
 
