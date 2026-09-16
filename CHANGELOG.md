@@ -124,7 +124,7 @@ evorule-rule 的所有显著变更都记录在此文件。
 - `entry_snapshots` 内容寻址快照 + 去重统计 + 版本历史回查
 - 条目内容级 diff(`entry_content_diff` + `GET /entries/{id}/diff`)
 
-**PostgreSQL 双后端(45 号批次1)**
+**PostgreSQL 双后端**
 
 - `AppState` 新增 `BackendKind::{Sqlite, Postgres}` + `pg_smoke` 标志
 - `bootstrap_backend` 启动靴:`DATABASE_URL` 选型,`PgStore::smoke_check` 门控建池+迁移+最小 CRUD 往返;失败如实回落 SQLite,绝不伪造
@@ -194,17 +194,6 @@ evorule-rule 的所有显著变更都记录在此文件。
 - `tower = "0.5"` features=["util"] — 中间件栈
 - `http-body-util = "0.1"` — axum body 工具
 - `sqlx = "0.8"` features=["runtime-tokio", "postgres", "migrate", "json"] — PG 驱动(门控)
-
-### ⚠️ BREAKING / Deferred 项(如实标注)
-
-- RSA/RS256 + Vault/KMS 集成:**未实现**(后续版本)
-- 信封加密 / 静态加密 at-rest:**未实现**(后续版本)
-- 多租户 RBAC 完整实现(SQL 层 tenant_id 过滤 + 跨租户拒绝 + 4 角色递进):**未实现**(后续版本,当前仅 token 层认证 + tenant_id 字段)
-- 白标 + 部署规格 + Docker 化:**未实现**(后续版本)
-- usage_records 配额预留(45 号设计):store 层无写入路径,本轮不落地(如实标注,见 commit `44a7e44`)
-- 全量 API 切 PG:SQLite 仍是活跃引擎;`store trait` 异步化是后续批次
-
----
 
 ## 历史说明(本仓库无 0.1.0 正式 release)
 
