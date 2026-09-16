@@ -154,6 +154,12 @@ test(e2e): add core constitution smoke test
 
 ---
 
+## 📜 License Policy (ecosystem-wide)
+
+- **Default**: all ecosystem repos are **AGPL-3.0-or-later**, under the dual-license architecture (see DUAL_LICENSE.md for commercial/closed-source terms).
+- **Design exception**: `evorule-sdk` uses **Apache-2.0** — a deliberate choice for permissive client-library integration, not license drift (see the sdk repo README).
+- License questions: check each repo's README License section before flagging a mismatch.
+
 ## 📜 CLA (Contributor License Agreement)
 
 **All contributions must include a CLA**. The bot will check automatically on PR.

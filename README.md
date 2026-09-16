@@ -12,6 +12,10 @@
 
 # EvoRule Rule
 
+> **仓库角色**：本仓库是 **GitHub 镜像**。权威源（primary repo）在 **Gitee**：[https://gitee.com/evorule/evorule-rule](https://gitee.com/evorule/evorule-rule)。
+> Issue / PR 请提交到 Gitee，GitHub 侧仅供镜像与推广展示。
+
+
 **Rule asset governance layer — JSON rule library + standalone governance service**
 
 > Complete governance lifecycle for rule assets: datasets → lifecycle → approval publishing → version snapshots → snapshot package exchange → audit traceability
