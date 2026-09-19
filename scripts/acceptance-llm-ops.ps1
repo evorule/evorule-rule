@@ -9,7 +9,7 @@
 #   [5]    LLM 不可达如实报错:停 evo-agent → 代理调用快速失败(不挂死)且审计落 status=failed
 #   [6]    未知操作显式拒绝(404 语义经 rule 侧 bad_request)
 #
-# 前提:D:\evo-agent 与本仓已构建(target/debug 二进制存在;缺则先 cargo build)
+# 前提:evo-agent 仓与本仓已构建(target/debug 二进制存在;缺则先 cargo build)
 # 用法:.\scripts\acceptance-llm-ops.ps1
 # 说明:mock 内容经 EVO_AGENT_LLM_MOCK_CONTENT 注入(离线契约验证开关,evo-agent llm_ops.rs),
 #       三 op 输出规整要求不同(draft:对象 / gen_tests:test_cases 数组 / explain:explanation 字符串),
@@ -20,7 +20,8 @@ param([switch]$RealLlm)
 
 $ErrorActionPreference = 'Stop'
 
-$agentExe = 'D:\evo-agent\target\debug\evo-agent.exe'
+# 检出根(本仓上级目录)下按兄弟目录推导 evo-agent 二进制,不硬编码绝对路径
+$agentExe = Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) 'evo-agent\target\debug\evo-agent.exe'
 $ruleExe  = Join-Path $PSScriptRoot '..\target\debug\evorule-rule-serve.exe'
 $rulePort = 18099
 $agentPort = 18090
@@ -47,7 +48,7 @@ function Start-Agent($MockContent) {
   if ($MockContent) { $env:EVO_AGENT_LLM_MOCK_CONTENT = $MockContent }
   $script:agentProc = Start-Process -FilePath $agentExe `
     -ArgumentList @('serve', '--port', "$agentPort", '--no-auth') `
-    -WorkingDirectory 'D:\evo-agent' -PassThru -WindowStyle Hidden
+    -WorkingDirectory (Split-Path (Split-Path (Split-Path $agentExe -Parent) -Parent) -Parent) -PassThru -WindowStyle Hidden
   # 就绪轮询(/ops 对未知名返回 404 也算就绪)
   $deadline = (Get-Date).AddSeconds(20)
   while ((Get-Date) -lt $deadline) {

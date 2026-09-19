@@ -32,7 +32,6 @@ desktop.ini
 **/docs/book/
 
 # 内部工作临时目录
-.workbuddy/
 logs/
 .trae/
 

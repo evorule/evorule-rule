@@ -5,7 +5,7 @@
 
 > 本目录是 evorule-rule 仓的**公开文档**,按 [Diátaxis](https://diataxis.fr/) 框架组织。
 > 四类文档各司其职,不要混在一起写。
-> 内部工作文档(PLAN/REPORT/验证/调试)走 `D:\knowledge\2-Projects\evorule-rule/`(项目级 vault)。
+> 内部工作文档(PLAN/REPORT/验证/调试)走项目级内部 vault(不入公开文档)。
 
 ## 四类文档,各取所需
 
