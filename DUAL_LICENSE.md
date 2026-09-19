@@ -27,7 +27,7 @@
 
 ## 一、概述
 
-EvoRule 以 **AGPL-3.0-or-later** 为基础许可证，并为需要闭源使用的用户额外提供两条授权通道：
+EvoRule 以 **AGPL-3.0-or-later** 为基础许可证，并为需要闭源使用的项目方额外提供两条授权通道：
 
 | 通道 | 名称 | 费用 | 适合谁 |
 |---|---|---|---|
@@ -135,7 +135,7 @@ EvoRule 以 **AGPL-3.0-or-later** 为基础许可证，并为需要闭源使用�
 
 - **商业许可咨询**: <evorulelab@gmail.com>
 - **组织**: [EvoRule](https://gitee.com/evorule)
-- **Gitee**: <https://gitee.com/evorule/evorule-rule>
+- **Gitee**: <https://gitee.com/evorule/evorule>
 
 ---
 
