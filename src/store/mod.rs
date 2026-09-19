@@ -4767,7 +4767,8 @@ mod tests {
         }
         let err = store.delete_entry("ds-tax-2024", "tax-001").unwrap_err();
         assert!(
-            err.to_string().contains("reg094w2-simulated-delete-failure"),
+            err.to_string()
+                .contains("reg094w2-simulated-delete-failure"),
             "失败源应可追溯: {err}"
         );
         assert_eq!(
@@ -4849,7 +4850,8 @@ mod tests {
         }
         let err = store.update_draft_entry(&e).unwrap_err();
         assert!(
-            err.to_string().contains("reg094w2-simulated-update-failure"),
+            err.to_string()
+                .contains("reg094w2-simulated-update-failure"),
             "失败源应可追溯: {err}"
         );
         assert_eq!(
