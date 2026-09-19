@@ -1,12 +1,12 @@
-//! 认证与用户身份逻辑（43 号 正交 A）
+//! 认证与用户身份逻辑（历史批次 正交 A）
 //!
-//! MVP 定案（43 号 §11，2026-08-22）：
+//! MVP 定案（设计文档 §11，2026-08-22）：
 //! - 密码哈希：**PBKDF2-HMAC-SHA256**（OWASP 认可算法，离线可实现的 MVP 替代；
-//!   ⚠️ 43 号定案为 Argon2id(m=19MiB,t=2,p=1)——本实现因离线环境无 `argon2` crate
-//!   采用 PBKDF2-HMAC-SHA256(600k 迭代)，生产级（45 号批次1）必须换 Argon2id，接口不变）；
-//! - JWT：HS256 单密钥（access 15min / refresh 30d，43 号 §7）＋ jti 撤销黑名单
-//!   （43 号 §3.3：登出吊销 refresh，按 jti 拉黑至 exp，防刷新旋转续用）；
-//! - 注册/登录/刷新均落 auth_audits（43 号 §6，only-append）；
+//!   ⚠️历史批次定案为 Argon2id(m=19MiB,t=2,p=1)——本实现因离线环境无 `argon2` crate
+//!   采用 PBKDF2-HMAC-SHA256(600k 迭代)，生产级（历史批次1）必须换 Argon2id，接口不变）；
+//! - JWT：HS256 单密钥（access 15min / refresh 30d，设计文档 §7）＋ jti 撤销黑名单
+//!   （设计文档 §3.3：登出吊销 refresh，按 jti 拉黑至 exp，防刷新旋转续用）；
+//! - 注册/登录/刷新均落 auth_audits（设计文档 §6，only-append）；
 //! - 禁用用户（disabled）拒绝登录与刷新。
 
 pub mod keyring;
@@ -77,10 +77,10 @@ pub struct AuthTokens {
     pub refresh_expires_at: i64,
 }
 
-/// 认证服务（HS256，MVP；支持 active+previous 双代验签，45 号 §3.3 K4）
+/// 认证服务（HS256，MVP；支持 active+previous 双代验签，设计文档 §3.3 K4）
 #[derive(Debug, Clone)]
 pub struct AuthService {
-    /// HS256 签名密钥（active，生产级 45 号换 RS256 非对称 + vault）
+    /// HS256 签名密钥（active，生产级历史批次换 RS256 非对称 + vault）
     secret: String,
     /// 上一代签名密钥（轮换后 previous，供旧 token 验签 backward 兼容；无则 None）
     previous_secret: Option<String>,
@@ -101,7 +101,7 @@ impl AuthService {
         }
     }
 
-    /// 双代构造：active 用于签发/验签，previous 仅用于验签（轮换后旧 token 兼容）。45 号 §3.3 K4。
+    /// 双代构造：active 用于签发/验签，previous 仅用于验签（轮换后旧 token 兼容）。设计文档 §3.3 K4。
     pub fn with_previous(secret: &str, previous: Option<String>, pbkdf2_iterations: u32) -> Self {
         Self {
             secret: secret.to_string(),
@@ -140,7 +140,7 @@ impl AuthService {
     }
 
     // ------------------------------------------------------------------
-    // JWT（HS256，43 号 §7）
+    // JWT（HS256，设计文档 §7）
     // ------------------------------------------------------------------
 
     pub fn issue_access_token(&self, user: &User, now: i64) -> String {
@@ -195,7 +195,7 @@ impl AuthService {
     }
 
     /// 校验：验签 + exp + token_type；返回 claims。
-    /// 双代验签（45 号 §3.3 K4）：先试 active，失败且存在 previous 时兜底试 previous（轮换后旧 token 兼容）。
+    /// 双代验签（设计文档 §3.3 K4）：先试 active，失败且存在 previous 时兜底试 previous（轮换后旧 token 兼容）。
     pub fn verify_token(
         &self,
         token: &str,
@@ -416,7 +416,7 @@ impl AuthService {
         if claims.tenant_id != tenant_id {
             return Err(AuthError::InvalidToken);
         }
-        // 登出拉黑后拒绝刷新（43 号 §3.3：防旋转续用）
+        // 登出拉黑后拒绝刷新（设计文档 §3.3：防旋转续用）
         if store.is_token_revoked(&claims.jti, now)? {
             return Err(AuthError::InvalidToken);
         }
@@ -487,7 +487,7 @@ impl AuthService {
         Ok(store.is_token_revoked(&claims.jti, now)?)
     }
 
-    /// 用户是否可执行动作（递进授权，43 号 §4）
+    /// 用户是否可执行动作（递进授权，设计文档 §4）
     pub fn can(&self, role: Role, action: Action) -> bool {
         can(role, action)
     }
@@ -744,7 +744,7 @@ mod tests {
 
     #[test]
     fn test_jwt_double_generation_rotation() {
-        // 45 号 §3.3 K4：签发用 active；轮换 previous 后，旧 token（active 时代签发）不再能验，
+        // 设计文档 §3.3 K4：签发用 active；轮换 previous 后，旧 token（active 时代签发）不再能验，
         // 但 pre-rotation token（用旧 active 签发，轮换后变成 previous）仍可验签。
         let old_secret = "old-secret";
         let new_secret = "new-secret";

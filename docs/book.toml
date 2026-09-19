@@ -1,6 +1,6 @@
 [book]
 title = "evorule-rule 文档"
-description = "evorule-rule 数据治理系统 — JSON 规则资产库(决策点 ①:数据模型与 Schema)"
+description = "evorule-rule 数据治理系统 — JSON 规则资产库(既定设计决策:数据模型与 Schema)"
 authors = ["EvoRule Project"]
 language = "zh"
 src = "."

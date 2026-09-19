@@ -2,7 +2,7 @@
 #
 # 触发: 推送 v* tag
 # 产物: 双平台双 bin (GitHub Release 附件)
-#   - evorule-rule-serve  治理中心服务 (gitee/giteeGo agent 不可用 UV-098,由本链供养 gitee Release)
+#   - evorule-rule-serve  治理中心服务 (gitee/giteeGo agent 不可用 回归验证,由本链供养 gitee Release)
 #   - evorule-rule-cli    数据集导入导出 CLI
 #   - Linux   x86_64 (ubuntu-latest, 静态 musl)
 #   - Windows x86_64 (windows-latest)
@@ -12,7 +12,7 @@
 #   构建并经 Gitee OpenAPI 回传附件 (幂等创建 Release)
 # - sanity check 不使用 >/dev/null 重定向: windows runner 默认 pwsh,该 Unix 语法
 #   会报 "Could not find a part of the path 'D:\dev\null'" (evorule-server 仓
-#   v0.4.1 首次 Release 已踩坑,UV-100 顺带发现) —— 输出直接进日志,兼作证据
+#   v0.4.1 首次 Release 已踩坑,回归验证 顺带发现) —— 输出直接进日志,兼作证据
 # - tag 格式: v0.3.1 等
 name: Release
 
@@ -125,12 +125,12 @@ jobs:
   # ==========================================================================
   # 3. 全量产物附加到 Gitee Release (gitee 是主仓/发布主入口)
   #    与 evorule / evorule-server 仓同构: Gitee Go 云端 agent 不可用(资源侧
-  #    问题登记台账 UV-098),产物由本侧构建并经 Gitee OpenAPI 回传;agent 就绪
+  #    问题登记台账 回归验证),产物由本侧构建并经 Gitee OpenAPI 回传;agent 就绪
   #    后可切回原生构建。
   #    幂等: gitee release 不存在则创建,存在则复用。
   #    需在 github 仓库 Settings → Secrets and variables → Actions 配置 GITEE_TOKEN
   #    (Gitee 个人令牌,勾选 releases + projects 权限)
-  #    教训(UV-098): gitee attach_files 同名文件并存不去重,本链为唯一上传方,
+  #    教训(回归验证): gitee attach_files 同名文件并存不去重,本链为唯一上传方,
   #    禁止本地补发叠加
   # ==========================================================================
   attach-gitee:

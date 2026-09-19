@@ -1,4 +1,4 @@
-//! LLM 端点（44 号 §12）：审计查询 / 命名操作代理（37 号）
+//! LLM 端点（设计文档 §12）：审计查询 / 命名操作代理（历史批次）
 
 use std::time::Instant;
 
@@ -22,7 +22,7 @@ fn parse_operation(s: &str) -> Option<Operation> {
     }
 }
 
-/// LLM 操作审计列表（仅管理员，37 号 §8）
+/// LLM 操作审计列表（仅管理员，设计文档 §8）
 pub async fn list_llm_audits(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
@@ -37,7 +37,7 @@ pub async fn list_llm_audits(
     Ok(paginate(audits, page.limit, page.offset))
 }
 
-/// LLM 操作审计统计（仅管理员，37 号 §8）
+/// LLM 操作审计统计（仅管理员，设计文档 §8）
 pub async fn llm_audit_stats(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
@@ -49,7 +49,7 @@ pub async fn llm_audit_stats(
     Ok(Json(stats))
 }
 
-/// LLM 命名操作代理（37 号）：转发 evo-agent serve `/ops/{op}`，并落操作级审计（37 号 §8）
+/// LLM 命名操作代理（历史批次）：转发 evo-agent serve `/ops/{op}`，并落操作级审计（设计文档 §8）
 pub async fn run_llm_op(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
@@ -67,7 +67,7 @@ pub async fn run_llm_op(
     let call = client.call(op, &req);
     let duration_ms = started.elapsed().as_millis() as u64;
 
-    // 操作级审计：成功/失败都落库（37 号 §8）
+    // 操作级审计：成功/失败都落库（设计文档 §8）
     let audit = match &call {
         Ok(resp) => LlmOpAudit {
             request_id: resp

@@ -1,10 +1,10 @@
-//! 生命周期 5 态（决策点④，MVP 仅落地状态枚举 + state_history 审计结构）
+//! 生命周期 5 态（既定设计决策，MVP 仅落地状态枚举 + state_history 审计结构）
 //!
 //! ```text
 //! Draft → Candidate → Active → Published → Rejected
 //! ```
 //! - Active = 组织内可用；Published = 对外可见可拉取；两者独立。
-//! - Published 需独立发布审批（强约束，cause 留痕，见 34 号）。
+//! - Published 需独立发布审批（强约束，cause 留痕，见历史批次）。
 //! - `state_history` 只增不改（审计即记忆，对齐 05 / 15-24 权限链）。
 
 use serde::{Deserialize, Serialize};
@@ -31,7 +31,7 @@ pub struct StateChange {
     pub by: String,
     /// 变更原因（审批通过/驳回/…，审计 cause）
     pub cause: String,
-    /// 发布版本标识（34 号 §4：`{dataset_id}@{version}`，仅 Published 记录）
+    /// 发布版本标识（设计文档 §4：`{dataset_id}@{version}`，仅 Published 记录）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub published_as: Option<String>,
 }
@@ -42,7 +42,7 @@ pub struct Lifecycle {
     pub status: LifecycleStatus,
     /// 审计：每次状态变更（只增不改）
     ///
-    /// 契约（31 号 §3 / console-cloud types.ts）：必填字段 —— 空历史也必须输出 `[]`，
+    /// 契约（设计文档 §3 / console-cloud types.ts）：必填字段 —— 空历史也必须输出 `[]`，
     /// 不能省略，否则前端 `state_history.length` 崩溃（Phase 2 治理接线实测缺陷）。
     #[serde(default)]
     pub state_history: Vec<StateChange>,

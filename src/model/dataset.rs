@@ -1,6 +1,6 @@
-//! RuleDataset（31 号 §3）—— 数据集：治理单元 / 版本单元
+//! RuleDataset（设计文档 §3）—— 数据集：治理单元 / 版本单元
 //!
-//! - 数据集是版本与发布最小单位（决策点②）；
+//! - 数据集是版本与发布最小单位（既定设计决策）；
 //! - 租户（⑧）、生命周期（④）、版本语义（③）在数据集级挂载；
 //! - `dataset_id` 租户内唯一；`lifecycle.state_history` 只增不改（审计即记忆）。
 
@@ -44,7 +44,7 @@ impl DatasetKind {
     }
 }
 
-/// 可见性（决策点⑧）：MVP 两档（private/public），shared 后置
+/// 可见性（既定设计决策）：MVP 两档（private/public），shared 后置
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum Visibility {
@@ -84,22 +84,22 @@ pub struct RuleDataset {
     pub tenant_id: String,
     #[serde(default)]
     pub visibility: Visibility,
-    /// 生命周期（决策点④）
+    /// 生命周期（既定设计决策）
     #[serde(default)]
     pub lifecycle: Lifecycle,
-    /// 版本链（决策点③）
+    /// 版本链（既定设计决策）
     #[serde(default)]
     pub versioning: Versioning,
     /// 法规锚（合规场景）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub law_ref: Option<LawRef>,
-    /// 版本选择双模式（决策点③）
+    /// 版本选择双模式（既定设计决策）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version_selection: Option<VersionSelection>,
-    /// 数据依赖声明（决策点⑤，完整 schema 在 35 号）
+    /// 数据依赖声明（既定设计决策，完整 schema 在历史批次）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub data_dependencies: Option<DataDependencies>,
-    /// 数据集级 push 事件 schema 声明（段B B5，14 号）：
+    /// 数据集级 push 事件 schema 声明（段B B5，历史批次）：
     /// 事件形态契约（name + schema_ref + direction=push），发布 bundle 时随 manifest 携带，
     /// 导入侧经领域 schema resolver 门禁强校验；缺省空（存量数据集零迁移）。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

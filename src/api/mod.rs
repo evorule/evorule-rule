@@ -1,10 +1,10 @@
-//! REST API 面（44 号 正交 B）
+//! REST API 面（历史批次 正交 B）
 //!
-//! MVP 定案（44 号 §14，2026-08-22）：
-//! - REST+JSON、v1 版本化；分页 `{ items, next_cursor }` + `limit`/`offset`（44 号 §3.3，
-//!   60 号 P1-B3 已落地：路由层对租户作用域结果集内存分页，SQL pushdown 归批次 2）；
+//! MVP 定案（设计文档 §14，2026-08-22）：
+//! - REST+JSON、v1 版本化；分页 `{ items, next_cursor }` + `limit`/`offset`（设计文档 §3.3，
+//!   历史批次 P1-B3 已落地：路由层对租户作用域结果集内存分页，SQL pushdown 归批次 2）；
 //! - 统一错误不静默降级：`{ "error": { "code", "message" } }`；
-//! - 同步导入、`Idempotency-Key` 幂等（44 号 §14；60 号 P1-B4 落地，见各写端点）；
+//! - 同步导入、`Idempotency-Key` 幂等（设计文档 §14；历史批次 P1-B4 落地，见各写端点）；
 //! - lifecycle 迁移统一走 `PATCH /v1/datasets/{id}/lifecycle`；
 //! - api_keys 提供最小 scope 版（pull，执行侧拉取快照包联动）。
 
@@ -37,7 +37,7 @@ pub mod handlers_orgs;
 pub mod handlers_search;
 pub mod handlers_services;
 
-/// 活跃存储后端（45 号批次1 配置化双后端 · 最小接线）
+/// 活跃存储后端（历史批次1 配置化双后端 · 最小接线）
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BackendKind {
     /// SQLite（默认，MVP 活跃引擎）
@@ -60,15 +60,15 @@ impl BackendKind {
 pub struct AppState {
     pub store: Arc<RuleStore>,
     pub auth: Arc<AuthService>,
-    /// 真实实例身份（39 号：白标不掩盖，进溯源）
+    /// 真实实例身份（白标不掩盖，进溯源）
     pub instance_id: String,
-    /// evo-agent serve 地址（37 号：LLM 命名操作代理目标）
+    /// evo-agent serve 地址（LLM 命名操作代理目标）
     pub llm_base_url: String,
-    /// 当前活跃存储后端（45 号 最小接线；SQLite 默认，PG 需 feature+URL）
+    /// 当前活跃存储后端（历史批次 最小接线；SQLite 默认，PG 需 feature+URL）
     pub backend: BackendKind,
     /// PG 启动自检结果描述（SQLite 下为 None；PG 模式如实报告，不伪造）
     pub pg_smoke: Option<String>,
-    /// Idempotency-Key 幂等缓存（44 号 §14 / 60 号 P1-B4，单实例内存版）
+    /// Idempotency-Key 幂等缓存（设计文档 §14 / 历史批次 P1-B4，单实例内存版）
     idem: Arc<Mutex<HashMap<String, IdemEntry>>>,
 }
 
@@ -91,7 +91,7 @@ impl AppState {
         self.pg_smoke = pg_smoke;
     }
 
-    /// 配置化双后端启动靴（45 号 最小接线 · 不伪造）：
+    /// 配置化双后端启动靴（历史批次 最小接线 · 不伪造）：
     /// - 默认 SQLite 活跃（MVP 引擎）；
     /// - `--features postgres` 且 `DATABASE_URL` 可用时，运行 `PgStore::smoke_check()`
     ///   （建池+迁移+最小 CRUD 往返）作为启动门控；
@@ -138,7 +138,7 @@ impl AppState {
 #[cfg(not(feature = "postgres"))]
 async fn noop_await() {}
 
-/// 幂等缓存条目（44 号 §14；数据源：写请求 + 响应；同 key 同负载返回缓存，不同负载 409）
+/// 幂等缓存条目（设计文档 §14；数据源：写请求 + 响应；同 key 同负载返回缓存，不同负载 409）
 struct IdemEntry {
     /// 首次请求体（Bytes 等值比较判定负载是否一致）
     req_body: Bytes,
@@ -166,7 +166,7 @@ pub struct AuthContext {
     pub role: Role,
 }
 
-/// 统一 API 错误（44 号 §5：不静默降级）
+/// 统一 API 错误（设计文档 §5：不静默降级）
 #[derive(Debug, Clone)]
 pub struct ApiError {
     pub status: StatusCode,
@@ -306,7 +306,7 @@ pub async fn require_auth(
         .auth
         .verify_token(token, now, "access")
         .map_err(|_| ApiError::unauthorized("token 非法或已过期"))?;
-    // 登出后被拉黑的 token 拒绝访问（43 号 §3.3 jti 黑名单）
+    // 登出后被拉黑的 token 拒绝访问（设计文档 §3.3 jti 黑名单）
     // 查询黑名单遇存储错误不静默放行，显式报 500（不掩盖鉴权不确定性）
     let revoked = state
         .auth
@@ -327,7 +327,7 @@ pub async fn require_auth(
     Ok(next.run(req).await)
 }
 
-/// Idempotency-Key 幂等中间件（44 号 §14 / 60 号 P1-B4，单实例内存版）。
+/// Idempotency-Key 幂等中间件（设计文档 §14 / 历史批次 P1-B4，单实例内存版）。
 ///
 /// 仅对可能产生副作用的非幂等方法启用；需在 require_auth **之后**运行以取租户作用域。
 /// - 无 `Idempotency-Key`：透传，不启用；
@@ -436,7 +436,7 @@ pub fn api_key_from_header(headers: &HeaderMap) -> Option<&str> {
     headers.get("x-api-key")?.to_str().ok().map(|s| s.trim())
 }
 
-/// 分页请求参数（44 号 §3.3，60 号 P1-B3 落地）
+/// 分页请求参数（设计文档 §3.3，历史批次 P1-B3 落地）
 #[derive(Debug, Deserialize, Default)]
 pub struct PageQuery {
     #[serde(default)]
@@ -448,7 +448,7 @@ pub struct PageQuery {
 pub const DEFAULT_PAGE_LIMIT: usize = 20;
 pub const MAX_PAGE_LIMIT: usize = 100;
 
-/// 分页响应封装 `{ items, next_cursor }`（44 号 §3.3）
+/// 分页响应封装 `{ items, next_cursor }`（设计文档 §3.3）
 #[derive(Serialize)]
 pub struct Page<T> {
     pub items: Vec<T>,
@@ -482,7 +482,7 @@ pub fn unix_now() -> i64 {
         .unwrap_or(0)
 }
 
-/// GET /v1/admin/backend —— 存储后端自检（45 号 最小接线；如实报告活跃后端 + PG 探针，不伪造）
+/// GET /v1/admin/backend —— 存储后端自检（历史批次 最小接线；如实报告活跃后端 + PG 探针，不伪造）
 async fn admin_backend(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
@@ -517,7 +517,7 @@ async fn health() -> Json<Value> {
     }))
 }
 
-/// 构建 API 路由（44 号 §6 端点面，MVP 骨架）
+/// 构建 API 路由（设计文档 §6 端点面，MVP 骨架）
 pub fn router(state: AppState) -> Router {
     let public = Router::new()
         .route("/register", post(handlers_auth::register))
@@ -766,7 +766,7 @@ mod tests {
             .await
             .unwrap();
 
-        // 带 Idempotency-Key 首次 POST（44 号 §14 幂等重试不重复生效）
+        // 带 Idempotency-Key 首次 POST（设计文档 §14 幂等重试不重复生效）
         async fn post_with_key(
             app: &Router,
             token: &str,
@@ -1093,7 +1093,7 @@ mod tests {
     /// 缺口实证（四场景实测）：缺省 auto 模式 + 无 law_ref → 此前要到
     /// 部署执行域时才被导入校验 400 拒绝；治理侧 fail-fast 前移。
     #[tokio::test]
-    async fn test_uv051_effective_basis_preflight_gates() {
+    async fn test_reg051_effective_basis_preflight_gates() {
         let (app, state) = build_app();
         let token = register_login(&app).await; // rule_engineer
         let admin = admin_token(&state).await; // 审批者（发布）
@@ -1286,7 +1286,7 @@ mod tests {
         let (app, _state) = build_app();
         let token = register_login(&app).await;
 
-        // 建 3 个数据集，验证 { items, next_cursor } 分页封装（44 号 §3.3）
+        // 建 3 个数据集，验证 { items, next_cursor } 分页封装（设计文档 §3.3）
         for i in 0..3 {
             let (status, body) = send(
                 app.clone(),
@@ -1944,7 +1944,7 @@ mod tests {
             "cause: {published_cause}"
         );
 
-        // 管理端撤销发布 → Published → Rejected（34 号 §2/§4，非 Active）
+        // 管理端撤销发布 → Published → Rejected（设计文档 §2/§4，非 Active）
         let (status, body) = send(
             app.clone(),
             "POST",
@@ -1956,7 +1956,7 @@ mod tests {
         assert_eq!(status, StatusCode::OK, "{body}");
         assert_eq!(body["lifecycle"]["status"], "Rejected");
 
-        // 租户隔离（38 号 §10-3）：他租户 admin 无法迁移/发布/撤销本租户数据集，均返回 404
+        // 租户隔离（设计文档 §10-3）：他租户 admin 无法迁移/发布/撤销本租户数据集，均返回 404
         state
             .store
             .ensure_default_tenant("tenant_b", "另一组织", "inst-002", "2026-08-22T00:00:00Z")
@@ -2176,7 +2176,7 @@ mod tests {
         .await;
         assert_eq!(status, StatusCode::OK, "{body}");
         assert_eq!(body["added_versions"][0], "v2");
-        // 内容归因（45 号批次1 / C 类闭合）：升版 v1→v2 条目未变 → v1 留档哈希与当前 v2 归因相同 ⇒ unchanged。
+        // 内容归因（历史批次1 / C 类闭合）：升版 v1→v2 条目未变 → v1 留档哈希与当前 v2 归因相同 ⇒ unchanged。
         let attr = &body["content_attribution"];
         assert!(attr.is_object(), "缺少内容归因：{body}");
         assert_eq!(
@@ -2707,7 +2707,7 @@ mod tests {
         assert!(entry_ids(&body).is_empty(), "{body}");
     }
 
-    /// P4：跨租户 Public+Published（34 号 §3 双条件）只读可见；Private/未发布不可见；列表不扩散
+    /// P4：跨租户 Public+Published（设计文档 §3 双条件）只读可见；Private/未发布不可见；列表不扩散
     #[tokio::test]
     async fn test_cross_tenant_public_published_readonly_visible() {
         let (app, state) = build_app_with_domain_schema();

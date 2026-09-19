@@ -7,7 +7,7 @@
 //! - 生命周期/审批/发布完全复用数据集级机制（entry 级状态继承数据集，同 RuleEntry 现状）；
 //! - 不可变约束同 RuleEntry：进入 Active/Published 不可原地修改，修改 = 新版本。
 //!
-//! 内容哈希与 RuleEntry 同源（BLAKE3，evorule-hash），去重语义一致（33 号 §6）。
+//! 内容哈希与 RuleEntry 同源（BLAKE3，evorule-hash），去重语义一致（设计文档 §6）。
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -53,13 +53,13 @@ impl KnowledgeEntry {
         )
     }
 
-    /// 内容哈希（未变条目按内容哈希去重存储，决策点③/§10；与 RuleEntry 同源 BLAKE3）
+    /// 内容哈希（未变条目按内容哈希去重存储，既定设计决策/§10；与 RuleEntry 同源 BLAKE3）
     /// 只对 payload 做去重哈希（治理元数据与 schema_ref 引用不参与——引用变更不改数据本体）。
     pub fn content_hash(&self) -> String {
         evorule_hash::prefixed(&evorule_hash::json_digest(&self.payload))
     }
 
-    /// LLM 产出条目只能停留 Draft（37 号强约束，同 RuleEntry 口径）
+    /// LLM 产出条目只能停留 Draft（历史批次强约束，同 RuleEntry 口径）
     pub fn is_llm_generated(&self) -> bool {
         self.governance
             .as_ref()

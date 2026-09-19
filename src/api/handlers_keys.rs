@@ -1,4 +1,4 @@
-//! API Key 端点（44 号 §14：MVP 最小 scope 版，执行侧拉取快照包联动）
+//! API Key 端点（设计文档 §14：MVP 最小 scope 版，执行侧拉取快照包联动）
 
 use axum::extract::{Extension, Path, Query, State};
 use axum::http::StatusCode;

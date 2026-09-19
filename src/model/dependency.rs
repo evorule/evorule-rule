@@ -1,8 +1,8 @@
-//! 数据依赖声明（31 号 §6；完整设计在 35 号 决策点⑤）
+//! 数据依赖声明（设计文档 §6；完整设计在历史批次 既定设计决策）
 //!
 //! **T1 决策（2026-08-24）**：依赖模型（DataDependencies/SourceBinding/ServiceDecl/InputDecl/
 //! IoContract/ServiceTemplate）唯一来源已迁至 `evorule-bundle`（SSOT），本模块 re-export。
-//! **治理专属 `ServiceTemplateRecord`**（44 号 §7 deps/templates 注册）保留在 evorule-rule。
+//! **治理专属 `ServiceTemplateRecord`**（设计文档 §7 deps/templates 注册）保留在 evorule-rule。
 //! 定义与单测见 [evorule-bundle/src/dependency.rs](../../../../evorule-bundle/src/dependency.rs)。
 
 use std::collections::BTreeMap;
@@ -14,7 +14,7 @@ pub use evorule_bundle::dependency::{
     ServiceTemplate, SourceBinding,
 };
 
-/// 服务模板注册记录（44 号 §7 deps/templates；35 号 §5 无凭据模板）
+/// 服务模板注册记录（设计文档 §7 deps/templates；设计文档 §5 无凭据模板）
 ///
 /// 模板 = 端点形状 + 参数占位 + 说明，**不含真实端点/密钥**；实际值由消费者在
 /// 执行侧 service_registry 填写（层 2 绑定动作）。`bind` 端点做占位符填充。
@@ -41,7 +41,7 @@ pub struct ServiceTemplateRecord {
 
 impl ServiceTemplateRecord {
     /// 占位符填充：把 `values` 中的值替换到 endpoint_template 与 headers_template。
-    /// 未提供的占位符保留原样（剩余值由消费者在执行侧填写，35 号 §5）。
+    /// 未提供的占位符保留原样（剩余值由消费者在执行侧填写，设计文档 §5）。
     pub fn bind(
         &self,
         values: &BTreeMap<String, String>,

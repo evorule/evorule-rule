@@ -1,11 +1,11 @@
-//! 治理补充信息（31 号 §4 governance 块）
+//! 治理补充信息（设计文档 §4 governance 块）
 //!
-//! author/updater、LLM 产出标记（决策点⑦，只到 Draft）、生命周期时间戳。
-//! 非 LLM 产出可 omit-when-None（对齐 31 号 §4 字段要点）。
+//! author/updater、LLM 产出标记（既定设计决策，只到 Draft）、生命周期时间戳。
+//! 非 LLM 产出可 omit-when-None（对齐 设计文档 §4 字段要点）。
 
 use serde::{Deserialize, Serialize};
 
-/// LLM 产出标记（决策点⑦ 确定性边界）
+/// LLM 产出标记（既定设计决策 确定性边界）
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LlmGenerated {
     pub flag: bool,
@@ -45,7 +45,7 @@ pub struct Governance {
 }
 
 impl Governance {
-    /// LLM 产出标记是否为真（校验用：flag=true → status 只能是 Draft，37 号强约束）
+    /// LLM 产出标记是否为真（校验用：flag=true → status 只能是 Draft，历史批次强约束）
     pub fn is_llm_generated(&self) -> bool {
         self.llm_generated.as_ref().map(|g| g.flag).unwrap_or(false)
     }

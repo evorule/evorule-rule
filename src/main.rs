@@ -53,7 +53,7 @@ struct Cli {
     #[arg(long, default_value = "evorule-rule-instance")]
     instance_id: String,
 
-    /// evo-agent serve 地址（LLM 命名操作代理目标，37 号）
+    /// evo-agent serve 地址（LLM 命名操作代理目标，历史批次）
     #[arg(long, default_value = "http://127.0.0.1:18090")]
     llm_base_url: String,
 
@@ -270,7 +270,7 @@ mod tests {
     #[test]
     fn test_secret_file_roundtrip_override_and_missing() {
         let dir = std::env::temp_dir().join(format!(
-            "uv092-secret-{}-{}",
+            "reg092-secret-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)

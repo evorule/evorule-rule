@@ -1,4 +1,4 @@
-//! 密钥环便捷封装（45 号 §3 密钥管理 · K1/K4/K6 端到端影子）
+//! 密钥环便捷封装（设计文档 §3 密钥管理 · K1/K4/K6 端到端影子）
 //!
 //! - 从 `KeyRing`（model::secret）构造：JWT 签名密钥 active+previous 双代 → 生成 `AuthService`；
 //! - 提供 K6 审计落库便捷函数（key.rotate → AuthAudit → RuleStore record_auth_audit）。
@@ -32,9 +32,9 @@ pub fn auth_service_from_keyring(
     ))
 }
 
-/// K6：把密钥操作审计落库（only-append，第 35 号 §6 明文永不进审计）。
+/// K6：把密钥操作审计落库（only-append，第 设计文档 §6 明文永不进审计）。
 ///
-/// 与鉴权审计共用 `auth_audits`（43 号 §6），action 前缀 `key.` 区分。
+/// 与鉴权审计共用 `auth_audits`（设计文档 §6），action 前缀 `key.` 区分。
 pub fn persist_key_audit(store: &RuleStore, audit: AuthAudit) -> Result<(), StoreError> {
     store.record_auth_audit(&audit)?;
     Ok(())

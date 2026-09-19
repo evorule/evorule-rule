@@ -1,7 +1,7 @@
-//! 条目级端点（44 号 §5 补全）：编辑 / 删除 / 提交候选 / 审批 / 历史 / 依赖
+//! 条目级端点（设计文档 §5 补全）：编辑 / 删除 / 提交候选 / 审批 / 历史 / 依赖
 //!
 //! 路由形态：顶层 `/entries/{id}`（entry_id 租户内定位，跨数据集查首个匹配）。
-//! 闸门语义（34 号）：submit-candidate 需携带沙箱证据 `sandbox_report_id`（闸门一）；
+//! 闸门语义（历史批次）：submit-candidate 需携带沙箱证据 `sandbox_report_id`（闸门一）；
 //! approve 为闸门二（Candidate→Active，审批者角色）。
 
 use axum::extract::{Extension, Path, Query, State};
@@ -146,7 +146,7 @@ pub async fn delete_entry(
 /// POST /entries/{id}/submit-candidate —— 闸门一：Draft → Candidate（需沙箱 verdict=pass 证据）
 #[derive(Deserialize)]
 pub struct SubmitCandidateReq {
-    /// 沙箱验证报告 ID（闸门一证据，34 号）
+    /// 沙箱验证报告 ID（闸门一证据，历史批次）
     pub sandbox_report_id: String,
 }
 
@@ -248,7 +248,7 @@ pub async fn history(
     Ok(Json(hist))
 }
 
-/// GET /entries/{id}/deps —— 条目级 data_source_binding（35 号 §3 层 2 绑定）
+/// GET /entries/{id}/deps —— 条目级 data_source_binding（设计文档 §3 层 2 绑定）
 pub async fn deps(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
@@ -263,7 +263,7 @@ pub async fn deps(
 }
 
 // ----------------------------------------------------------------------
-// 顶层条目列表 / 详情 / 创建（44 号 §5：GET/POST /entries）
+// 顶层条目列表 / 详情 / 创建（设计文档 §5：GET/POST /entries）
 // ----------------------------------------------------------------------
 
 #[derive(Deserialize)]
@@ -302,7 +302,7 @@ impl EntryListQuery {
 /// GET /entries —— 租户内条目列表（可选 ?dataset_id= 过滤；Q12 R4：含 knowledge 数据条目）
 ///
 /// Q12 段2：domain/tags/q 过滤对 rule/knowledge 同口径（P3）；
-/// `?dataset_id=` 指向他租户 **Public+Published** 数据集时条目只读可见（P4/V2，34 号 §3 双条件）。
+/// `?dataset_id=` 指向他租户 **Public+Published** 数据集时条目只读可见（P4/V2，设计文档 §3 双条件）。
 pub async fn list_entries_all(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
@@ -368,7 +368,7 @@ pub async fn get_entry(
     Ok(Json(entry.to_json()))
 }
 
-/// GET /entries/{id}/versions —— 条目版本历史（C1，33 号 §6 历史可回查）
+/// GET /entries/{id}/versions —— 条目版本历史（C1，设计文档 §6 历史可回查）
 pub async fn entry_versions(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
@@ -416,7 +416,7 @@ pub async fn entry_versions(
 ///
 /// 版本链端点仅给摘要（version/status/content_hash）；本端点补齐逐版本载荷。
 /// store 层 entries/knowledge_entries 均按 PK=(dataset_id, entry_id, version) 全版本留痕
-/// （33 号 §6），历史载荷可回查；规则/知识平行表分流取数。
+/// （设计文档 §6），历史载荷可回查；规则/知识平行表分流取数。
 pub async fn entry_version_payload(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
@@ -450,7 +450,7 @@ pub async fn entry_version_payload(
     })))
 }
 
-/// GET /entries/{id}/diff?from=..&to=.. —— 条目内容级 diff（C2，44 号 §9 / 33 号）
+/// GET /entries/{id}/diff?from=..&to=.. —— 条目内容级 diff（C2，设计文档 §9 / 历史批次）
 #[derive(Deserialize)]
 pub struct EntryDiffQuery {
     pub from: u32,

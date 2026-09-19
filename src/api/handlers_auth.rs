@@ -1,4 +1,4 @@
-//! 认证端点（44 号 §7）：register / login / refresh / me / audits
+//! 认证端点（设计文档 §7）：register / login / refresh / me / audits
 
 use axum::extract::{Extension, State};
 use axum::http::StatusCode;
@@ -151,7 +151,7 @@ pub async fn refresh(
     }))
 }
 
-/// 登出（43 号 §3.3）：吊销 refresh token（拉黑至 exp），其后用该 token 刷新将失败
+/// 登出（设计文档 §3.3）：吊销 refresh token（拉黑至 exp），其后用该 token 刷新将失败
 pub async fn logout(
     State(state): State<AppState>,
     Json(req): Json<LogoutReq>,
@@ -180,7 +180,7 @@ pub async fn me(
     }))
 }
 
-/// 认证审计列表（仅管理员，43 号 §6）
+/// 认证审计列表（仅管理员，设计文档 §6）
 pub async fn audits(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
@@ -192,7 +192,7 @@ pub async fn audits(
     Ok(Json(audits))
 }
 
-/// 生命周期审计列表（44 号 §11 `GET /audits/lifecycle`，admin；34 号 state_history 扁平输出）
+/// 生命周期审计列表（设计文档 §11 `GET /audits/lifecycle`，admin；历史批次 state_history 扁平输出）
 pub async fn lifecycle_audits(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,

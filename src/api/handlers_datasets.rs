@@ -1,4 +1,4 @@
-//! 数据集 / 条目 / 生命周期 / 快照包端点（44 号 §8-§11）
+//! 数据集 / 条目 / 生命周期 / 快照包端点（设计文档 §8-§11）
 
 use axum::extract::{Extension, Path, Query, State};
 use axum::http::StatusCode;
@@ -190,7 +190,7 @@ pub async fn get_dataset(
         .store
         .get_dataset(&id)?
         .ok_or_else(|| ApiError::not_found("数据集不存在"))?;
-    // 数据隔离（⑧）：本租户可见；跨租户 **Public+Published**（34 号 §3 双条件）只读可见
+    // 数据隔离（⑧）：本租户可见；跨租户 **Public+Published**（设计文档 §3 双条件）只读可见
     // （段2 P4/V1：与 search_datasets 跨租户检索口径一致；写操作仍被租户+角色拦截）
     if ds.tenant_id != ctx.tenant_id && !state.store.is_publicly_pullable(&id)? {
         return Err(ApiError::not_found("数据集不存在"));
@@ -199,7 +199,7 @@ pub async fn get_dataset(
 }
 
 // ----------------------------------------------------------------------
-// 生命周期迁移（44 号 §13-3：统一 PATCH /lifecycle）+ 独立发布
+// 生命周期迁移（设计文档 §13-3：统一 PATCH /lifecycle）+ 独立发布
 // ----------------------------------------------------------------------
 
 #[derive(Deserialize)]
@@ -225,7 +225,7 @@ pub async fn transition_lifecycle(
         }
         other => return Err(ApiError::bad_request(format!("非法目标状态: {other}"))),
     };
-    // 状态迁移权限（34 号 §9 定案：闸门/审批/撤销需对应角色）
+    // 状态迁移权限（设计文档 §9 定案：闸门/审批/撤销需对应角色）
     let allowed = match to {
         LifecycleStatus::Candidate => can(ctx.role, Action::Create),
         LifecycleStatus::Active => can(ctx.role, Action::Approve),
@@ -235,7 +235,7 @@ pub async fn transition_lifecycle(
     if !allowed {
         return Err(ApiError::forbidden("当前角色无权执行该状态迁移"));
     }
-    // 租户归属校验（38 号 §10-3：跨租户返回 404，防越权迁移他租户数据集）
+    // 租户归属校验（设计文档 §10-3：跨租户返回 404，防越权迁移他租户数据集）
     let owned = state
         .store
         .get_dataset(&id)?
@@ -258,9 +258,9 @@ pub async fn transition_lifecycle(
     Ok(Json(ds))
 }
 
-/// 独立发布审批（34 号 §3 强约束）：Active → Published，发布者复用审批者 + 二次确认
+/// 独立发布审批（设计文档 §3 强约束）：Active → Published，发布者复用审批者 + 二次确认
 ///
-/// 二次确认（34 号 §9-1 / 38 号 §10-2 定案"防误发"；设计未定义具体协议）：
+/// 二次确认（设计文档 §9-1 / 设计文档 §10-2 定案"防误发"；设计未定义具体协议）：
 /// MVP 以**显式确认字段**固化——请求体必须携带且 `confirm==true` 才执行，
 /// 否则返回 400（把"弹窗二次确认"固化为接口契约，防误发；双步 token 回执后置批次 1）。
 #[derive(Deserialize)]
@@ -281,7 +281,7 @@ pub async fn publish(
     if !can(ctx.role, Action::Publish) {
         return Err(ApiError::forbidden("发布需审批者及以上角色"));
     }
-    // 租户归属校验（38 号 §10-3：SQL 层 + 应用层补偿，跨租户返回 404）
+    // 租户归属校验（设计文档 §10-3：SQL 层 + 应用层补偿，跨租户返回 404）
     let ds = state
         .store
         .get_dataset(&id)?
@@ -291,7 +291,7 @@ pub async fn publish(
     }
     if !req.confirm {
         return Err(ApiError::bad_request(
-            "发布需二次确认：请求体须携带 confirm=true（防误发，34 号 §9-1）",
+            "发布需二次确认：请求体须携带 confirm=true（防误发，设计文档 §9-1）",
         ));
     }
     // 闸门③：auto 模式（含缺省）缺生效基准 → 发布即拒（硬闸门，口径与
@@ -313,7 +313,7 @@ pub async fn publish(
 }
 
 // ----------------------------------------------------------------------
-// 数据集元数据 / 版本 / 撤销发布（44 号 §4 补全）
+// 数据集元数据 / 版本 / 撤销发布（设计文档 §4 补全）
 // ----------------------------------------------------------------------
 
 #[derive(Deserialize)]
@@ -397,7 +397,7 @@ pub async fn delete_dataset_meta(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// GET /datasets/{id}/versions —— 版本链（33 号）
+/// GET /datasets/{id}/versions —— 版本链（历史批次）
 pub async fn list_versions(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
@@ -456,7 +456,7 @@ pub struct NewVersionReq {
     pub kind: String,
 }
 
-/// POST /datasets/{id}/versions —— 创建新版本（决策点③ 两级变更线）
+/// POST /datasets/{id}/versions —— 创建新版本（既定设计决策 两级变更线）
 pub async fn create_version(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
@@ -488,7 +488,7 @@ pub async fn create_version(
     })))
 }
 
-/// POST /datasets/{id}/versions/{ver}/patch —— 对指定版本创建 Patch（内部小改，33 号）
+/// POST /datasets/{id}/versions/{ver}/patch —— 对指定版本创建 Patch（内部小改，历史批次）
 ///
 /// MVP 仅当前版本可补丁（历史版本内容未落库），非当前版本 → 显式拒绝不伪造。
 pub async fn create_patch(
@@ -537,7 +537,7 @@ pub async fn unpublish(
     if !is_org_admin(ctx.role) {
         return Err(ApiError::forbidden("撤销发布需管理员角色"));
     }
-    // 租户归属校验（38 号 §10-3：跨租户返回 404，防越权撤销他租户发布）
+    // 租户归属校验（设计文档 §10-3：跨租户返回 404，防越权撤销他租户发布）
     let owned = state
         .store
         .get_dataset(&id)?
@@ -607,7 +607,7 @@ pub async fn list_entries(
         return Err(ApiError::not_found("数据集不存在"));
     }
     // Q12 R4：按数据集类型分流（rule_set → 规则条目；knowledge → 数据条目）
-    // B3（段B 14 号）：filter=... 条目查询表达式（SSOT 过滤核 = evorule-bundle EntryFilter，
+    // B3（段B 历史批次）：filter=... 条目查询表达式（SSOT 过滤核 = evorule-bundle EntryFilter，
     // 与 bundle subset 语法同族）；过滤视图走 BundleEntry 映射，命中后回留原始 JSON（保留治理上下文）。
     let (entries, view): (Vec<Value>, Vec<crate::bundle::BundleEntry>) = match ds.dataset_kind {
         DatasetKind::RuleSet => {
@@ -766,7 +766,7 @@ pub async fn add_entry(
 }
 
 // ----------------------------------------------------------------------
-// 快照包（36 号：导出交付；支持 JWT 或 X-Api-Key(pull)）
+// 快照包（导出交付；支持 JWT 或 X-Api-Key(pull)）
 // ----------------------------------------------------------------------
 
 /// 快照包拉取：优先 Bearer（登录用户，本租户或 public+Published），否则 X-Api-Key(pull scope)
@@ -775,7 +775,7 @@ pub async fn get_bundle(
     headers: axum::http::HeaderMap,
     Path(id): Path<String>,
 ) -> Result<Json<crate::bundle::DatasetBundle>, ApiError> {
-    // 1) X-Api-Key（执行侧联动，44 号 §14：pull scope）
+    // 1) X-Api-Key（执行侧联动，设计文档 §14：pull scope）
     if let Some(k) = api_key_from_header(&headers) {
         let hash = sha256_hex(k);
         let key = state
@@ -818,7 +818,7 @@ async fn export_for(
         .store
         .get_dataset(dataset_id)?
         .ok_or_else(|| ApiError::not_found("数据集不存在"))?;
-    // 拉取条件：本租户任意状态 或 public+Published（34 号对外双条件）
+    // 拉取条件：本租户任意状态 或 public+Published（历史批次对外双条件）
     let pullable = ds.tenant_id == tenant_id || state.store.is_publicly_pullable(dataset_id)?;
     if !pullable {
         return Err(ApiError::forbidden(

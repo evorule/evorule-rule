@@ -5,7 +5,7 @@
 //! - `GET /services/{name}`：详情
 //! - `PUT /services/{name}`：更新（admin）
 //!
-//! 边界：目录存「服务描述」不存端点/凭据（凭据永不入库，35 号 §6）。
+//! 边界：目录存「服务描述」不存端点/凭据（凭据永不入库，设计文档 §6）。
 
 use axum::extract::{Extension, Path, State};
 use axum::http::StatusCode;

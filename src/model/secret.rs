@@ -1,16 +1,16 @@
-//! 密钥抽象层（45 号 §3 密钥管理 · K1，MVP 档）
+//! 密钥抽象层（设计文档 §3 密钥管理 · K1，MVP 档）
 //!
-//! # 对齐 45 号 §3 / §6 定案（2026-08-22）
+//! # 对齐 设计文档 §3 / §6 定案（2026-08-22）
 //! MVP 档位（§6 定案）：本地密钥 + 环境/代码内注入，**明确标注非生产**；双密钥轮换（active+previous）
 //! 保持 **HS256 对称密钥**（§6：JWT MVP 维持 HS256，RS256 非对称 → Vault 为生产项，如实 deferred）。
 //! 静态加密 / DEK-KEK 信封（§3.1 DEK 行）、Vault/KMS、RS256+jwks 均属生产级后续，**本档不实现**。
 //!
 //! # 结构
-//! - `SecretScope`：密钥类（五类，45 号 §3.1 密钥分级）。
+//! - `SecretScope`：密钥类（五类，设计文档 §3.1 密钥分级）。
 //! - `SecretKey`：单个密钥值 + 元信息（scope/代号/创建时间），**绝不泄露明文**（不 Display）。
 //! - `KeyRing`：以 scope 为键的双代密钥容器（active + previous），提供轮换（rotate）与取用（access）。
 //!
-//! # 双代轮换语义（45 号 §3.3）
+//! # 双代轮换语义（设计文档 §3.3）
 //! - 新数据用 active 加密/签名；旧数据（用 previous 加密/签名）仍可解/验（backward 兼容）；
 //! - `rotate()`：生成新密钥 → 升为新 active；旧 active 降为 previous；旧 previous 丢弃；
 //! - JWT：签发用 active，验签先试 active 再试 previous（§3.3 "旧公钥保留验证" 的对称版）。
@@ -20,14 +20,14 @@ use sha2::{Digest, Sha256};
 
 use crate::model::auth::AuthAudit;
 
-/// 密钥类（45 号 §3.1 密钥分级）
+/// 密钥类（设计文档 §3.1 密钥分级）
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SecretScope {
     /// JWT 签名密钥（access/refresh；MVP=HS256 对称）
     Jwt,
     /// 租户凭据（执行侧 service_registry 头 / 外部服务密钥，按租户隔离）
     TenantCredentials,
-    /// API key 哈希盐（HKDF 派生盐，44 号 §10）
+    /// API key 哈希盐（HKDF 派生盐，设计文档 §10）
     ApiHashSalt,
     /// 数据加密密钥（静态加密，**MVP 后置**，此处仅占位）
     Dek,
@@ -96,7 +96,7 @@ impl KeyRing {
             .or_else(|| self.access_previous(scope))
     }
 
-    /// 轮换（双代，45 号 §3.3）：新 active = 生成；旧 active → previous；旧 previous 丢弃。
+    /// 轮换（双代，设计文档 §3.3）：新 active = 生成；旧 active → previous；旧 previous 丢弃。
     ///
     /// - `generator`：生成新密钥字节（测试可注入固定，生产用安全随机）。
     /// - 返回审计记录（key.rotate，detail 含 scope/本轮前后 generation，**不含明文**）。
@@ -120,7 +120,7 @@ impl KeyRing {
             user_id: None, // 系统级轮换；操作者由调用方审计层补充
             tenant_id: "system".to_string(),
             outcome: "success".to_string(),
-            // 只记 scope/代次，不记明文（35 号 §6）
+            // 只记 scope/代次，不记明文（设计文档 §6）
             detail: Some(format!(
                 "scope={} previous={} active",
                 scope.key(),

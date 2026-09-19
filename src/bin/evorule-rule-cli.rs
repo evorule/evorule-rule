@@ -1,4 +1,4 @@
-//! evorule-rule-cli —— 治理服务 REST 命令行客户端（B3 段B 14 号）。
+//! evorule-rule-cli —— 治理服务 REST 命令行客户端（B3 段B 历史批次）。
 //!
 //! 纯 REST 接入，不对 db 直连；导入走 /v1/bundles/import 同一校验链（单一 SSOT 门禁）。
 //! 用法：

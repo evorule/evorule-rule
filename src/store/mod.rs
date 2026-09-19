@@ -1,4 +1,4 @@
-//! SQLite 存储层（31 号 §8）
+//! SQLite 存储层（设计文档 §8）
 //!
 //! 存储策略：SQLite（索引/元数据）+ JSON（rule_body 原样保存，零转译）。
 //! - 表：`datasets`（元数据列 + JSON 块）、`entries`（rule_body 以 JSON 文本列保存）；
@@ -8,7 +8,7 @@
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use thiserror::Error;
 
-/// PostgreSQL 生产后端（45 号批次1 §2）：仅 `--features postgres` 编译。
+/// PostgreSQL 生产后端（历史批次1 §2）：仅 `--features postgres` 编译。
 /// 默认 SQLite（`RuleStore`）仍是 MVP 活跃引擎，本模块为生产级后续接线位（骨架）。
 #[cfg(feature = "postgres")]
 pub mod pg;
@@ -348,7 +348,7 @@ impl RuleStore {
                 domain      TEXT NOT NULL,
                 tags        TEXT NOT NULL DEFAULT '[]',
                 data_source_binding TEXT NOT NULL DEFAULT '[]',
-                consumed_inputs TEXT NOT NULL DEFAULT '[]',  -- 35 号 §4：推入式输入符号
+                consumed_inputs TEXT NOT NULL DEFAULT '[]',  -- 设计文档 §4：推入式输入符号
                 rule_body   TEXT NOT NULL,                   -- evorule 原生 JSON（零转译）
                 governance  TEXT,                            -- JSON nullable
                 content_hash TEXT NOT NULL,
@@ -358,7 +358,7 @@ impl RuleStore {
             CREATE INDEX IF NOT EXISTS idx_entries_domain ON entries(dataset_id, domain);
             CREATE INDEX IF NOT EXISTS idx_entries_hash ON entries(dataset_id, content_hash);
 
-            -- 33 号 §6 / C1（内容哈希落库去重）：内容寻址快照，key=(dataset, content_hash)。
+            -- 设计文档 §6 / C1（内容哈希落库去重）：内容寻址快照，key=(dataset, content_hash)。
             -- 未变条目跨版本复用同一快照行（零拷贝，rule_body 不重复存储）；entries 仍内联
             -- rule_body 以兼容现有读取路径与既有库动态迁移（物理去重/移除内联列为存储层后续项）。
             -- created_at 用于去重统计与可见性。
@@ -372,10 +372,10 @@ impl RuleStore {
             );
             CREATE INDEX IF NOT EXISTS idx_snapshots_ds ON entry_snapshots(dataset_id);
 
-            -- 45 号批次1 / 33 号 §6：数据集版本内容归因快照（闭合 C 类残留）。
+            -- 历史批次1 / 设计文档 §6：数据集版本内容归因快照（闭合 C 类残留）。
             -- 记录每个数据集版本的条目 content_hash 归因（不可变）："哪一数据集版本含哪几条快照"。
             -- 由 create_dataset_version 落库；version_diff 据此做内容归因级 diff（先于 PostgreSQL 迁移，
-            -- 治理数据 MVP 仍 SQLite，45 号 §5 如实标注）。
+            -- 治理数据 MVP 仍 SQLite，设计文档 §5 如实标注）。
             CREATE TABLE IF NOT EXISTS dataset_versions (
                 dataset_id   TEXT NOT NULL,
                 version      TEXT NOT NULL,               -- 数据集版本号（v1 / v1.p1）
@@ -387,10 +387,10 @@ impl RuleStore {
             );
             CREATE INDEX IF NOT EXISTS idx_dsver_ds ON dataset_versions(dataset_id, version);
 
-            -- B4（段B 14 号）：版本级全量条目快照 —— 历史版本导出的内容源。
+            -- B4（段B 历史批次）：版本级全量条目快照 —— 历史版本导出的内容源。
             -- 与 entry_snapshots(C1，仅 rule_body)/dataset_versions(仅归因哈希) 互补：
             -- 存完整条目 JSON，足以重建导出所需的 provenance/domain/tags/绑定治理上下文。
-            -- 实施计划（14 号 B4）原命名 entry_snapshots 与 C1 去重表重名，故定名 dataset_version_snapshots。
+            -- 实施计划（历史批次 B4）原命名 entry_snapshots 与 C1 去重表重名，故定名 dataset_version_snapshots。
             -- 幂等：同 (dataset, version, entry) 覆盖不重复（重复推进不重复存储）。
             -- 磁盘占用说明：每行 ≈ 条目 JSON 体积；跨版本未变条目按条目仍各留一行（归因清晰优先于
             -- 物理去重，物理去重由 C1 entry_snapshots 承担；存储层后续项再收敛），O(版本数 × 条目数)。
@@ -408,7 +408,7 @@ impl RuleStore {
             );
             CREATE INDEX IF NOT EXISTS idx_dvsnap_ver ON dataset_version_snapshots(dataset_id, version);
 
-            -- 37 号 §8：LLM 命名操作审计（"LLM 每步可审计"）
+            -- 设计文档 §8：LLM 命名操作审计（"LLM 每步可审计"）
             CREATE TABLE IF NOT EXISTS llm_op_audit (
                 request_id   TEXT PRIMARY KEY,
                 operation    TEXT NOT NULL,                 -- draft_rule / gen_tests / explain_rule
@@ -422,11 +422,11 @@ impl RuleStore {
             CREATE INDEX IF NOT EXISTS idx_audit_op_time
                 ON llm_op_audit(operation, created_at);
 
-            -- 43 号：认证与用户身份（正交 A，MVP 单租户实例）
+            -- 认证与用户身份（正交 A，MVP 单租户实例）
             CREATE TABLE IF NOT EXISTS tenants (
                 tenant_id    TEXT PRIMARY KEY,
                 name         TEXT NOT NULL,
-                instance_id  TEXT NOT NULL,                 -- 39 号：真实实例身份，进溯源
+                instance_id  TEXT NOT NULL,                 -- 真实实例身份，进溯源
                 created_at   TEXT NOT NULL
             );
             CREATE TABLE IF NOT EXISTS users (
@@ -474,7 +474,7 @@ impl RuleStore {
             CREATE INDEX IF NOT EXISTS idx_membership_org
                 ON user_org_memberships(org_id);
 
-            -- 43 号 §3.3：JWT 撤销黑名单（登出后按 jti 拉黑至 exp，防刷新旋转续用）
+            -- 设计文档 §3.3：JWT 撤销黑名单（登出后按 jti 拉黑至 exp，防刷新旋转续用）
             CREATE TABLE IF NOT EXISTS revoked_tokens (
                 jti        TEXT PRIMARY KEY,
                 tenant_id  TEXT NOT NULL,
@@ -486,7 +486,7 @@ impl RuleStore {
             CREATE INDEX IF NOT EXISTS idx_revoked_token_exp
                 ON revoked_tokens(expires_at);
 
-            -- 44 号 §14：API Key（MVP 最小 scope 版，仅存哈希）
+            -- 设计文档 §14：API Key（MVP 最小 scope 版，仅存哈希）
             CREATE TABLE IF NOT EXISTS api_keys (
                 key_id     TEXT PRIMARY KEY,
                 tenant_id  TEXT NOT NULL,
@@ -499,7 +499,7 @@ impl RuleStore {
             );
             CREATE INDEX IF NOT EXISTS idx_api_keys_tenant ON api_keys(tenant_id, revoked_at);
 
-            -- 44 号 §5：条目级状态迁移审计（only-append，`GET /entries/{id}/history`）
+            -- 设计文档 §5：条目级状态迁移审计（only-append，`GET /entries/{id}/history`）
             CREATE TABLE IF NOT EXISTS entry_state_history (
                 id         INTEGER PRIMARY KEY AUTOINCREMENT,
                 dataset_id TEXT NOT NULL,
@@ -516,7 +516,7 @@ impl RuleStore {
             CREATE INDEX IF NOT EXISTS idx_esh_entry
                 ON entry_state_history(dataset_id, entry_id, version);
 
-            -- 44 号 §7：无凭据服务模板注册（35 号 §5）
+            -- 设计文档 §7：无凭据服务模板注册（设计文档 §5）
             CREATE TABLE IF NOT EXISTS service_templates (
                 template_id       TEXT PRIMARY KEY,
                 tenant_id         TEXT NOT NULL,
@@ -550,7 +550,7 @@ impl RuleStore {
             CREATE INDEX IF NOT EXISTS idx_catalog_scope ON service_catalog(scope);
             "#,
         )?;
-        // 轻量迁移：若旧库 entries 表缺 35 号新增的 consumed_inputs 列，则补齐
+        // 轻量迁移：若旧库 entries 表缺历史批次新增的 consumed_inputs 列，则补齐
         // （CREATE TABLE IF NOT EXISTS 不会为已存在表加列，需显式 ALTER）
         let _ = conn.execute(
             "ALTER TABLE entries ADD COLUMN consumed_inputs TEXT NOT NULL DEFAULT '[]'",
@@ -561,7 +561,7 @@ impl RuleStore {
             "ALTER TABLE datasets ADD COLUMN dataset_kind TEXT NOT NULL DEFAULT 'rule_set'",
             [],
         );
-        // B5（段B 14 号）：datasets 表补 event_schemas 列（JSON 数组，存量默认 '[]'，零迁移成本）
+        // B5（段B 历史批次）：datasets 表补 event_schemas 列（JSON 数组，存量默认 '[]'，零迁移成本）
         let _ = conn.execute(
             "ALTER TABLE datasets ADD COLUMN event_schemas TEXT NOT NULL DEFAULT '[]'",
             [],
@@ -601,7 +601,7 @@ impl RuleStore {
                     REFERENCES knowledge_entries(dataset_id, entry_id, version)
             );
 
-            -- knowledge 内容寻址快照去重（33 号 §6 同语义）
+            -- knowledge 内容寻址快照去重（设计文档 §6 同语义）
             CREATE TABLE IF NOT EXISTS knowledge_snapshots (
                 dataset_id   TEXT NOT NULL,
                 content_hash TEXT NOT NULL,
@@ -823,7 +823,7 @@ impl RuleStore {
         )?)
     }
 
-    /// 删除数据集（44 号 §4：仅 Draft/Rejected 态，admin 权限由 handler 把关）
+    /// 删除数据集（设计文档 §4：仅 Draft/Rejected 态，admin 权限由 handler 把关）
     ///
     /// 双修复：
     /// ① 子表全量清理——补齐三张漏网快照/版本表（entry_snapshots / dataset_versions /
@@ -885,7 +885,7 @@ impl RuleStore {
         Ok(())
     }
 
-    /// 数据集版本链（44 号 §4 `GET /datasets/{id}/versions`）
+    /// 数据集版本链（设计文档 §4 `GET /datasets/{id}/versions`）
     pub fn list_dataset_versions(&self, dataset_id: &str) -> Result<Versioning, StoreError> {
         Ok(self
             .get_dataset(dataset_id)?
@@ -962,15 +962,15 @@ impl RuleStore {
     }
 
     // ------------------------------------------------------------------
-    // 版本与发布（决策点②：数据集版本 = 版本与发布最小单位；决策点③：两级变更线）
+    // 版本与发布（既定设计决策：数据集版本 = 版本与发布最小单位；既定设计决策：两级变更线）
     // ------------------------------------------------------------------
 
     /// 创建数据集新版本（升版 `Major` / `Patch`）。
     ///
     /// 语义：
     /// - 新版本 = 新编辑循环：生命周期重置为 `Draft`，`state_history` 记录审计 cause
-    ///   （34 号 §6：v1 可能 Published、v2 还在 Draft；MVP 单 lifecycle 字段 = 当前版本生命周期）；
-    /// - 版本链只追加、版本号不可复用（`Versioning::bump` / 33 号 §8）；
+    ///   （设计文档 §6：v1 可能 Published、v2 还在 Draft；MVP 单 lifecycle 字段 = 当前版本生命周期）；
+    /// - 版本链只追加、版本号不可复用（`Versioning::bump` / 设计文档 §8）；
     /// - 返回新版本号。
     pub fn create_dataset_version(
         &self,
@@ -984,7 +984,7 @@ impl RuleStore {
         };
         // 版本链完整性（防损坏数据被继续追加）
         ds.versioning.validate()?;
-        // 旧版本号（触发升版的版本）：为它落库条目 content_hash 归因（45 号批次1 / C 类闭合）
+        // 旧版本号（触发升版的版本）：为它落库条目 content_hash 归因（历史批次1 / C 类闭合）
         let old_version = ds.versioning.current.clone();
         // 按变更线生成新版本
         let new_versioning = ds.versioning.bump(kind)?;
@@ -1003,7 +1003,7 @@ impl RuleStore {
         // 元数据更新时间
         ds.meta.updated_at = Some(at.into());
         ds.meta.updated_by = Some(by.into());
-        // 内容归因落库（45 号批次1）+ 版本级全量条目快照落库（段B：解锁历史版本导出）。
+        // 内容归因落库（历史批次1）+ 版本级全量条目快照落库（段B：解锁历史版本导出）。
         // POST-bump 前当前 entries = 旧版本内容；先收集（list_* 内部自行加锁）再持锁写库。
         let rule_entries = self.list_entries(dataset_id, None)?;
         let knowledge_entries = self.list_knowledge_entries(dataset_id, None)?;
@@ -1020,7 +1020,7 @@ impl RuleStore {
                 dataset_id,
             ],
         )?;
-        // 归因行（45 号批次1）：记录"旧版本含哪些条目快照"；跨版本未变内容复用同哈希，
+        // 归因行（历史批次1）：记录"旧版本含哪些条目快照"；跨版本未变内容复用同哈希，
         // 归因行按 (version, content_hash) 唯一（与 pg.rs 幂等口径一致）。
         {
             let mut stmt = tx.prepare(
@@ -1152,7 +1152,7 @@ impl RuleStore {
             });
         }
         // 5) 写入
-        // 5a) 内容寻址快照去重落库（33 号 §6/C1）：未变内容跨版本复用同一快照行
+        // 5a) 内容寻址快照去重落库（设计文档 §6/C1）：未变内容跨版本复用同一快照行
         conn.execute(
             "INSERT INTO entry_snapshots(dataset_id, content_hash, rule_body, created_at)
              VALUES (?1, ?2, ?3, ?4)
@@ -1233,7 +1233,7 @@ impl RuleStore {
                 entry: entry.entry_id.clone(),
             });
         }
-        // 3) LLM 边界（37 号强约束同口径：LLM 产出只能停留 Draft）
+        // 3) LLM 边界（历史批次强约束同口径：LLM 产出只能停留 Draft）
         if entry.is_llm_generated() && entry.status != Some(LifecycleStatus::Draft) {
             return Err(StoreError::Validation(
                 ValidationError::LlmGeneratedNotDraft {
@@ -1268,7 +1268,7 @@ impl RuleStore {
                 version: entry.version,
             });
         }
-        // 6) 写入（内容寻址快照去重落库，33 号 §6/C1 同语义）
+        // 6) 写入（内容寻址快照去重落库，设计文档 §6/C1 同语义）
         conn.execute(
             "INSERT INTO knowledge_snapshots(dataset_id, content_hash, payload, created_at)
              VALUES (?1, ?2, ?3, ?4)
@@ -1573,7 +1573,7 @@ impl RuleStore {
         Ok(())
     }
 
-    /// knowledge 条目级状态迁移（44 号 §5 同口径：闸门一/闸门二/拒绝；only-append 审计）
+    /// knowledge 条目级状态迁移（设计文档 §5 同口径：闸门一/闸门二/拒绝；only-append 审计）
     pub fn transition_knowledge_entry_status(
         &self,
         dataset_id: &str,
@@ -1590,7 +1590,7 @@ impl RuleStore {
             });
         };
         let from = entry.status.unwrap_or(LifecycleStatus::Active);
-        // LLM 产出只能停留 Draft（37 号强约束，同 RuleEntry 口径）
+        // LLM 产出只能停留 Draft（历史批次强约束，同 RuleEntry 口径）
         if entry.is_llm_generated() && to != LifecycleStatus::Draft {
             return Err(StoreError::Validation(
                 ValidationError::LlmGeneratedNotDraft {
@@ -1805,7 +1805,7 @@ impl RuleStore {
             .collect()
     }
 
-    /// 条目版本历史（C1：内容寻址落库后可回查；33 号 §6 历史可回查）。升序返回全部版本。
+    /// 条目版本历史（C1：内容寻址落库后可回查；设计文档 §6 历史可回查）。升序返回全部版本。
     pub fn list_entry_versions(
         &self,
         dataset_id: &str,
@@ -1829,10 +1829,10 @@ impl RuleStore {
         Ok(out)
     }
 
-    /// 内容级 diff（C2，44 号 §9 / 33 号）：对比条目两个版本的**内容快照**。
+    /// 内容级 diff（C2，设计文档 §9 / 历史批次）：对比条目两个版本的**内容快照**。
     ///
     /// - `content_hash` 相同 → 未变；不同 → 已变（给出规则体 JSON 键级差异摘要 added/removed/changed）。
-    /// - 同一 `content_hash` 跨版本共享同一快照行（33 号 §6 去重语义）。
+    /// - 同一 `content_hash` 跨版本共享同一快照行（设计文档 §6 去重语义）。
     pub fn entry_content_diff(
         &self,
         dataset_id: &str,
@@ -1871,7 +1871,7 @@ impl RuleStore {
             "from_content_hash": from_hash,
             "to_content_hash": to_hash,
             "changed": from_hash != to_hash,
-            "note": "内容级 diff：content_hash 刻定规则体内容；跨版本共享同一快照行（33 号 §6）",
+            "note": "内容级 diff：content_hash 刻定规则体内容；跨版本共享同一快照行（设计文档 §6）",
         });
         if from_hash != to_hash {
             let (added, removed, changed) = json_keywise_diff(&from.rule_body, &to.rule_body);
@@ -1919,7 +1919,7 @@ impl RuleStore {
             "from_content_hash": from_hash,
             "to_content_hash": to_hash,
             "changed": from_hash != to_hash,
-            "note": "内容级 diff：content_hash 刻定 payload 内容；跨版本共享同一快照行（33 号 §6）",
+            "note": "内容级 diff：content_hash 刻定 payload 内容；跨版本共享同一快照行（设计文档 §6）",
         });
         if from_hash != to_hash {
             let (added, removed, changed) = json_keywise_diff(&from.payload, &to.payload);
@@ -1953,7 +1953,7 @@ impl RuleStore {
     }
 
     // ------------------------------------------------------------------
-    // LLM 操作审计（37 号 §8："LLM 每步可审计"）
+    // LLM 操作审计（设计文档 §8："LLM 每步可审计"）
     // ------------------------------------------------------------------
 
     /// 记录一条 LLM 命名操作审计（request_id 唯一；同 id 重试 → 覆盖，幂等）。
@@ -2005,7 +2005,7 @@ impl RuleStore {
         })
     }
 
-    /// 按过滤条件列出审计记录（对外展示接口，37 号 §8）
+    /// 按过滤条件列出审计记录（对外展示接口，设计文档 §8）
     ///
     /// 可按操作/状态过滤，按时间倒序，`limit` 上限；空过滤条件 = 全量倒序。
     pub fn list_llm_audits_filtered(
@@ -2036,7 +2036,7 @@ impl RuleStore {
         rows.collect::<Result<_, _>>().map_err(Into::into)
     }
 
-    /// 审计统计摘要（对外展示接口，37 号 §8）
+    /// 审计统计摘要（对外展示接口，设计文档 §8）
     ///
     /// 总条数 / 成功 / 失败 / 平均耗时，并按操作维度聚合（供报表与"LLM 每步可审计"展示）。
     pub fn llm_audit_stats(&self) -> Result<LlmAuditStats, StoreError> {
@@ -2113,7 +2113,7 @@ impl RuleStore {
         // UPDATE 失败 = 孤儿快照残留；同 knowledge 侧口径）
         let mut conn = self.conn.lock().unwrap();
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        // 内容寻址快照去重落库（33 号 §6/C1）
+        // 内容寻址快照去重落库（设计文档 §6/C1）
         tx.execute(
             "INSERT INTO entry_snapshots(dataset_id, content_hash, rule_body, created_at)
              VALUES (?1, ?2, ?3, ?4)
@@ -2164,7 +2164,7 @@ impl RuleStore {
     /// 状态迁移：校验合法 + 追加 state_history（数据集级）
     ///
     /// **`to=Published` 被禁止**：Published 只能经独立发布审批 `publish_dataset` 进入
-    /// （34 号 §3 强约束，不静默顺带发布）。
+    /// （设计文档 §3 强约束，不静默顺带发布）。
     pub fn transition_dataset_status(
         &self,
         dataset_id: &str,
@@ -2206,11 +2206,11 @@ impl RuleStore {
         Ok(self.get_dataset(dataset_id)?.map(|ds| ds.lifecycle))
     }
 
-    /// **独立发布审批**（34 号 §3 强约束）：`Active → Published`。
+    /// **独立发布审批**（设计文档 §3 强约束）：`Active → Published`。
     ///
     /// - 仅 Active 可发布；Published 只能经此显式操作进入，不由激活顺带触发；
-    /// - 审计（34 号 §4）：`cause` 携带真实发布者 `instance_id`（决策点⑨ 白标不掩盖来源），
-    ///   `published_as = {dataset_id}@{current_version}`（发布单位 = 数据集版本，决策点②）。
+    /// - 审计（设计文档 §4）：`cause` 携带真实发布者 `instance_id`（既定设计决策 白标不掩盖来源），
+    ///   `published_as = {dataset_id}@{current_version}`（发布单位 = 数据集版本，既定设计决策）。
     pub fn publish_dataset(
         &self,
         dataset_id: &str,
@@ -2226,7 +2226,7 @@ impl RuleStore {
         )
     }
 
-    /// 独立发布（34 号 §3/§9-1）：仅 Active 可发布，`cause` 由调用方（含二次确认回执与真实发布者）提供。
+    /// 独立发布（设计文档 §3/§9-1）：仅 Active 可发布，`cause` 由调用方（含二次确认回执与真实发布者）提供。
     pub fn publish_dataset_with_cause(
         &self,
         dataset_id: &str,
@@ -2242,7 +2242,7 @@ impl RuleStore {
         // 独立发布审批前置：仅 Active
         Validator::validate_publish(Some(ds.lifecycle.status))
             .map_err(|(f, t)| StoreError::IllegalTransition { from: f, to: t })?;
-        // 发布前凭据静态扫描（35 号 §6/§9-3 强约束 MVP 手段）：数据集元数据 + 全部条目规则体。
+        // 发布前凭据静态扫描（设计文档 §6/§9-3 强约束 MVP 手段）：数据集元数据 + 全部条目规则体。
         // 命中疑似凭据 → 拒绝发布，交由发布审批人复核（不静默放行，硬失败）。
         self.scan_dataset_credentials(dataset_id, &ds)?;
         let published_as = format!("{}@{}", ds.dataset_id, ds.versioning.current);
@@ -2263,7 +2263,7 @@ impl RuleStore {
         Ok(())
     }
 
-    /// 发布前凭据静态扫描（35 号 §6/§9-3）：序列化数据集元数据 + 全部条目规则体，命中疑似凭据则拒绝。
+    /// 发布前凭据静态扫描（设计文档 §6/§9-3）：序列化数据集元数据 + 全部条目规则体，命中疑似凭据则拒绝。
     fn scan_dataset_credentials(
         &self,
         dataset_id: &str,
@@ -2300,8 +2300,8 @@ impl RuleStore {
         Ok(())
     }
 
-    /// 撤销发布（44 号 §4 `POST /datasets/{id}/unpublish`，admin 权限由 handler 把关）：
-    /// `Published → Rejected`，state_history 留痕（34 号 §2/§4：撤销发布移除对外可见，历史快照保留）。
+    /// 撤销发布（设计文档 §4 `POST /datasets/{id}/unpublish`，admin 权限由 handler 把关）：
+    /// `Published → Rejected`，state_history 留痕（设计文档 §2/§4：撤销发布移除对外可见，历史快照保留）。
     pub fn unpublish_dataset(
         &self,
         dataset_id: &str,
@@ -2341,7 +2341,7 @@ impl RuleStore {
         Ok(())
     }
 
-    /// 对外可拉取判定（34 号 §3 双条件）：`visibility=public` AND `status=Published`。
+    /// 对外可拉取判定（设计文档 §3 双条件）：`visibility=public` AND `status=Published`。
     /// 防"内部激活即被外部拉到"；不存在返回 false。
     pub fn is_publicly_pullable(&self, dataset_id: &str) -> Result<bool, StoreError> {
         Ok(self
@@ -2353,10 +2353,10 @@ impl RuleStore {
             .unwrap_or(false))
     }
 
-    /// 导出快照包（36 号 §2）：数据集当前版本 + 条目（最新版）→ 只读 DatasetBundle。
+    /// 导出快照包（设计文档 §2）：数据集当前版本 + 条目（最新版）→ 只读 DatasetBundle。
     ///
     /// `tests` 为沙箱验证证据（闸门一产出），由调用方如实提供；`instance_id` 为真实发布者身份
-    /// （决策点⑨ 白标不掩盖）。不校验数据集状态——导出任意状态均可（消费交付由 `is_publicly_pullable` 把关）。
+    /// （既定设计决策 白标不掩盖）。不校验数据集状态——导出任意状态均可（消费交付由 `is_publicly_pullable` 把关）。
     pub fn export_bundle(
         &self,
         dataset_id: &str,
@@ -2462,7 +2462,7 @@ impl RuleStore {
                 version: version.into(),
             });
         }
-        // 导出面以历史版本为 source_version（发布单位 = 数据集版本，决策点②）；
+        // 导出面以历史版本为 source_version（发布单位 = 数据集版本，既定设计决策）；
         // 生命周期/元数据为只读映射，不回写。
         let mut ds_hist = ds;
         ds_hist.versioning.current = version.to_string();
@@ -2488,10 +2488,10 @@ impl RuleStore {
     }
 
     // ------------------------------------------------------------------
-    // 条目级状态机与审计（44 号 §5）
+    // 条目级状态机与审计（设计文档 §5）
     // ------------------------------------------------------------------
 
-    /// 删除条目（44 号 §5：仅 Draft 态，engineer 权限由 handler 把关）
+    /// 删除条目（设计文档 §5：仅 Draft 态，engineer 权限由 handler 把关）
     pub fn delete_entry(&self, dataset_id: &str, entry_id: &str) -> Result<(), StoreError> {
         let Some(entry) = self.get_latest_entry(dataset_id, entry_id)? else {
             return Err(StoreError::EntryNotFound {
@@ -2522,7 +2522,7 @@ impl RuleStore {
         Ok(())
     }
 
-    /// 条目级状态迁移（44 号 §5）：Draft→Candidate（闸门一）/ Candidate→Active（闸门二）/
+    /// 条目级状态迁移（设计文档 §5）：Draft→Candidate（闸门一）/ Candidate→Active（闸门二）/
     /// Candidate|Draft→Rejected。只增不改 `entry_state_history`（审计即记忆）。
     pub fn transition_entry_status(
         &self,
@@ -2540,7 +2540,7 @@ impl RuleStore {
             });
         };
         let from = entry.status.unwrap_or(LifecycleStatus::Active);
-        // 专项拦截（37 号 §5 强约束）：LLM 产出（llm_generated=true）只能停留 Draft。
+        // 专项拦截（设计文档 §5 强约束）：LLM 产出（llm_generated=true）只能停留 Draft。
         // 状态机层禁止其离开 Draft（含 Draft→Candidate），不只靠人工闸门；validate_llm_boundary
         // 仅拦截"当前状态非 Draft"，此处补"迁移目标非 Draft"的离开拦截。
         if entry
@@ -2571,7 +2571,7 @@ impl RuleStore {
             });
         }
         entry.status = Some(to);
-        // 治理时间戳（31 号 §4 lifecycle_timestamps）
+        // 治理时间戳（设计文档 §4 lifecycle_timestamps）
         let mut gov = entry.governance.clone().unwrap_or_default();
         let mut ts = gov.lifecycle_timestamps.clone().unwrap_or_default();
         match to {
@@ -2615,7 +2615,7 @@ impl RuleStore {
         Ok(())
     }
 
-    /// 条目状态迁移历史（44 号 §5 `GET /entries/{id}/history`，only-append 只读）
+    /// 条目状态迁移历史（设计文档 §5 `GET /entries/{id}/history`，only-append 只读）
     pub fn get_entry_state_history(
         &self,
         dataset_id: &str,
@@ -2639,7 +2639,7 @@ impl RuleStore {
         rows.collect::<Result<_, _>>().map_err(Into::into)
     }
 
-    /// 租户内定位条目（44 号 §5 顶层 `/entries/{id}` 路由用；entry_id 仅数据集内唯一，
+    /// 租户内定位条目（设计文档 §5 顶层 `/entries/{id}` 路由用；entry_id 仅数据集内唯一，
     /// 故在租户各数据集最新版中查找首个匹配。Q12 R4：规则表与 knowledge 平行表均参与定位）
     pub fn find_entry_in_tenant(
         &self,
@@ -2658,10 +2658,10 @@ impl RuleStore {
     }
 
     // ------------------------------------------------------------------
-    // 数据依赖（44 号 §7 deps/；35 号 决策点⑤）
+    // 数据依赖（设计文档 §7 deps/；历史批次 既定设计决策）
     // ------------------------------------------------------------------
 
-    /// 更新数据集 data_dependencies（44 号 §7 `PUT /deps/datasets/{id}`）
+    /// 更新数据集 data_dependencies（设计文档 §7 `PUT /deps/datasets/{id}`）
     pub fn update_dataset_deps(
         &self,
         dataset_id: &str,
@@ -2678,7 +2678,7 @@ impl RuleStore {
         self.update_dataset(&ds)
     }
 
-    /// 注册无凭据服务模板（44 号 §7 `POST /deps/templates`，admin 权限由 handler 把关）
+    /// 注册无凭据服务模板（设计文档 §7 `POST /deps/templates`，admin 权限由 handler 把关）
     pub fn create_service_template(&self, t: &ServiceTemplateRecord) -> Result<(), StoreError> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
@@ -2703,7 +2703,7 @@ impl RuleStore {
         Ok(())
     }
 
-    /// 模板详情（44 号 §7 `GET /deps/templates/{id}`）
+    /// 模板详情（设计文档 §7 `GET /deps/templates/{id}`）
     pub fn get_service_template(
         &self,
         template_id: &str,
@@ -2763,7 +2763,7 @@ impl RuleStore {
         }))
     }
 
-    /// 模板列表（44 号 §7 `GET /deps/templates`，租户作用域）
+    /// 模板列表（设计文档 §7 `GET /deps/templates`，租户作用域）
     pub fn list_service_templates(
         &self,
         tenant_id: &str,
@@ -3015,10 +3015,10 @@ impl RuleStore {
     }
 
     // ------------------------------------------------------------------
-    // 检索（44 号 §9 search/）
+    // 检索（设计文档 §9 search/）
     // ------------------------------------------------------------------
 
-    /// 数据集检索（44 号 §9）：private 仅当前租户；public+Published 对所有人可见（双条件，38 号 §3）。
+    /// 数据集检索（设计文档 §9）：private 仅当前租户；public+Published 对所有人可见（双条件，设计文档 §3）。
     pub fn search_datasets(
         &self,
         tenant_id: &str,
@@ -3036,7 +3036,7 @@ impl RuleStore {
                 out.push(ds);
             }
         }
-        // 2) public+Published 跨租户可检索（34 号 §3 双条件）
+        // 2) public+Published 跨租户可检索（设计文档 §3 双条件）
         for ds in self.list_all_datasets()? {
             if ds.visibility == Visibility::Public
                 && ds.lifecycle.status == LifecycleStatus::Published
@@ -3087,7 +3087,7 @@ impl RuleStore {
         Ok(out)
     }
 
-    /// 条目检索（44 号 §9）：租户作用域（数据端点一律以 tenant 为界，38 号）
+    /// 条目检索（设计文档 §9）：租户作用域（数据端点一律以 tenant 为界，历史批次）
     pub fn search_entries(
         &self,
         tenant_id: &str,
@@ -3224,10 +3224,10 @@ impl RuleStore {
         Ok(out)
     }
 
-    /// 版本 diff（44 号 §9 `GET /search/datasets/{id}/diff`，33 号内容哈希语义）。
+    /// 版本 diff（设计文档 §9 `GET /search/datasets/{id}/diff`，内容哈希语义）。
     ///
     /// - **结构级**（版本链增量 + 当前条目清单）始终返回；
-    /// - **内容归因级**（45 号批次1 / C 类闭合）：对比 `from`/`to` 两版本在 `dataset_versions`
+    /// - **内容归因级**（历史批次1 / C 类闭合）：对比 `from`/`to` 两版本在 `dataset_versions`
     ///   快照表中的条目 content_hash 归因，给出 added/removed/unchanged（跨版本未变内容复用同哈希）。
     ///   若 from 无归因记录（该版本未被升版留档，如从未升版过的初始版本），如实标注归因缺失，不伪造。
     pub fn version_diff(
@@ -3264,7 +3264,7 @@ impl RuleStore {
         }
         let entries = self.list_entries(dataset_id, None)?;
         let entry_ids: Vec<String> = entries.iter().map(|e| e.entry_id.clone()).collect();
-        // 内容归因（45 号批次1）：取两版本的归因哈希集。
+        // 内容归因（历史批次1）：取两版本的归因哈希集。
         // - from 必为历史版本 → 读 dataset_versions 留档；
         // - to 若为当前版本（未升版，无留档）→ 用当前 entries 实时哈希；
         //   否则为历史版本 → 读留档。
@@ -3284,7 +3284,7 @@ impl RuleStore {
                 "current_entry_count": entries.len(),
                 "current_entry_ids": entry_ids,
                 "content_attribution": null,
-                "note": "结构级 diff（版本链增量 + 当前条目清单）；内容归因不可用：from/to 版本均无 dataset_versions 快照留档（初始版本未升版过）。45 号批次1 落库后，后续升版将产生归因。",
+                "note": "结构级 diff（版本链增量 + 当前条目清单）；内容归因不可用：from/to 版本均无 dataset_versions 快照留档（初始版本未升版过）。历史批次1 落库后，后续升版将产生归因。",
             }));
         }
         // 内容归因级 diff：按 content_hash 比较（跨版本复用同哈希 = 未变）
@@ -3302,13 +3302,13 @@ impl RuleStore {
                 "added": added,
                 "removed": removed,
                 "unchanged": unchanged,
-                "note": "按条目 content_hash 归因（45 号批次1 dataset_versions 快照表）：跨版本未变内容复用同哈希，归为 unchanged。",
+                "note": "按条目 content_hash 归因（历史批次1 dataset_versions 快照表）：跨版本未变内容复用同哈希，归为 unchanged。",
             },
         }))
     }
 
     /// 读取某数据集某版本在 `dataset_versions` 快照表中的条目 content_hash 归因集
-    /// （45 号批次1；跨版本未变内容多版本共享，去重后作集合返回）。
+    /// （历史批次1；跨版本未变内容多版本共享，去重后作集合返回）。
     fn dataset_version_hashes(
         &self,
         dataset_id: &str,
@@ -3325,7 +3325,7 @@ impl RuleStore {
         Ok(rows.into_iter().collect())
     }
 
-    /// 生命周期审计（44 号 §11 `GET /audits/lifecycle`）：租户内数据集 state_history 扁平输出
+    /// 生命周期审计（设计文档 §11 `GET /audits/lifecycle`）：租户内数据集 state_history 扁平输出
     pub fn list_lifecycle_audits(
         &self,
         tenant_id: &str,
@@ -3348,7 +3348,7 @@ impl RuleStore {
     }
 
     // ------------------------------------------------------------------
-    // 快照包导入（44 号 §6 bundles/import；36 号 5 步校验链）
+    // 快照包导入（设计文档 §6 bundles/import；历史批次 5 步校验链）
     // ------------------------------------------------------------------
 
     /// 导入快照包：`BundleImporter::validate`（schema→防篡改→符号三方一致/数据条目 D3→版本解析→闸门一）通过后落库。
@@ -3357,7 +3357,7 @@ impl RuleStore {
     /// - 条目：按 `entry_kind` 分流——Rule → RuleEntry（entries 表）、Knowledge → KnowledgeEntry
     ///   （knowledge 平行表），治理版本=1，状态 Active；先清空旧条目再写入（可重试幂等）；
     /// - 混合 kind 的包显式拒绝（MVP 数据集类型单一，不静默混装）；
-    /// - 校验链任一失败 → 显式错误（35 号 §9 硬失败，不静默降级）；
+    /// - 校验链任一失败 → 显式错误（设计文档 §9 硬失败，不静默降级）；
     /// - **原子性**：整个导入持一把锁包一个事务——删旧条目/更新数据集/
     ///   逐条插入任一步失败即整体回滚，杜绝"旧数据已删+新数据不完整"的半状态；
     ///   校验与 schema 预热在锁外完成（持锁期间零 FS I/O）。
@@ -3577,7 +3577,7 @@ impl RuleStore {
     }
 
     // ------------------------------------------------------------------
-    // 认证与用户（43 号 正交 A，MVP 单租户实例）
+    // 认证与用户（历史批次 正交 A，MVP 单租户实例）
     // ------------------------------------------------------------------
 
     /// 确保实例默认租户存在（MVP 单租户：不存在则创建，存在则返回）
@@ -3849,7 +3849,7 @@ impl RuleStore {
         }
     }
 
-    /// 认证审计（only-append，43 号 §6）
+    /// 认证审计（only-append，设计文档 §6）
     pub fn record_auth_audit(&self, audit: &AuthAudit) -> Result<(), StoreError> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
@@ -3883,7 +3883,7 @@ impl RuleStore {
         rows.collect::<Result<_, _>>().map_err(Into::into)
     }
 
-    /// 按 jti 拉黑 token（43 号 §3.3；登出后至 exp 拒用，`expires_at` 用于到期清理）
+    /// 按 jti 拉黑 token（设计文档 §3.3；登出后至 exp 拒用，`expires_at` 用于到期清理）
     pub fn revoke_token(
         &self,
         jti: &str,
@@ -3915,7 +3915,7 @@ impl RuleStore {
     }
 
     // ------------------------------------------------------------------
-    // API Key（44 号 §14，MVP 最小 scope 版）
+    // API Key（设计文档 §14，MVP 最小 scope 版）
     // ------------------------------------------------------------------
 
     pub fn create_api_key(&self, key: &ApiKey) -> Result<(), StoreError> {
@@ -4302,8 +4302,8 @@ mod tests {
             .lock()
             .unwrap()
             .execute(
-                "CREATE TRIGGER uv090_fail BEFORE DELETE ON datasets
-                 BEGIN SELECT RAISE(ABORT, 'uv090: simulated failure'); END",
+                "CREATE TRIGGER reg090_fail BEFORE DELETE ON datasets
+                 BEGIN SELECT RAISE(ABORT, 'reg090: simulated failure'); END",
                 [],
             )
             .unwrap();
@@ -4412,14 +4412,14 @@ mod tests {
     // W1 回归锚定：导入覆盖链整体事务——中途失败必须整体回滚，
     // 杜绝"旧数据已删+新数据不完整"的半状态（触发器注入法同 模式）
 
-    fn uv094_count(store: &RuleStore, table: &str) -> i64 {
+    fn reg094_count(store: &RuleStore, table: &str) -> i64 {
         let conn = store.conn.lock().unwrap();
         conn.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| r.get(0))
             .unwrap()
     }
 
     /// 造齐覆盖导入前置状态：数据集 + 条目2版 + 状态历史 + 快照/归因（同 测试形状）
-    fn uv094_seed_covered_dataset(store: &RuleStore) {
+    fn reg094_seed_covered_dataset(store: &RuleStore) {
         let mut ds = tax_dataset();
         // 导入校验（）：auto 模式需生效基准——夹具对齐 roundtrip 测试，
         // 否则导入在前置校验段即被拒，触发器注入的失败源永远走不到
@@ -4455,15 +4455,15 @@ mod tests {
     fn test_import_bundle_atomic_rollback_on_entry_insert_failure() {
         use crate::bundle::{BundleTests, TestVerdict};
         let store = RuleStore::in_memory().unwrap();
-        uv094_seed_covered_dataset(&store);
+        reg094_seed_covered_dataset(&store);
 
         // 导入前状态捕获（充分性：确有旧数据可丢）
         let (entries, history, snaps, versions, version_snaps) = (
-            uv094_count(&store, "entries"),
-            uv094_count(&store, "entry_state_history"),
-            uv094_count(&store, "entry_snapshots"),
-            uv094_count(&store, "dataset_versions"),
-            uv094_count(&store, "dataset_version_snapshots"),
+            reg094_count(&store, "entries"),
+            reg094_count(&store, "entry_state_history"),
+            reg094_count(&store, "entry_snapshots"),
+            reg094_count(&store, "dataset_versions"),
+            reg094_count(&store, "dataset_version_snapshots"),
         );
         assert!(entries >= 2 && history >= 1 && snaps >= 1 && versions >= 1 && version_snaps >= 1);
         let ds_before = store.get_dataset("ds-tax-2024").unwrap().unwrap();
@@ -4484,8 +4484,8 @@ mod tests {
         {
             let conn = store.conn.lock().unwrap();
             conn.execute(
-                "CREATE TRIGGER uv094_fail BEFORE INSERT ON entries
-                 BEGIN SELECT RAISE(ABORT, 'uv094-simulated-entry-failure'); END",
+                "CREATE TRIGGER reg094_fail BEFORE INSERT ON entries
+                 BEGIN SELECT RAISE(ABORT, 'reg094-simulated-entry-failure'); END",
                 [],
             )
             .unwrap();
@@ -4495,21 +4495,21 @@ mod tests {
             .import_bundle(&bundle, "org-evorule", "importer", "t2", "inst-01")
             .unwrap_err();
         assert!(
-            err.to_string().contains("uv094-simulated-entry-failure"),
+            err.to_string().contains("reg094-simulated-entry-failure"),
             "失败源应可追溯: {err}"
         );
 
         // 整体回滚断言：五表=导入前（修复前 entries=0 半删除、数据集行被覆盖）
         assert_eq!(
-            uv094_count(&store, "entries"),
+            reg094_count(&store, "entries"),
             entries,
             "旧条目必须原样保留"
         );
-        assert_eq!(uv094_count(&store, "entry_state_history"), history);
-        assert_eq!(uv094_count(&store, "entry_snapshots"), snaps);
-        assert_eq!(uv094_count(&store, "dataset_versions"), versions);
+        assert_eq!(reg094_count(&store, "entry_state_history"), history);
+        assert_eq!(reg094_count(&store, "entry_snapshots"), snaps);
+        assert_eq!(reg094_count(&store, "dataset_versions"), versions);
         assert_eq!(
-            uv094_count(&store, "dataset_version_snapshots"),
+            reg094_count(&store, "dataset_version_snapshots"),
             version_snaps
         );
         let ds_after = store.get_dataset("ds-tax-2024").unwrap().unwrap();
@@ -4529,14 +4529,14 @@ mod tests {
     fn test_import_bundle_atomic_rollback_on_dataset_update_failure() {
         use crate::bundle::{BundleTests, TestVerdict};
         let store = RuleStore::in_memory().unwrap();
-        uv094_seed_covered_dataset(&store);
+        reg094_seed_covered_dataset(&store);
 
         let (entries, history, snaps, versions, version_snaps) = (
-            uv094_count(&store, "entries"),
-            uv094_count(&store, "entry_state_history"),
-            uv094_count(&store, "entry_snapshots"),
-            uv094_count(&store, "dataset_versions"),
-            uv094_count(&store, "dataset_version_snapshots"),
+            reg094_count(&store, "entries"),
+            reg094_count(&store, "entry_state_history"),
+            reg094_count(&store, "entry_snapshots"),
+            reg094_count(&store, "dataset_versions"),
+            reg094_count(&store, "dataset_version_snapshots"),
         );
         assert!(entries >= 2 && history >= 1 && snaps >= 1 && versions >= 1 && version_snaps >= 1);
 
@@ -4554,8 +4554,8 @@ mod tests {
         {
             let conn = store.conn.lock().unwrap();
             conn.execute(
-                "CREATE TRIGGER uv094_fail BEFORE UPDATE ON datasets
-                 BEGIN SELECT RAISE(ABORT, 'uv094-simulated-dataset-failure'); END",
+                "CREATE TRIGGER reg094_fail BEFORE UPDATE ON datasets
+                 BEGIN SELECT RAISE(ABORT, 'reg094-simulated-dataset-failure'); END",
                 [],
             )
             .unwrap();
@@ -4565,21 +4565,21 @@ mod tests {
             .import_bundle(&bundle, "org-evorule", "importer", "t2", "inst-01")
             .unwrap_err();
         assert!(
-            err.to_string().contains("uv094-simulated-dataset-failure"),
+            err.to_string().contains("reg094-simulated-dataset-failure"),
             "失败源应可追溯: {err}"
         );
 
         // 整体回滚：删旧条目虽已执行，但必须随事务回滚复原
         assert_eq!(
-            uv094_count(&store, "entries"),
+            reg094_count(&store, "entries"),
             entries,
             "旧条目必须原样保留"
         );
-        assert_eq!(uv094_count(&store, "entry_state_history"), history);
-        assert_eq!(uv094_count(&store, "entry_snapshots"), snaps);
-        assert_eq!(uv094_count(&store, "dataset_versions"), versions);
+        assert_eq!(reg094_count(&store, "entry_state_history"), history);
+        assert_eq!(reg094_count(&store, "entry_snapshots"), snaps);
+        assert_eq!(reg094_count(&store, "dataset_versions"), versions);
         assert_eq!(
-            uv094_count(&store, "dataset_version_snapshots"),
+            reg094_count(&store, "dataset_version_snapshots"),
             version_snaps
         );
     }
@@ -4594,12 +4594,12 @@ mod tests {
     fn test_add_entry_atomic_rollback_on_main_insert_failure() {
         let store = RuleStore::in_memory().unwrap();
         store.create_dataset(&tax_dataset()).unwrap();
-        assert_eq!(uv094_count(&store, "entry_snapshots"), 0);
+        assert_eq!(reg094_count(&store, "entry_snapshots"), 0);
         {
             let conn = store.conn.lock().unwrap();
             conn.execute(
-                "CREATE TRIGGER uv094w2_fail BEFORE INSERT ON entries
-                 BEGIN SELECT RAISE(ABORT, 'uv094w2-simulated-main-insert-failure'); END",
+                "CREATE TRIGGER reg094w2_fail BEFORE INSERT ON entries
+                 BEGIN SELECT RAISE(ABORT, 'reg094w2-simulated-main-insert-failure'); END",
                 [],
             )
             .unwrap();
@@ -4607,15 +4607,15 @@ mod tests {
         let err = store.add_entry(&draft_entry()).unwrap_err();
         assert!(
             err.to_string()
-                .contains("uv094w2-simulated-main-insert-failure"),
+                .contains("reg094w2-simulated-main-insert-failure"),
             "失败源应可追溯: {err}"
         );
         assert_eq!(
-            uv094_count(&store, "entry_snapshots"),
+            reg094_count(&store, "entry_snapshots"),
             0,
             "失败回滚后不得残留孤儿快照"
         );
-        assert_eq!(uv094_count(&store, "entries"), 0);
+        assert_eq!(reg094_count(&store, "entries"), 0);
     }
 
     /// add_knowledge_entry：主表 INSERT 失败 → 快照必须随事务回滚（knowledge 侧同口径）
@@ -4623,12 +4623,12 @@ mod tests {
     fn test_add_knowledge_entry_atomic_rollback_on_main_insert_failure() {
         let (store, dir) = file_store_with_body_schema();
         store.create_dataset(&knowledge_dataset()).unwrap();
-        assert_eq!(uv094_count(&store, "knowledge_snapshots"), 0);
+        assert_eq!(reg094_count(&store, "knowledge_snapshots"), 0);
         {
             let conn = store.conn.lock().unwrap();
             conn.execute(
-                "CREATE TRIGGER uv094w2_fail BEFORE INSERT ON knowledge_entries
-                 BEGIN SELECT RAISE(ABORT, 'uv094w2-simulated-knowledge-insert-failure'); END",
+                "CREATE TRIGGER reg094w2_fail BEFORE INSERT ON knowledge_entries
+                 BEGIN SELECT RAISE(ABORT, 'reg094w2-simulated-knowledge-insert-failure'); END",
                 [],
             )
             .unwrap();
@@ -4636,15 +4636,15 @@ mod tests {
         let err = store.add_knowledge_entry(&knowledge_entry()).unwrap_err();
         assert!(
             err.to_string()
-                .contains("uv094w2-simulated-knowledge-insert-failure"),
+                .contains("reg094w2-simulated-knowledge-insert-failure"),
             "失败源应可追溯: {err}"
         );
         assert_eq!(
-            uv094_count(&store, "knowledge_snapshots"),
+            reg094_count(&store, "knowledge_snapshots"),
             0,
             "失败回滚后不得残留孤儿快照"
         );
-        assert_eq!(uv094_count(&store, "knowledge_entries"), 0);
+        assert_eq!(reg094_count(&store, "knowledge_entries"), 0);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -4658,8 +4658,8 @@ mod tests {
         {
             let conn = store.conn.lock().unwrap();
             conn.execute(
-                "CREATE TRIGGER uv094w2_fail BEFORE INSERT ON entry_state_history
-                 BEGIN SELECT RAISE(ABORT, 'uv094w2-simulated-history-failure'); END",
+                "CREATE TRIGGER reg094w2_fail BEFORE INSERT ON entry_state_history
+                 BEGIN SELECT RAISE(ABORT, 'reg094w2-simulated-history-failure'); END",
                 [],
             )
             .unwrap();
@@ -4676,7 +4676,7 @@ mod tests {
             .unwrap_err();
         assert!(
             err.to_string()
-                .contains("uv094w2-simulated-history-failure"),
+                .contains("reg094w2-simulated-history-failure"),
             "失败源应可追溯: {err}"
         );
         let got = store
@@ -4688,7 +4688,7 @@ mod tests {
             Some(LifecycleStatus::Draft),
             "状态必须随事务回滚保持 Draft"
         );
-        assert_eq!(uv094_count(&store, "entry_state_history"), 0);
+        assert_eq!(reg094_count(&store, "entry_state_history"), 0);
     }
 
     /// transition_knowledge_entry_status：审计历史 INSERT 失败 → 状态 UPDATE 必须随事务回滚
@@ -4700,8 +4700,8 @@ mod tests {
         {
             let conn = store.conn.lock().unwrap();
             conn.execute(
-                "CREATE TRIGGER uv094w2_fail BEFORE INSERT ON knowledge_state_history
-                 BEGIN SELECT RAISE(ABORT, 'uv094w2-simulated-khistory-failure'); END",
+                "CREATE TRIGGER reg094w2_fail BEFORE INSERT ON knowledge_state_history
+                 BEGIN SELECT RAISE(ABORT, 'reg094w2-simulated-khistory-failure'); END",
                 [],
             )
             .unwrap();
@@ -4718,7 +4718,7 @@ mod tests {
             .unwrap_err();
         assert!(
             err.to_string()
-                .contains("uv094w2-simulated-khistory-failure"),
+                .contains("reg094w2-simulated-khistory-failure"),
             "失败源应可追溯: {err}"
         );
         let got = store
@@ -4730,7 +4730,7 @@ mod tests {
             Some(LifecycleStatus::Draft),
             "状态必须随事务回滚保持 Draft"
         );
-        assert_eq!(uv094_count(&store, "knowledge_state_history"), 0);
+        assert_eq!(reg094_count(&store, "knowledge_state_history"), 0);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -4755,27 +4755,27 @@ mod tests {
         e2.version = 2;
         e2.rule_body["description"] = serde_json::json!("第二版草稿");
         store.add_entry(&e2).unwrap();
-        assert_eq!(uv094_count(&store, "entry_state_history"), 1);
+        assert_eq!(reg094_count(&store, "entry_state_history"), 1);
         {
             let conn = store.conn.lock().unwrap();
             conn.execute(
-                "CREATE TRIGGER uv094w2_fail BEFORE DELETE ON entries
-                 BEGIN SELECT RAISE(ABORT, 'uv094w2-simulated-delete-failure'); END",
+                "CREATE TRIGGER reg094w2_fail BEFORE DELETE ON entries
+                 BEGIN SELECT RAISE(ABORT, 'reg094w2-simulated-delete-failure'); END",
                 [],
             )
             .unwrap();
         }
         let err = store.delete_entry("ds-tax-2024", "tax-001").unwrap_err();
         assert!(
-            err.to_string().contains("uv094w2-simulated-delete-failure"),
+            err.to_string().contains("reg094w2-simulated-delete-failure"),
             "失败源应可追溯: {err}"
         );
         assert_eq!(
-            uv094_count(&store, "entry_state_history"),
+            reg094_count(&store, "entry_state_history"),
             1,
             "状态历史必须随事务回滚复原"
         );
-        assert_eq!(uv094_count(&store, "entries"), 2, "条目必须原样保留");
+        assert_eq!(reg094_count(&store, "entries"), 2, "条目必须原样保留");
     }
 
     /// delete_knowledge_entry：主表 DELETE 失败 → 状态历史删除必须随事务回滚
@@ -4798,12 +4798,12 @@ mod tests {
         e2.version = 2;
         e2.payload = serde_json::json!({ "mass": 2.0 });
         store.add_knowledge_entry(&e2).unwrap();
-        assert_eq!(uv094_count(&store, "knowledge_state_history"), 1);
+        assert_eq!(reg094_count(&store, "knowledge_state_history"), 1);
         {
             let conn = store.conn.lock().unwrap();
             conn.execute(
-                "CREATE TRIGGER uv094w2_fail BEFORE DELETE ON knowledge_entries
-                 BEGIN SELECT RAISE(ABORT, 'uv094w2-simulated-kdelete-failure'); END",
+                "CREATE TRIGGER reg094w2_fail BEFORE DELETE ON knowledge_entries
+                 BEGIN SELECT RAISE(ABORT, 'reg094w2-simulated-kdelete-failure'); END",
                 [],
             )
             .unwrap();
@@ -4813,16 +4813,16 @@ mod tests {
             .unwrap_err();
         assert!(
             err.to_string()
-                .contains("uv094w2-simulated-kdelete-failure"),
+                .contains("reg094w2-simulated-kdelete-failure"),
             "失败源应可追溯: {err}"
         );
         assert_eq!(
-            uv094_count(&store, "knowledge_state_history"),
+            reg094_count(&store, "knowledge_state_history"),
             1,
             "状态历史必须随事务回滚复原"
         );
         assert_eq!(
-            uv094_count(&store, "knowledge_entries"),
+            reg094_count(&store, "knowledge_entries"),
             2,
             "条目必须原样保留"
         );
@@ -4835,25 +4835,25 @@ mod tests {
         let store = RuleStore::in_memory().unwrap();
         store.create_dataset(&tax_dataset()).unwrap();
         store.add_entry(&draft_entry()).unwrap();
-        assert_eq!(uv094_count(&store, "entry_snapshots"), 1);
+        assert_eq!(reg094_count(&store, "entry_snapshots"), 1);
         let mut e = draft_entry();
         e.rule_body["description"] = serde_json::json!("修改后的规则");
         {
             let conn = store.conn.lock().unwrap();
             conn.execute(
-                "CREATE TRIGGER uv094w2_fail BEFORE UPDATE ON entries
-                 BEGIN SELECT RAISE(ABORT, 'uv094w2-simulated-update-failure'); END",
+                "CREATE TRIGGER reg094w2_fail BEFORE UPDATE ON entries
+                 BEGIN SELECT RAISE(ABORT, 'reg094w2-simulated-update-failure'); END",
                 [],
             )
             .unwrap();
         }
         let err = store.update_draft_entry(&e).unwrap_err();
         assert!(
-            err.to_string().contains("uv094w2-simulated-update-failure"),
+            err.to_string().contains("reg094w2-simulated-update-failure"),
             "失败源应可追溯: {err}"
         );
         assert_eq!(
-            uv094_count(&store, "entry_snapshots"),
+            reg094_count(&store, "entry_snapshots"),
             1,
             "新内容快照必须随事务回滚，不得残留孤儿"
         );
@@ -4865,14 +4865,14 @@ mod tests {
         let (store, dir) = file_store_with_body_schema();
         store.create_dataset(&knowledge_dataset()).unwrap();
         store.add_knowledge_entry(&knowledge_entry()).unwrap();
-        assert_eq!(uv094_count(&store, "knowledge_snapshots"), 1);
+        assert_eq!(reg094_count(&store, "knowledge_snapshots"), 1);
         let mut e = knowledge_entry();
         e.payload = serde_json::json!({ "mass": 2.0 });
         {
             let conn = store.conn.lock().unwrap();
             conn.execute(
-                "CREATE TRIGGER uv094w2_fail BEFORE UPDATE ON knowledge_entries
-                 BEGIN SELECT RAISE(ABORT, 'uv094w2-simulated-kupdate-failure'); END",
+                "CREATE TRIGGER reg094w2_fail BEFORE UPDATE ON knowledge_entries
+                 BEGIN SELECT RAISE(ABORT, 'reg094w2-simulated-kupdate-failure'); END",
                 [],
             )
             .unwrap();
@@ -4880,11 +4880,11 @@ mod tests {
         let err = store.update_draft_knowledge_entry(&e).unwrap_err();
         assert!(
             err.to_string()
-                .contains("uv094w2-simulated-kupdate-failure"),
+                .contains("reg094w2-simulated-kupdate-failure"),
             "失败源应可追溯: {err}"
         );
         assert_eq!(
-            uv094_count(&store, "knowledge_snapshots"),
+            reg094_count(&store, "knowledge_snapshots"),
             1,
             "新内容快照必须随事务回滚，不得残留孤儿"
         );
@@ -4899,13 +4899,13 @@ mod tests {
         store.create_dataset(&tax_dataset()).unwrap();
         store.add_entry(&draft_entry()).unwrap();
         let before = store.get_dataset("ds-tax-2024").unwrap().unwrap();
-        assert_eq!(uv094_count(&store, "dataset_versions"), 0);
-        assert_eq!(uv094_count(&store, "dataset_version_snapshots"), 0);
+        assert_eq!(reg094_count(&store, "dataset_versions"), 0);
+        assert_eq!(reg094_count(&store, "dataset_version_snapshots"), 0);
         {
             let conn = store.conn.lock().unwrap();
             conn.execute(
-                "CREATE TRIGGER uv094w2_fail BEFORE INSERT ON dataset_versions
-                 BEGIN SELECT RAISE(ABORT, 'uv094w2-simulated-attribution-failure'); END",
+                "CREATE TRIGGER reg094w2_fail BEFORE INSERT ON dataset_versions
+                 BEGIN SELECT RAISE(ABORT, 'reg094w2-simulated-attribution-failure'); END",
                 [],
             )
             .unwrap();
@@ -4915,7 +4915,7 @@ mod tests {
             .unwrap_err();
         assert!(
             err.to_string()
-                .contains("uv094w2-simulated-attribution-failure"),
+                .contains("reg094w2-simulated-attribution-failure"),
             "失败源应可追溯: {err}"
         );
         let after = store.get_dataset("ds-tax-2024").unwrap().unwrap();
@@ -4927,8 +4927,8 @@ mod tests {
             after.lifecycle.status, before.lifecycle.status,
             "生命周期必须随事务回滚"
         );
-        assert_eq!(uv094_count(&store, "dataset_versions"), 0);
-        assert_eq!(uv094_count(&store, "dataset_version_snapshots"), 0);
+        assert_eq!(reg094_count(&store, "dataset_versions"), 0);
+        assert_eq!(reg094_count(&store, "dataset_version_snapshots"), 0);
     }
 
     /// seed_official_services_if_empty：循环中途失败 → 整体回滚
@@ -4939,20 +4939,20 @@ mod tests {
         {
             let conn = store.conn.lock().unwrap();
             conn.execute(
-                "CREATE TRIGGER uv094w2_fail BEFORE INSERT ON service_catalog
+                "CREATE TRIGGER reg094w2_fail BEFORE INSERT ON service_catalog
                  WHEN NEW.service_name = 'llm_advisor'
-                 BEGIN SELECT RAISE(ABORT, 'uv094w2-simulated-seed-failure'); END",
+                 BEGIN SELECT RAISE(ABORT, 'reg094w2-simulated-seed-failure'); END",
                 [],
             )
             .unwrap();
         }
         let err = store.seed_official_services_if_empty("t").unwrap_err();
         assert!(
-            err.to_string().contains("uv094w2-simulated-seed-failure"),
+            err.to_string().contains("reg094w2-simulated-seed-failure"),
             "失败源应可追溯: {err}"
         );
         assert_eq!(
-            uv094_count(&store, "service_catalog"),
+            reg094_count(&store, "service_catalog"),
             0,
             "中途失败必须整体回滚，不得残留半 seed"
         );
@@ -5111,7 +5111,7 @@ mod tests {
             "v1/v2 内容一致应共享同一快照"
         );
 
-        // 版本历史可回查（33 号 §6）
+        // 版本历史可回查（设计文档 §6）
         let versions = store.list_entry_versions("ds-tax-2024", "tax-001").unwrap();
         assert_eq!(versions.len(), 3);
         assert_eq!(versions[0].version, 1);
@@ -5204,7 +5204,7 @@ mod tests {
     fn test_transition_illegal() {
         let store = RuleStore::in_memory().unwrap();
         store.create_dataset(&tax_dataset()).unwrap();
-        // Draft → Published：必须走独立发布审批，通用迁移显式拒绝（34 号 §3）
+        // Draft → Published：必须走独立发布审批，通用迁移显式拒绝（设计文档 §3）
         let err = store
             .transition_dataset_status("ds-tax-2024", LifecycleStatus::Published, "x", "x", "t")
             .unwrap_err();
@@ -5323,7 +5323,7 @@ mod tests {
     fn test_publish_rejects_credential_scan() {
         let store = RuleStore::in_memory().unwrap();
         store.create_dataset(&tax_dataset()).unwrap();
-        // 往规则体里塞疑似凭据（35 号 §6/§9-3：发布前扫描拦截）
+        // 往规则体里塞疑似凭据（设计文档 §6/§9-3：发布前扫描拦截）
         let mut entry = draft_entry();
         entry.rule_body = serde_json::json!({
             "transform": [{ "type": "io_request", "params": { "service_name": "payroll_svc" } }],
@@ -5357,7 +5357,7 @@ mod tests {
         let store = RuleStore::in_memory().unwrap();
         store.create_dataset(&tax_dataset()).unwrap();
         let mut entry = draft_entry();
-        // 标记为 LLM 产出（37 号 §5：只到 Draft）
+        // 标记为 LLM 产出（设计文档 §5：只到 Draft）
         entry.governance = Some(Governance {
             llm_generated: Some(LlmGenerated {
                 flag: true,
@@ -5477,7 +5477,7 @@ mod tests {
 
     #[test]
     fn test_event_schemas_export_import_roundtrip_and_reject() {
-        // B5 测试门（段B 14 号）：事件声明经导出/导入往返一致；非法 schema_ref 导入拒绝
+        // B5 测试门（段B 历史批次）：事件声明经导出/导入往返一致；非法 schema_ref 导入拒绝
         use crate::bundle::{BundleTests, TestVerdict};
         use crate::model::dependency::{EventDirection, EventSchemaDecl};
         let (store, dir) = file_store_with_body_schema();
@@ -5627,7 +5627,7 @@ mod tests {
         ));
     }
 
-    // B4（段B 14 号）：版本级全量条目快照落库 + 历史版本导出
+    // B4（段B 历史批次）：版本级全量条目快照落库 + 历史版本导出
 
     #[test]
     fn test_b4_snapshot_written_at_bump_and_historical_export() {
@@ -6200,7 +6200,7 @@ mod tests {
     fn test_knowledge_entry_llm_draft_boundary() {
         let (store, dir) = file_store_with_body_schema();
         store.create_dataset(&knowledge_dataset()).unwrap();
-        // LLM 产出直接进 Active → 拒绝（37 号强约束同口径）
+        // LLM 产出直接进 Active → 拒绝（历史批次强约束同口径）
         let mut e = knowledge_entry();
         e.status = Some(LifecycleStatus::Active);
         e.governance = Some(crate::model::Governance {

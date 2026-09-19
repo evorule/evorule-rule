@@ -1,6 +1,6 @@
-//! 检索端点（44 号 §9 search/；31 号 §7 检索能力 / 33 号 版本 diff）
+//! 检索端点（设计文档 §9 search/；设计文档 §7 检索能力 / 历史批次 版本 diff）
 //!
-//! 租户作用域（38 号 §3）：private 仅当前租户；public+Published 对所有人可检索（双条件，34 号 §3）。
+//! 租户作用域（设计文档 §3）：private 仅当前租户；public+Published 对所有人可检索（双条件，设计文档 §3）。
 
 use axum::extract::{Extension, Path, Query, State};
 use axum::Json;
@@ -117,7 +117,7 @@ pub struct DiffQuery {
     pub to: String,
 }
 
-/// GET /search/datasets/{id}/diff?from=v1&to=v2 —— 版本 diff（33 号内容哈希）
+/// GET /search/datasets/{id}/diff?from=v1&to=v2 —— 版本 diff（内容哈希）
 ///
 /// MVP 返回结构级 diff（版本链增量 + 当前条目清单），诚实标注（批次 1 补内容级）。
 pub async fn version_diff(

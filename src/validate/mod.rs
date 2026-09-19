@@ -1,10 +1,10 @@
-//! 校验（31 号 §9 约束与一致性）
+//! 校验（设计文档 §9 约束与一致性）
 //!
 //! 校验规则：
 //! - **符号三方一致**（§9-3）：`rule_body` 的 io_request.service_name ≡ 条目 binding.service_name
 //!   ≡ 数据集 data_dependencies.services，缺失**显式报错**（不静默降级）；
-//! - **LLM 边界**（§9-6 / 37 号强约束）：`llm_generated.flag=true` 的条目 status 只能是 Draft；
-//! - **状态机基础**（§9-4，完整在 34 号）：5 态合法迁移（MVP 先落可达性基础）；
+//! - **LLM 边界**（§9-6 / 历史批次强约束）：`llm_generated.flag=true` 的条目 status 只能是 Draft；
+//! - **状态机基础**（§9-4，完整在历史批次）：5 态合法迁移（MVP 先落可达性基础）；
 //! - **凭据禁止**（§9-5）：全模型无凭据字段，由模型设计保证（此处提供符号级兜底检查）。
 
 use thiserror::Error;
@@ -35,7 +35,7 @@ pub enum ValidationError {
     DynamicRefNeedsDeclaration { dataset: String },
 
     #[error(
-        "发布前凭据静态扫描未通过：命中疑似凭据 {hits:?}（35 号 §6/§9-3：凭据永不入规则资产库）"
+        "发布前凭据静态扫描未通过：命中疑似凭据 {hits:?}（设计文档 §6/§9-3：凭据永不入规则资产库）"
     )]
     CredentialScanFailed { hits: Vec<String> },
 
@@ -44,7 +44,7 @@ pub enum ValidationError {
     Message(String),
 }
 
-/// 凭据静态扫描（35 号 §6/§9-3 强约束 MVP 手段）：
+/// 凭据静态扫描（设计文档 §6/§9-3 强约束 MVP 手段）：
 /// 发布前对序列化字符串做**启发式**疑似密钥模式匹配，命中即可疑，交由发布审批人复核。
 ///
 /// 辅助"全模型无凭据字段"的模型设计（两层防线），扫描规则保守（尽可能命中真实凭据而少误伤规则正文）：
@@ -190,7 +190,7 @@ impl Validator {
         Ok(())
     }
 
-    /// LLM 边界（§9-6 / 37 号）：llm_generated=true → status 只能是 Draft
+    /// LLM 边界（§9-6 / 历史批次）：llm_generated=true → status 只能是 Draft
     pub fn validate_llm_boundary(entry: &RuleEntry) -> Result<(), ValidationError> {
         let is_llm = entry
             .governance
@@ -209,10 +209,10 @@ impl Validator {
         Ok(())
     }
 
-    /// 状态机合法迁移（34 号 §2）。返回 Err(Some(from,to)) 表示非法迁移。
+    /// 状态机合法迁移（设计文档 §2）。返回 Err(Some(from,to)) 表示非法迁移。
     ///
     /// **不含 `Active → Published`**：Published 只能经独立发布审批（`validate_publish` +
-    /// `publish_dataset`）显式进入，不能由通用状态迁移顺带完成（34 号 §3 强约束）。
+    /// `publish_dataset`）显式进入，不能由通用状态迁移顺带完成（设计文档 §3 强约束）。
     pub fn validate_transition(
         from: Option<LifecycleStatus>,
         to: LifecycleStatus,
@@ -225,9 +225,9 @@ impl Validator {
                 | (LifecycleStatus::Active, LifecycleStatus::Rejected)
                 | (LifecycleStatus::Candidate, LifecycleStatus::Rejected)
                 | (LifecycleStatus::Draft, LifecycleStatus::Rejected)
-                // 撤销发布（34 号 §2；审批细节为开放点③）
+                // 撤销发布（设计文档 §2；审批细节为开放点③）
                 | (LifecycleStatus::Published, LifecycleStatus::Rejected)
-                // 修订重来（34 号 §8-3，Rejected 非终态）
+                // 修订重来（设计文档 §8-3，Rejected 非终态）
                 | (LifecycleStatus::Rejected, LifecycleStatus::Draft)
         );
         if ok {
@@ -237,7 +237,7 @@ impl Validator {
         }
     }
 
-    /// 独立发布审批前置（34 号 §3 强约束）：**仅 Active 可发布**。
+    /// 独立发布审批前置（设计文档 §3 强约束）：**仅 Active 可发布**。
     /// Published 只能由显式发布操作（`publish_dataset`）进入，不由激活顺带触发。
     pub fn validate_publish(
         from: Option<LifecycleStatus>,
@@ -431,7 +431,7 @@ mod tests {
             LifecycleStatus::Active
         )
         .is_ok());
-        // Published 不能经通用迁移进入（34 号 §3 强约束）
+        // Published 不能经通用迁移进入（设计文档 §3 强约束）
         assert!(Validator::validate_transition(
             Some(LifecycleStatus::Active),
             LifecycleStatus::Published

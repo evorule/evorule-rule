@@ -97,7 +97,7 @@ if ($haveAll -and $ds.lifecycle.status -eq 'Published' -and $depsComplete) {
   # 已在 Draft 编辑态(上次中断或新建数据集)→ 直接继续灌入, 不重复升版
   Write-Host "[3] 已在 Draft 编辑态, 直接继续 (current=$($ds.versioning.current))"
 } else {
-  # 发布后内容变更 → 创建新版本(法规条款级 Major; 34 号 §6: 新版本 lifecycle 重置 Draft)
+  # 发布后内容变更 → 创建新版本(法规条款级 Major; 设计文档 §6: 新版本 lifecycle 重置 Draft)
   $v = Api 'POST' "/v1/datasets/$DsId/versions" $token @{ kind = 'major' }
   Write-Host "[3] 创建新版本 $($v.new_version) (Draft); 版本链: $($v.chain -join ',')"
   $ds = Api 'GET' "/v1/datasets/$DsId" $token $null

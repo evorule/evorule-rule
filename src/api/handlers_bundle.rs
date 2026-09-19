@@ -1,8 +1,8 @@
-//! 快照包端点（44 号 §6 bundles/；36 号 集成契约）
+//! 快照包端点（设计文档 §6 bundles/；历史批次 集成契约）
 //!
 //! - 导出：按版本导出（当前版本走活条目；历史版本走 B4 快照重建，无快照显式拒绝不伪造）
-//!   + 裁剪视图导出（36 号 §5）；
-//! - 导入：5 步校验链（schema→防篡改→符号三方一致→版本解析→闸门一），硬失败不静默（35 号 §9）；
+//!   + 裁剪视图导出（设计文档 §5）；
+//! - 导入：5 步校验链（schema→防篡改→符号三方一致→版本解析→闸门一），硬失败不静默（设计文档 §9）；
 //! - 导入预检（dry-run，不落库）+ 导入状态（MVP 同步，状态端点如实标注）。
 
 use axum::extract::{Extension, Path, Query, State};
@@ -19,7 +19,7 @@ use crate::store::StoreError;
 
 #[derive(Deserialize)]
 pub struct ExportQuery {
-    /// 裁剪视图语法：`tag:core` / `domain:tax` / `ids:id1,id2`（多段以 ; 分隔，交集；36 号 §5；不新造版本链）
+    /// 裁剪视图语法：`tag:core` / `domain:tax` / `ids:id1,id2`（多段以 ; 分隔，交集；设计文档 §5；不新造版本链）
     #[serde(default)]
     pub subset: Option<String>,
 }
@@ -186,7 +186,7 @@ pub struct ImportReq {
     pub bundle: DatasetBundle,
 }
 
-/// POST /bundles/import —— 导入快照包（36 号 5 步校验链；admin）
+/// POST /bundles/import —— 导入快照包（历史批次 5 步校验链；admin）
 ///
 /// 校验失败 → 400 显式错误（不静默降级）；成功 → 同步返回导入结果。
 pub async fn import_bundle(
@@ -223,7 +223,7 @@ pub async fn import_bundle(
             "dataset_id": result.dataset_id,
             "activated_version": activated,
             "entry_count": result.entry_count,
-            // 35 号 §9 硬失败：缺失服务已在校验链以显式错误拦截，成功导入即无缺失
+            // 设计文档 §9 硬失败：缺失服务已在校验链以显式错误拦截，成功导入即无缺失
             "missing_services": [],
         })),
     ))

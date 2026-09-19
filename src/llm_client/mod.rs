@@ -1,9 +1,9 @@
-//! LLM 服务客户端（37 号 决策点⑦：LLM 服务接口 · 消费方契约）
+//! LLM 服务客户端（历史批次 既定设计决策：LLM 服务接口 · 消费方契约）
 //!
 //! 前置依赖：evo-agent serve 模式（07f E1）暴露 `POST /ops/{operation}` 命名操作端点。
-//! evorule-rule 不建独立 LLM，仅作为客户端消费该契约（37 号 §2）。
+//! evorule-rule 不建独立 LLM，仅作为客户端消费该契约（设计文档 §2）。
 //!
-//! 契约要点（37 号 §4）：
+//! 契约要点（设计文档 §4）：
 //! - 命名操作：`draft_rule` / `gen_tests` / `explain_rule`（MVP 只做这三个，§3）；
 //! - 请求骨架：`operation` / `model` / `request_id` / `params`；
 //! - 响应骨架：`status` / `result` / `errors` / `llm_generated`（溯源，§4/§8）；
@@ -25,7 +25,7 @@ use crate::model::llm_audit::LlmOpAudit;
 use crate::model::provenance::Provenance;
 use crate::store::RuleStore;
 
-/// 命名操作标识（37 号 §3）
+/// 命名操作标识（设计文档 §3）
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Operation {
     /// 起草：法规文本/需求 + 领域 → 候选规则 JSON（Draft）
@@ -47,7 +47,7 @@ impl Operation {
     }
 }
 
-/// 请求参数（各 op 共享骨架，37 号 §4）
+/// 请求参数（各 op 共享骨架，设计文档 §4）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LlmOpRequest {
     /// 模型标识（可插拔，由调用方请求）
@@ -60,7 +60,7 @@ pub struct LlmOpRequest {
     pub params: Value,
 }
 
-/// 响应（同步主路径，预留 task_id，37 号 §4）
+/// 响应（同步主路径，预留 task_id，设计文档 §4）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LlmOpResponse {
     pub operation: String,
@@ -131,7 +131,7 @@ impl LlmClient {
         Ok(resp)
     }
 
-    /// 调用命名操作并落操作级审计（37 号 §8："LLM 每步可审计"）。
+    /// 调用命名操作并落操作级审计（设计文档 §8："LLM 每步可审计"）。
     ///
     /// - 无论成功/失败都记录一条 `LlmOpAudit`（含耗时、model、op、request_id）；
     /// - `result_ref`：该 op 产出的条目引用（如 entry_id），审计可溯源到条目；
@@ -176,7 +176,7 @@ impl LlmClient {
         outcome
     }
 
-    /// `draft_rule`：法规文本/需求 + 领域 → 候选规则 JSON（Draft，37 号 §5 强约束）
+    /// `draft_rule`：法规文本/需求 + 领域 → 候选规则 JSON（Draft，设计文档 §5 强约束）
     pub fn draft_rule(
         &self,
         law_text: &str,
@@ -195,7 +195,7 @@ impl LlmClient {
         self.call(Operation::DraftRule, &req)
     }
 
-    /// `gen_tests`：规则 JSON + 数据依赖契约 → test_cases（35 号 §4 用途②）
+    /// `gen_tests`：规则 JSON + 数据依赖契约 → test_cases（设计文档 §4 用途②）
     pub fn gen_tests(
         &self,
         rule_json: &Value,
@@ -230,10 +230,10 @@ impl LlmClient {
     }
 }
 
-/// `draft_rule` 结果 → 候选 Draft `RuleEntry`（37 号 §5 确定性边界）
+/// `draft_rule` 结果 → 候选 Draft `RuleEntry`（设计文档 §5 确定性边界）
 ///
 /// LLM 产出永远只到 Draft；`governance.llm_generated` 落溯源（模型/op/时间戳）。
-/// 升 Candidate/Active 必须过闸门一/闸门二（34 号），本函数不做任何状态提升。
+/// 升 Candidate/Active 必须过闸门一/闸门二（历史批次），本函数不做任何状态提升。
 pub fn draft_response_to_entry(
     resp: &LlmOpResponse,
     entry_id: &str,

@@ -1,4 +1,4 @@
-//! evorule-rule-cli（B3 段B 14 号）：治理服务 REST 命令行客户端。
+//! evorule-rule-cli（B3 段B 历史批次）：治理服务 REST 命令行客户端。
 //!
 //! 纯 REST 接入（不对 db 直连），供服务公司/运维在终端批量操作数据资产：
 //! - `datasets list` / `datasets export` / `datasets import`

@@ -1,4 +1,4 @@
-//! RuleEntry（31 号 §4，重点，同时回答基线 D-1）
+//! RuleEntry（设计文档 §4，重点，同时回答基线 D-1）
 //!
 //! - `rule_body` = evorule 原生 JSON（零转译，锚定 10_role13_demo.json 结构）；
 //! - 版本双维度分离：治理层 `version`（整型单调递增）vs `rule_body.version`（evorule 自身语义化版本）；
@@ -35,7 +35,7 @@ pub struct RuleEntry {
     /// 规则体→服务 绑定映射（§6）
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub data_source_binding: Vec<SourceBinding>,
-    /// 本条目消费的推入式输入符号（数据集 `data_dependencies.inputs` 的子集；35 号 §4）
+    /// 本条目消费的推入式输入符号（数据集 `data_dependencies.inputs` 的子集；设计文档 §4）
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub consumed_inputs: Vec<String>,
     /// evorule 原生 JSON，零转译（锚定 10_role13_demo.json）
@@ -54,7 +54,7 @@ impl RuleEntry {
         )
     }
 
-    /// 内容哈希（未变条目按内容哈希去重存储，决策点③/§10）
+    /// 内容哈希（未变条目按内容哈希去重存储，既定设计决策/§10）
     /// 统一为 BLAKE3（blake3 crate），与 evorule-reactor 审计链同源；`blake3:` 前缀自描述。
     pub fn content_hash(&self) -> String {
         // 只对可执行体做去重哈希（治理元数据不参与）

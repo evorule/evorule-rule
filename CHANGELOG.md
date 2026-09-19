@@ -103,15 +103,15 @@ evorule-rule 的所有显著变更都记录在此文件。
 
 - LlmClient 真实 HTTP 冒烟集成测试(方案 B,3 次 HTTP 调用,30+ 断言)
 - 操作级 LLM 审计落库
-- 审计查询与统计展示接口(37 号 §8 对外层)
+- 审计查询与统计展示接口(设计文档 §8 对外层)
 
 **认证与用户身份**
 
-- 认证与用户身份层 MVP(43 号 正交 A):Bearer token 签发/验证/吊销、登出撤销 + jti 黑名单、发布前凭据扫描、LLM 产出离开 Draft 拦截
+- 认证与用户身份层 MVP(历史批次 正交 A):Bearer token 签发/验证/吊销、登出撤销 + jti 黑名单、发布前凭据扫描、LLM 产出离开 Draft 拦截
 
 **REST API 面**
 
-- 完整 REST 路由(44 号 正交 B):`/v1/datasets` / `/v1/entries` / `/v1/dependencies` / `/v1/services` / `/v1/search` / `/v1/bundles` 等
+- 完整 REST 路由(历史批次 正交 B):`/v1/datasets` / `/v1/entries` / `/v1/dependencies` / `/v1/services` / `/v1/search` / `/v1/bundles` 等
 - 条目顶层 CRUD + submit-candidate + approve + history + deps
 - 依赖 deps 读写 + 服务模板注册/列表/详情/bind
 - 检索数据集/条目 + 版本 diff
@@ -189,7 +189,7 @@ evorule-rule 的所有显著变更都记录在此文件。
 - `rand = "0.8"` — 随机 salt/secret 生成
 - `base64 = "0.22"` — JWT/Key 编码
 - `ureq = "2"` — 同步 HTTP 客户端(LLM 冒烟,无异步依赖)
-- `axum = "0.8"` — REST 框架(44 号)
+- `axum = "0.8"` — REST 框架(历史批次)
 - `tokio = "1"` features=["full"] — async runtime
 - `tower = "0.5"` features=["util"] — 中间件栈
 - `http-body-util = "0.1"` — axum body 工具

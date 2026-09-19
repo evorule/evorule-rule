@@ -1,4 +1,4 @@
-//! 快照包治理侧集成（决策点⑥ · 36 号）
+//! 快照包治理侧集成（既定设计决策 ·历史批次）
 //!
 //! **T1 决策（2026-08-24）**：快照包类型 + 6 项校验链 + 裁剪逻辑 + 版本/依赖/溯源模型
 //! 唯一来源已迁至 `evorule-bundle`（SSOT），本模块 re-export 并在治理侧保留
@@ -16,15 +16,15 @@ use crate::model::dataset::RuleDataset;
 use crate::model::entry::RuleEntry;
 use crate::model::service_catalog::ServiceCatalogEntry;
 
-/// 导出（evorule-rule 侧，36 号 §2）—— 治理侧映射：RuleDataset/RuleEntry → DatasetBundle
+/// 导出（evorule-rule 侧，设计文档 §2）—— 治理侧映射：RuleDataset/RuleEntry → DatasetBundle
 pub struct BundleExporter;
 
 impl BundleExporter {
     /// 由数据集当前版本 + 条目（最新版）导出快照包（只读产物）。
     ///
     /// - `tests`：沙箱验证证据（闸门一产出），由调用方如实提供（导出不伪造 verdict）；
-    /// - `instance_id`：真实发布者身份（决策点⑨）；
-    /// - `source_version = versioning.current`（发布单位 = 数据集版本，决策点②）；
+    /// - `instance_id`：真实发布者身份（既定设计决策）；
+    /// - `source_version = versioning.current`（发布单位 = 数据集版本，既定设计决策）；
     /// - `catalog`：服务目录（name → 条目）。C3/C4/C6 服务契约 SSOT 下沉：数据集声明的
     ///   服务若缺 version/io_contract/description 从目录补齐；`sensitive` 以目录为权威
     ///   （防止声明降级敏感标记，C6）。补齐在 content_hash 计算之前完成，保证哈希覆盖最终契约。

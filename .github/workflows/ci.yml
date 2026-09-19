@@ -36,7 +36,7 @@ jobs:
       - name: cargo clippy --workspace
         run: cargo clippy --workspace --all-targets -- -D warnings
 
-  # ===== 原生服务声明漂移检查（UV-180/P0-2 · 零 cargo 依赖）=====
+  # ===== 原生服务声明漂移检查（回归验证/P0-2 · 零 cargo 依赖）=====
   # 治理侧嵌入副本 = 本仓 src/model/*.embedded.json；
   # SSOT = evorule-server plugins/*/official_native_services.json。
   # fail-closed：漂移即红灯。修复 = 运行 evorule-server/scripts/sync-native-services.ps1 同步。

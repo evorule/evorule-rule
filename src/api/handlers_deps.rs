@@ -1,11 +1,11 @@
-//! 数据依赖端点（44 号 §7 deps/；35 号 数据源绑定）
+//! 数据依赖端点（设计文档 §7 deps/；历史批次 数据源绑定）
 //!
-//! 三层模型（35 号 §3）：
+//! 三层模型（设计文档 §3）：
 //! 1. 层 1 数据集级 `data_dependencies` 声明（GET/PUT `/deps/datasets/{id}`，alias `/datasets/{id}/deps`）；
-//! 2. 无凭据服务模板注册（35 号 §5：端点形状 + 占位符，不含真实端点/密钥）；
+//! 2. 无凭据服务模板注册（设计文档 §5：端点形状 + 占位符，不含真实端点/密钥）；
 //! 3. 层 2 绑定动作 `bind`（占位符填充 → 消费者可填写的 ServiceTemplate）。
 //!
-//! 凭据强约束：模板不存真实端点/密钥（35 号 §6 强约束，只走执行侧密钥管理）。
+//! 凭据强约束：模板不存真实端点/密钥（设计文档 §6 强约束，只走执行侧密钥管理）。
 
 use std::collections::BTreeMap;
 
@@ -107,7 +107,7 @@ pub async fn create_template(
     }
     if !req.endpoint_template.contains('{') {
         return Err(ApiError::bad_request(
-            "endpoint_template 应含占位符（如 {host}）；真实端点/密钥不得入库（35 号 §6）",
+            "endpoint_template 应含占位符（如 {host}）；真实端点/密钥不得入库（设计文档 §6）",
         ));
     }
     let record = ServiceTemplateRecord {
@@ -170,7 +170,7 @@ pub struct BindTemplateReq {
 
 /// POST /deps/templates/{id}/bind —— 应用模板生成绑定（占位符填充，engineer）
 ///
-/// 返回可交给执行侧 service_registry 填写的 ServiceTemplate（无凭据，35 号 §5）。
+/// 返回可交给执行侧 service_registry 填写的 ServiceTemplate（无凭据，设计文档 §5）。
 pub async fn bind_template(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,

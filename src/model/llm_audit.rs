@@ -1,9 +1,9 @@
-//! 操作级审计记录（37 号 §8）
+//! 操作级审计记录（设计文档 §8）
 //!
 //! "LLM 每步可审计"是平台核心卖点（00-README 核心结论 1）：数据库记录每个命名操作
 //! 请求的 `request_id / operation / model / 耗时 / 产出条目`，供审计查询。
-//! 落库由 `RuleStore::record_llm_audit` 承担，本类型是持久化单元（31 号 §8 数据模型层）。
-//! 查询/统计类型（`LlmAuditFilter` / `LlmAuditStats`）为对外展示接口（37 号 §8 对外层）。
+//! 落库由 `RuleStore::record_llm_audit` 承担，本类型是持久化单元（设计文档 §8 数据模型层）。
+//! 查询/统计类型（`LlmAuditFilter` / `LlmAuditStats`）为对外展示接口（设计文档 §8 对外层）。
 
 use std::collections::BTreeMap;
 
@@ -70,7 +70,7 @@ pub struct OperationStat {
 pub struct LlmOpAudit {
     /// 幂等 / 审计主键（调用方生成，`llm_client::make_request_id`）
     pub request_id: String,
-    /// 命名操作：draft_rule / gen_tests / explain_rule（37 号 §3）
+    /// 命名操作：draft_rule / gen_tests / explain_rule（设计文档 §3）
     pub operation: String,
     /// 模型标识（可插拔，随请求传）
     #[serde(default, skip_serializing_if = "Option::is_none")]

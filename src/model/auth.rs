@@ -1,10 +1,10 @@
-//! 认证与用户身份数据模型（43 号 正交 A）
+//! 认证与用户身份数据模型（历史批次 正交 A）
 //!
-//! MVP 定案（43 号 §11，2026-08-22）：
+//! MVP 定案（设计文档 §11，2026-08-22）：
 //! - 单租户实例：每实例一个 `Tenant`，数据 SQL 层 tenant_id 隔离（多租户切换后置）；
 //! - 四角色递进：查看者 ⊆ 规则工程师 ⊆ 审批者 ⊆ 管理员；
 //! - 发布者 = 复用审批者 + 二次确认（不设独立发布者角色）；
-//! - token：access 15min / refresh 30d，HS256 单密钥（生产级换 RS256，45 号批次 1）。
+//! - token：access 15min / refresh 30d，HS256 单密钥（生产级换 RS256，历史批次批次 1）。
 //!
 //! **双层租户升级（2026-08-31 用户裁定，数据治理攻坚 B1）**：
 //! - 一个部署实例 = 一个 platform（平台层，原 Tenant 语义）；platform 下若干 organization
@@ -24,7 +24,7 @@ use serde::{Deserialize, Serialize};
 pub struct Tenant {
     pub tenant_id: String,
     pub name: String,
-    /// 实例真实身份（39 号 §2，白标不掩盖来源，进溯源）
+    /// 实例真实身份（设计文档 §2，白标不掩盖来源，进溯源）
     pub instance_id: String,
     pub created_at: String,
 }
@@ -51,7 +51,7 @@ pub struct UserOrg {
     pub created_at: String,
 }
 
-/// 组织内角色（四角色递进，43 号 §4 / 38 号 §4）
+/// 组织内角色（四角色递进，设计文档 §4 / 设计文档 §4）
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Role {
@@ -92,7 +92,7 @@ impl Role {
     }
 }
 
-/// 动作集（43 号 §4 动作 → 角色映射，38 号 §5）
+/// 动作集（设计文档 §4 动作 → 角色映射，设计文档 §5）
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Action {
@@ -115,7 +115,7 @@ pub enum Action {
 }
 
 impl Action {
-    /// 该动作所需的最低角色等级（递进模型，43 号 §4）
+    /// 该动作所需的最低角色等级（递进模型，设计文档 §4）
     pub fn required_rank(&self) -> u8 {
         match self {
             Action::View => Role::Viewer as u8,
@@ -138,13 +138,13 @@ pub fn is_org_admin(role: Role) -> bool {
     (role as u8) >= Role::Admin as u8
 }
 
-/// 用户（43 号 §2）
+/// 用户（设计文档 §2）
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct User {
     pub user_id: String,
     pub tenant_id: String,
     pub username: String,
-    /// PBKDF2-HMAC-SHA256 哈希（MVP；生产级 45 号换 Argon2id）
+    /// PBKDF2-HMAC-SHA256 哈希（MVP；生产级历史批次换 Argon2id）
     pub password_hash: String,
     /// 随机盐（hex）
     pub salt: String,
@@ -154,7 +154,7 @@ pub struct User {
     pub updated_at: String,
 }
 
-/// 认证审计记录（43 号 §6，only-append，与 34 号共用时间线语义）
+/// 认证审计记录（设计文档 §6，only-append，与历史批次共用时间线语义）
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AuthAudit {
     pub audit_id: String,
@@ -168,7 +168,7 @@ pub struct AuthAudit {
     pub created_at: String,
 }
 
-/// JWT 声明（43 号 §7，HS256，MVP）
+/// JWT 声明（设计文档 §7，HS256，MVP）
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TokenClaims {
     pub sub: String,
@@ -178,15 +178,15 @@ pub struct TokenClaims {
     pub token_type: String,
     pub iat: i64,
     pub exp: i64,
-    /// 唯一 token id（43 号 §3.3）：登出/撤销按 jti 拉黑，防刷新旋转后旧 token 续用
+    /// 唯一 token id（设计文档 §3.3）：登出/撤销按 jti 拉黑，防刷新旋转后旧 token 续用
     pub jti: String,
 }
 
-/// API Key（44 号 §14 定案：MVP 提供最小 scope 版，执行侧拉取快照包联动需要）
+/// API Key（设计文档 §14 定案：MVP 提供最小 scope 版，执行侧拉取快照包联动需要）
 ///
 /// 仅存 `key_hash`（SHA-256），不存明文；`scope`：
 /// - `pull`（MVP 最小版）：只读拉取（本租户/public 数据集快照包，执行侧联动）；
-/// - 完整 scope/轮换/撤销告警 后置（44 号 §14-2）。
+/// - 完整 scope/轮换/撤销告警 后置（设计文档 §14-2）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ApiKey {
     pub key_id: String,

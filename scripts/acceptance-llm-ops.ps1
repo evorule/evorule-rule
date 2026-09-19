@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 EvoRule Project
-# evorule-rule — V1 LLM 三操作契约验收脚本(可复现,无 Key;链路 B:rule → evo-agent 37 号契约)
+# evorule-rule — V1 LLM 三操作契约验收脚本(可复现,无 Key;链路 B:rule → evo-agent 跨仓契约)
 #
 # 场景:
 #   [1..3] 三操作契约 E2E:rule 代理 /v1/llm/ops/{op} → evo-agent serve(mock 内容)
-#          断言 37 号 §4 响应骨架(operation/request_id/task_id/status/result/llm_generated 溯源)
+#          断言 设计文档 §4 响应骨架(operation/request_id/task_id/status/result/llm_generated 溯源)
 #   [4]    LlmOpAudit 入库:GET /v1/audits/llm 三条 completed + GET /v1/llm/audits/stats 统计
 #   [5]    LLM 不可达如实报错:停 evo-agent → 代理调用快速失败(不挂死)且审计落 status=failed
 #   [6]    未知操作显式拒绝(404 语义经 rule 侧 bad_request)
@@ -31,7 +31,7 @@ foreach ($exe in @($agentExe, $ruleExe)) {
   if (-not (Test-Path $exe)) { throw "二进制不存在: $exe — 请先在对应仓 cargo build" }
 }
 
-$tmpRoot = Join-Path $env:TEMP ("uv030-llm-ops-" + (Get-Date -Format 'yyyyMMdd-HHmmss'))
+$tmpRoot = Join-Path $env:TEMP ("reg030-llm-ops-" + (Get-Date -Format 'yyyyMMdd-HHmmss'))
 New-Item -ItemType Directory -Path $tmpRoot | Out-Null
 
 $script:agentProc = $null
@@ -90,8 +90,8 @@ try {
   $dbPath = Join-Path $tmpRoot 'rule.db'
   $script:ruleProc = Start-Process -FilePath $ruleExe `
     -ArgumentList @('--db', $dbPath, '--port', "$rulePort", `
-      '--admin-user', 'admin', '--admin-password', 'uv030-acceptance', `
-      '--secret', 'uv030-acceptance-secret', `
+      '--admin-user', 'admin', '--admin-password', 'reg030-acceptance', `
+      '--secret', 'reg030-acceptance-secret', `
       '--llm-base-url', "http://127.0.0.1:$agentPort") `
     -WorkingDirectory (Join-Path $PSScriptRoot '..') -PassThru -WindowStyle Hidden
   # 就绪探针超时须大于 Argon2id 引导创建/校验耗时(实测 ~5s),否则登录恒超时误判未就绪
@@ -100,7 +100,7 @@ try {
   $lastErr = ''
   while ((Get-Date) -lt $deadline) {
     try { $null = Invoke-RestMethod -Uri "$base/v1/auth/login" -Method POST -ContentType 'application/json' `
-      -Body '{"tenant_id":"default","username":"admin","password":"uv030-acceptance"}' -TimeoutSec 10; $ready = $true; break }
+      -Body '{"tenant_id":"default","username":"admin","password":"reg030-acceptance"}' -TimeoutSec 10; $ready = $true; break }
     catch { $lastErr = $_.Exception.Message; Start-Sleep -Milliseconds 500 }
   }
   if (-not $ready) {
@@ -110,7 +110,7 @@ try {
       throw "evorule-rule-serve 30s 未就绪(进程已退出,退出码 $($script:ruleProc.ExitCode))"
     }
   }
-  $login = Api 'POST' '/v1/auth/login' $null @{ tenant_id = 'default'; username = 'admin'; password = 'uv030-acceptance' }
+  $login = Api 'POST' '/v1/auth/login' $null @{ tenant_id = 'default'; username = 'admin'; password = 'reg030-acceptance' }
   $token = $login.access_token
   Write-Host '[0] evorule-rule-serve 就绪 + 管理员登录成功'
 
@@ -142,7 +142,7 @@ try {
   }
 
   # ---- 场景 4:LlmOpAudit 入库 ----
-  Write-Host '[4] LlmOpAudit 入库(37 号 §8)'
+  Write-Host '[4] LlmOpAudit 入库(设计文档 §8)'
   $audits = Api 'GET' '/v1/audits/llm?limit=50' $token $null
   $items = @($audits.items)
   Assert-True ($items.Count -ge 3) "审计列表 ≥3 条(实际 $($items.Count))"
@@ -190,20 +190,20 @@ try {
     Start-Agent ''
     try {
       $draft = Api 'POST' '/v1/llm/ops/draft_rule' $token @{
-        model = 'MiniMax-Text-01'; request_id = 'uv030-real-draft'
+        model = 'MiniMax-Text-01'; request_id = 'reg030-real-draft'
         params = @{ 需求文本 = '订单金额大于 1000 且用户等级为 VIP 时,给予 95 折优惠'; 领域 = '电商促销' } }
       Assert-True ($draft.status -eq 'completed') '真实 draft_rule: completed'
       Assert-True ($null -ne $draft.result.rule) '真实 draft_rule: result.rule 为对象'
       Assert-True ($draft.llm_generated.model -eq 'MiniMax-Text-01') '真实 draft_rule: 溯源 model'
 
       $tests = Api 'POST' '/v1/llm/ops/gen_tests' $token @{
-        model = 'MiniMax-Text-01'; request_id = 'uv030-real-tests'
+        model = 'MiniMax-Text-01'; request_id = 'reg030-real-tests'
         params = @{ rule = $draft.result.rule } }
       Assert-True ($tests.status -eq 'completed') '真实 gen_tests: completed'
       Assert-True ($tests.result.test_cases.Count -ge 1) "真实 gen_tests: test_cases≥1(实际 $($tests.result.test_cases.Count))"
 
       $expl = Api 'POST' '/v1/llm/ops/explain_rule' $token @{
-        model = 'MiniMax-Text-01'; request_id = 'uv030-real-explain'
+        model = 'MiniMax-Text-01'; request_id = 'reg030-real-explain'
         params = @{ rule = $draft.result.rule } }
       Assert-True ($expl.status -eq 'completed') '真实 explain_rule: completed'
       Assert-True ($expl.result.explanation -is [string] -and $expl.result.explanation.Length -gt 0) '真实 explain_rule: explanation 非空'

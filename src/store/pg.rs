@@ -1,4 +1,4 @@
-//! PostgreSQL 生产后端（45 号批次1 §2 · 生产级后续，如实标注）
+//! PostgreSQL 生产后端（历史批次1 §2 · 生产级后续，如实标注）
 //!
 //! 本模块仅在 `--features postgres` 下编译（见 Cargo.toml `postgres` feature / `dep:sqlx`）。
 //! **当前 SQLite 仍是 MVP 活跃引擎**（`RuleStore`），本模块是生产后端的接入位：
@@ -36,7 +36,7 @@ pub enum PgError {
     #[error("连接串缺失: 需设置 DATABASE_URL (postgres://user:pass@host:5432/evorule_rulehub)")]
     MissingDatabaseUrl,
 
-    #[error("已占位：查询/写入层尚未接入（45 号批次1 生产级后续，见模块注）")]
+    #[error("已占位：查询/写入层尚未接入（历史批次1 生产级后续，见模块注）")]
     NotYetWired,
 }
 
@@ -46,13 +46,13 @@ pub struct PgStore {
 }
 
 impl PgStore {
-    /// 由 `DATABASE_URL` 建立连接池并运行迁移（45 号 §2.1：PgBouncer 事务级可前缀）。
+    /// 由 `DATABASE_URL` 建立连接池并运行迁移（设计文档 §2.1：PgBouncer 事务级可前缀）。
     pub async fn connect_from_env() -> Result<Self, PgError> {
         let url = std::env::var("DATABASE_URL").map_err(|_| PgError::MissingDatabaseUrl)?;
         Self::connect(&url).await
     }
 
-    /// 显式连接串建池 + 迁移（对齐 45 号 §2.4 版本化迁移；破坏性变更走 v2 迁移，44 §3.1）。
+    /// 显式连接串建池 + 迁移（对齐 设计文档 §2.4 版本化迁移；破坏性变更走 v2 迁移，44 §3.1）。
     pub async fn connect(url: &str) -> Result<Self, PgError> {
         let pool = PgPoolOptions::new().max_connections(8).connect(url).await?;
         let migrator = Migrator::new(std::path::Path::new("./migrations")).await?;
@@ -66,7 +66,7 @@ impl PgStore {
         Ok(())
     }
 
-    /// 冒烟自检（45 号 最小接线 · 启动门控）：建池 + 迁移 + 最小 CRUD 往返。
+    /// 冒烟自检（历史批次 最小接线 · 启动门控）：建池 + 迁移 + 最小 CRUD 往返。
     /// 返回人类可读诊断字符串（如实说明成功环节与边界，不伪造）。
     pub async fn smoke_check() -> Result<String, PgError> {
         let store = Self::connect_from_env().await?;
@@ -80,7 +80,7 @@ impl PgStore {
         let ds = crate::model::dataset::RuleDataset {
             dataset_id: ds_id.clone(),
             name: "冒烟数据集".into(),
-            description: Some("45 号最小接线自检".into()),
+            description: Some("历史批次最小接线自检".into()),
             dataset_kind: Default::default(),
             domain: vec!["smoke".into()],
             tags: vec![],
@@ -118,7 +118,7 @@ impl PgStore {
     }
 
     // ------------------------------------------------------------------
-    // P4 方言改写 · 核心两表 CRUD（45 号批次1，2026-08-22）
+    // P4 方言改写 · 核心两表 CRUD（历史批次1，2026-08-22）
     // 字段序列化对齐 store/mod.rs（SQLite）的 JSON→TEXT；用运行时 query + 手动 Row 映射。
     // 边界：代码就绪待真实 PG 跑集成测试验证（tests `#[ignore]`）。仅核心两表。
     // ------------------------------------------------------------------
@@ -246,7 +246,7 @@ impl PgStore {
         let _ = ds;
         let hash = entry.content_hash();
         let mut tx = self.pool.begin().await?;
-        // 内容寻址快照去重（33 号 §6/C1）：跨版本未变内容复用同一快照行
+        // 内容寻址快照去重（设计文档 §6/C1）：跨版本未变内容复用同一快照行
         sqlx::query(
             "INSERT INTO entry_snapshots(dataset_id, content_hash, rule_body, created_at)
              VALUES ($1, $2, $3, $4)
@@ -492,7 +492,7 @@ impl PgStore {
         Ok(())
     }
 
-    /// 创建 API Key（方言改写；仅存 key_hash，不存明文，对齐 44 号 §14）。
+    /// 创建 API Key（方言改写；仅存 key_hash，不存明文，对齐 设计文档 §14）。
     pub async fn create_api_key(&self, k: &crate::model::auth::ApiKey) -> Result<(), PgError> {
         sqlx::query(
             "INSERT INTO api_keys (key_id, tenant_id, name, scope, key_hash, created_at, revoked_at)
@@ -632,7 +632,7 @@ impl PgStore {
 
     // ------------------------------------------------------------------
     // P6 剩余表方言改写（2026-08-22）——dataset_versions / entry_state_history /
-    // bundles_import_logs。（usage_records 为 45 号 §2.4 配额预留，store 层当前无写入路径，
+    // bundles_import_logs。（usage_records 为 设计文档 §2.4 配额预留，store 层当前无写入路径，
     // 本轮不落地，如实标注后续。）
     // ------------------------------------------------------------------
 
@@ -682,7 +682,7 @@ impl PgStore {
 
     // ------------------------------------------------------------------
     // B4 段B：版本级全量条目快照（dataset_version_snapshots，对齐 store/mod.rs 语义）。
-    // 建表归属 PG 迁移脚本（45 号 §5，治理数据 MVP 仍 SQLite），此处仅提供读写方法。
+    // 建表归属 PG 迁移脚本（设计文档 §5，治理数据 MVP 仍 SQLite），此处仅提供读写方法。
     // ------------------------------------------------------------------
 
     /// 写一批版本级全量条目快照（幂等：同 (dataset, version, entry) 覆盖不重复）。
@@ -796,7 +796,7 @@ impl PgStore {
         Ok(out)
     }
 
-    /// 记录快照包导入流水（content_hash 幂等，44 号 §9）。
+    /// 记录快照包导入流水（content_hash 幂等，设计文档 §9）。
     pub async fn log_bundle_import(
         &self,
         log_id: &str,
@@ -1199,7 +1199,7 @@ mod tests {
         Ok(())
     }
 
-    /// 配置化双后端冒烟（45 号 最小接线）：真实 PG 下 `smoke_check` 应成功并返回 CRUD_ROUNDTRIP=ok。
+    /// 配置化双后端冒烟（历史批次 最小接线）：真实 PG 下 `smoke_check` 应成功并返回 CRUD_ROUNDTRIP=ok。
     #[tokio::test]
     #[ignore = "需要真实 PostgreSQL：DATABASE_URL"]
     async fn pg_smoke_check() {
