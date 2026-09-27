@@ -8,6 +8,23 @@ evorule-rule 的所有显著变更都记录在此文件。
 
 ---
 
+## [0.3.2] - 2026-09-27
+
+**治理与发布纪律对齐批** — 无 crate 行为面变更，测试守卫与公开面加固
+
+### ⚙ 变更
+
+- CI 接入公开面矩阵扫描门禁（A1/B 阻断口径）；mirror.yml 统一容错版 + v* tag 同步纪律（仅镜像版本 tag）
+- 文档安全门禁推广（check_doc_safety 母本同步与公开面内部编号中性化改写）
+- 许可与治理文件对齐主仓（七件套同步分发）；补齐 AUTHORS/CONTRIBUTING(中英)/CoC/SECURITY 治理件
+- README/CHANGELOG 对齐 crates.io 已发布状态（双 bin 安装命令）
+
+### 🛠 修复
+
+- 新增原生服务声明快照守卫测试 + CI 漂移检查
+- 本地 evorule-bundle 覆盖 patch 迁至 gitignored `.cargo/config.toml`（发布产物不含本地覆盖）
+- reg094w2 断言行宽格式化（cargo fmt）；调仓遗留链接统一 canonical；.gitignore 补运行日志规则
+
 ## [0.3.1] - 2026-09-06
 
 **治理域数据一致性收口** — 导入/删除链事务化 + JWT 密钥持久化 + 导出证据形状校验
