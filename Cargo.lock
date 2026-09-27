@@ -469,7 +469,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -495,9 +495,7 @@ dependencies = [
 
 [[package]]
 name = "evorule-bundle"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "578b82584488febdded3a93130072706cc48aa985d48cf0fb92e4b984655a6dc"
+version = "0.3.1"
 dependencies = [
  "evorule-hash",
  "jsonschema",
