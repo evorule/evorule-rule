@@ -194,6 +194,12 @@ impl AnyEntry {
     }
 }
 
+/// 领域 schema 缓存条目：URI → schema 正文 + 加载时目录指纹（O-236 修复 C）
+type DomainSchemaCache = Option<(
+    std::collections::BTreeMap<String, serde_json::Value>,
+    Option<std::time::SystemTime>,
+)>;
+
 /// 规则存储
 pub struct RuleStore {
     /// rusqlite `Connection` 为 Send 但非 Sync，axum 跨线程共享需 `Mutex` 包裹
@@ -204,12 +210,7 @@ pub struct RuleStore {
     /// 领域 schema 缓存 + 加载时目录指纹（O-236 修复 C）：指纹（目录 mtime 与全部
     /// *.json mtime 最大值）未变=直接走缓存；变化=重扫重建——schema 新增/内容修改
     /// 无需重启生效。目录不可读时沿用现缓存（不静默清空）。
-    domain_schema_cache: std::sync::Mutex<
-        Option<(
-            std::collections::BTreeMap<String, serde_json::Value>,
-            Option<std::time::SystemTime>,
-        )>,
-    >,
+    domain_schema_cache: std::sync::Mutex<DomainSchemaCache>,
 }
 
 /// service_templates 行原始列（rusqlite 闭包只读原始列，JSON 反序列化移到闭包外）

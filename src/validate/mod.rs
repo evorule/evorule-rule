@@ -550,13 +550,12 @@ mod tests {
         // 紧邻真实键值形态仍必命中（检出不降级，fail-fast 语义不变）
         assert!(scan_credentials("password: benchmarkpass")
             .contains(&"password=benchmarkpass".to_string()));
-        assert!(scan_credentials(r#"password = "s3cret""#)
-            .contains(&"password=s3cret".to_string()));
-        assert!(scan_credentials("db.password=hunter2")
-            .contains(&"password=hunter2".to_string()));
+        assert!(scan_credentials(r#"password = "s3cret""#).contains(&"password=s3cret".to_string()));
+        assert!(scan_credentials("db.password=hunter2").contains(&"password=hunter2".to_string()));
         assert!(scan_credentials(r#"{"access_token": "ya29.abcd1234"}"#)
             .contains(&"access_token=ya29.abcd1234".to_string()));
-        assert!(scan_credentials("api_key: abcd1234efgh")
-            .contains(&"api_key=abcd1234efgh".to_string()));
+        assert!(
+            scan_credentials("api_key: abcd1234efgh").contains(&"api_key=abcd1234efgh".to_string())
+        );
     }
 }
