@@ -201,9 +201,15 @@ pub struct RuleStore {
     /// 领域 schema 目录（D3）：`{db 同级}/domain_schemas/` 下 *.json，
     /// 以 schema `$id`（缺省取文件名）为 `schema_ref` URI 索引。bundle 仓不内置领域，宿主注入。
     domain_schema_dir: Option<std::path::PathBuf>,
-    /// 领域 schema 缓存（懒加载一次；新增 schema 需重启生效——MVP 如实标注）
-    domain_schema_cache:
-        std::sync::Mutex<Option<std::collections::BTreeMap<String, serde_json::Value>>>,
+    /// 领域 schema 缓存 + 加载时目录指纹（O-236 修复 C）：指纹（目录 mtime 与全部
+    /// *.json mtime 最大值）未变=直接走缓存；变化=重扫重建——schema 新增/内容修改
+    /// 无需重启生效。目录不可读时沿用现缓存（不静默清空）。
+    domain_schema_cache: std::sync::Mutex<
+        Option<(
+            std::collections::BTreeMap<String, serde_json::Value>,
+            Option<std::time::SystemTime>,
+        )>,
+    >,
 }
 
 /// service_templates 行原始列（rusqlite 闭包只读原始列，JSON 反序列化移到闭包外）
@@ -272,18 +278,31 @@ impl RuleStore {
     /// `rpsm-body` 会导致 payload 校验报"领域 schema 本身非法"）；无 `$id` 时回退文件名
     /// （此时 schema 本身可过校验，但建议统一写 `$id`）。
     ///
+    /// 缓存语义（O-236 修复 C）：按目录指纹（目录 mtime 与全部 *.json mtime 最大值）
+    /// 感知变更——指纹未变直接走缓存，变化即重扫重建，schema 新增/内容修改无需重启；
+    /// 目录不可读时沿用现缓存（不静默清空已加载 schema），从未加载过且不可读=None。
+    ///
     /// 用法（`DomainSchemaResolver = &dyn Fn`，闭包须由调用方局部绑定后取引用）：
     /// `let resolver = |uri: &str| store.lookup_domain_schema(uri);`
     pub fn lookup_domain_schema(&self, uri: &str) -> Option<serde_json::Value> {
+        let dir = self.domain_schema_dir.as_ref()?;
+        let fp = Self::domain_schema_fingerprint(dir);
         {
             let cache = self.domain_schema_cache.lock().unwrap();
-            if let Some(map) = cache.as_ref() {
-                return map.get(uri).cloned();
+            match cache.as_ref() {
+                Some((map, cached_fp)) => {
+                    // 目录不可读（指纹 None）→ 沿用现缓存；指纹未变 → 直接命中
+                    if fp.is_none() || fp == *cached_fp {
+                        return map.get(uri).cloned();
+                    }
+                }
+                None if fp.is_none() => return None, // 从未加载且目录不可读
+                None => {}                           // 首次加载，落到重扫
             }
         }
-        let dir = self.domain_schema_dir.as_ref()?;
         let mut map = std::collections::BTreeMap::new();
         let Ok(dirs) = std::fs::read_dir(dir) else {
+            // 竞态：指纹已取到但 read_dir 失败——与原语义一致，不写缓存，下次重试
             return None;
         };
         for e in dirs.flatten() {
@@ -311,8 +330,26 @@ impl RuleStore {
             }
         }
         let mut cache = self.domain_schema_cache.lock().unwrap();
-        *cache = Some(map);
-        cache.as_ref().unwrap().get(uri).cloned()
+        *cache = Some((map, fp));
+        cache.as_ref().unwrap().0.get(uri).cloned()
+    }
+
+    /// 领域 schema 目录指纹（O-236 修复 C）：目录 mtime 与全部 *.json mtime 的最大值。
+    /// 返回 None = 目录不可读（不存在/无权限）。
+    fn domain_schema_fingerprint(dir: &std::path::Path) -> Option<std::time::SystemTime> {
+        let mut max = std::fs::metadata(dir).ok()?.modified().ok()?;
+        for e in std::fs::read_dir(dir).ok()?.flatten() {
+            let p = e.path();
+            if p.extension().and_then(|x| x.to_str()) != Some("json") {
+                continue;
+            }
+            if let Ok(t) = e.metadata().and_then(|m| m.modified()) {
+                if t > max {
+                    max = t;
+                }
+            }
+        }
+        Some(max)
     }
 
     fn init_schema(&self) -> Result<(), StoreError> {
@@ -6429,5 +6466,38 @@ mod tests {
         let strict = store.list_datasets("org-evorule").unwrap();
         assert_eq!(strict.len(), 1);
         assert_eq!(strict[0].dataset_id, "ds-tax-2024");
+    }
+
+    #[test]
+    fn test_domain_schema_cache_fingerprint_rescan() {
+        // O-236 修复 C：缓存按目录指纹感知变更——schema 新增/内容修改无需重启生效
+        let (store, dir) = file_store_with_body_schema();
+        let uri1 = "https://evorule.dev/domain/rpsm-body.json";
+        // 首次解析填充缓存
+        assert!(store.lookup_domain_schema(uri1).is_some());
+        // a) 新增 schema 文件 → 无需重开即可解析（修复前：缓存锁死，需重启）
+        let uri2 = "https://evorule.dev/domain/anchor-v11.json";
+        std::fs::write(
+            dir.join("domain_schemas").join("anchor-v11.json"),
+            format!(r#"{{"$id":"{uri2}","type":"object"}}"#),
+        )
+        .unwrap();
+        assert!(
+            store.lookup_domain_schema(uri2).is_some(),
+            "新增 schema 应无需重启即可解析"
+        );
+        // b) 既有 schema 内容修改 → 重扫后取新内容
+        std::fs::write(
+            dir.join("domain_schemas").join("rpsm-body.json"),
+            r#"{"$id":"https://evorule.dev/domain/rpsm-body.json","type":"object","required":["mass","volume"],"properties":{"mass":{"type":"number"},"volume":{"type":"number"}},"additionalProperties":false}"#,
+        )
+        .unwrap();
+        let v = store.lookup_domain_schema(uri1).unwrap();
+        assert_eq!(
+            v.get("required").unwrap().as_array().unwrap().len(),
+            2,
+            "内容修改应经指纹重扫生效"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
