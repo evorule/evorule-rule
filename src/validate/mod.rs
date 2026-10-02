@@ -50,7 +50,11 @@ pub enum ValidationError {
 /// 辅助"全模型无凭据字段"的模型设计（两层防线），扫描规则保守（尽可能命中真实凭据而少误伤规则正文）：
 /// - AWS 访问密钥 `AKIA<16位大写字母数字>`、GitHub `ghp_/gho_/ghs_`；
 /// - 常见密钥键名（api_key/access_token/password/secret/private_key/credential 等）
-///   紧邻 `:`/`=` 且值为非空、非纯占位符的片段。
+///   **紧邻** `:`/`=` 且值为非空、非纯占位符的片段。
+///   紧邻=键名与分隔符之间仅允许 ≤2 个空白/引号字符（O-235 修复 A：兼容 JSON
+///   `"password": "x"`、YAML `password: x`、`password = x`、`password=x` 全部真实键值
+///   形态；自然语言「password ...」之后任意距离出现的 :/= 不再误报——修复前任意距离
+///   找分隔符会把「password authentication is active; ... port = 8888」这类正文误判为凭据）。
 pub fn scan_credentials(text: &str) -> Vec<String> {
     let mut hits = Vec::new();
     // 1) 已知格式的硬编码凭据前缀（AWS 访问密钥、GitHub PAT/OAuth/部署密钥）
@@ -82,9 +86,18 @@ pub fn scan_credentials(text: &str) -> Vec<String> {
         let mut pos = 0usize;
         while let Some(rel) = lower[pos..].find(name) {
             let idx = pos + rel;
-            // 取键名后到值片段（冒号/等号后 → 到空白/逗号/右括号/引号/右括号/换行）
-            if let Some(sep) = lower[idx..].find([':', '=']) {
-                let vstart = idx + sep + 1;
+            let key_end = idx + name.len();
+            // 紧邻约束（O-235 修复 A）：键名结束与分隔符之间仅允许 ≤2 个空白/引号字符
+            // （引号=JSON 键 `"password":` 的闭合引号；全部 ASCII 单字节，字节序=字符序）
+            let skip = lower[key_end..]
+                .chars()
+                .take_while(|c| matches!(c, ' ' | '\t' | '"' | '\''))
+                .count()
+                .min(2);
+            let rest = &lower[key_end..][skip..];
+            if rest.starts_with(':') || rest.starts_with('=') {
+                // 取分隔符后到值片段（→ 到空白/逗号/右括号/引号/换行）
+                let vstart = key_end + skip + 1;
                 let vtrim = lower[vstart..]
                     .trim_start()
                     .trim_start_matches('"')
@@ -508,5 +521,42 @@ mod tests {
             scan_credentials(r#"{"auth": "<token 由执行侧注入>"}"#),
             Vec::<String>::new()
         );
+    }
+
+    #[test]
+    fn test_scan_credentials_adjacency() {
+        // O-235 修复 A：紧邻约束——键名之后任意距离出现的 :/= 不再误报
+        // （jupyter-notebook-server 锚立法实测误报形态入库为测试素材）
+        assert_eq!(
+            scan_credentials(
+                "server remains running; password authentication is active; endpoint: https://host"
+            ),
+            Vec::<String>::new()
+        );
+        assert_eq!(
+            scan_credentials("password/token prompt; verify login page returned"),
+            Vec::<String>::new()
+        );
+        assert_eq!(
+            scan_credentials("config contains 'c.NotebookApp.password' (hashed) and certfile"),
+            Vec::<String>::new()
+        );
+        assert_eq!(
+            scan_credentials(
+                "using the configured password and confirm the response includes a valid token"
+            ),
+            Vec::<String>::new()
+        );
+        // 紧邻真实键值形态仍必命中（检出不降级，fail-fast 语义不变）
+        assert!(scan_credentials("password: benchmarkpass")
+            .contains(&"password=benchmarkpass".to_string()));
+        assert!(scan_credentials(r#"password = "s3cret""#)
+            .contains(&"password=s3cret".to_string()));
+        assert!(scan_credentials("db.password=hunter2")
+            .contains(&"password=hunter2".to_string()));
+        assert!(scan_credentials(r#"{"access_token": "ya29.abcd1234"}"#)
+            .contains(&"access_token=ya29.abcd1234".to_string()));
+        assert!(scan_credentials("api_key: abcd1234efgh")
+            .contains(&"api_key=abcd1234efgh".to_string()));
     }
 }
