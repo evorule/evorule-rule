@@ -1,0 +1,12 @@
+{
+  "$id": "builtin:knowledge/fact",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "knowledge/fact builtin shell",
+  "description": "builtin base shell (runtime domain_schemas/ override wins on same $id). Minimal structure only: domain ontology fields stay open; strict validation belongs to the domain's runtime schema file.",
+  "type": "object",
+  "properties": {
+    "statement": { "type": "string", "minLength": 1 }
+  },
+  "required": ["statement"],
+  "additionalProperties": true
+}

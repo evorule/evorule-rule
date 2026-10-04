@@ -131,6 +131,16 @@ impl KnowledgeEntry {
             if !known {
                 return Err(format!("unknown knowledge_kind: {kind}"));
             }
+            // builtin schema_ref 一致性闸（A1-1b）：schema_ref 指向内置知识壳时，
+            // 后缀必须与 kind 一致（防 fact 条目挂 model 壳的错配入账）；
+            // 无 kind 条目不受此约束（旧通路不追溯）。
+            if let Some(builtin_kind) = self.schema_ref.strip_prefix("builtin:knowledge/") {
+                if builtin_kind != kind {
+                    return Err(format!(
+                        "schema_ref builtin:knowledge/{builtin_kind} mismatches knowledge_kind: {kind}"
+                    ));
+                }
+            }
         }
         if let Some(level) = &self.trust_level {
             if !is_valid_trust_level(level) {
@@ -262,6 +272,31 @@ mod tests {
         let mut e = sample();
         e.knowledge_kind = None;
         e.execution_contract = None;
+        assert!(e.validate_ingest_contract().is_ok());
+    }
+
+    #[test]
+    fn test_builtin_schema_ref_kind_consistency() {
+        // A1-1b 一致性闸：schema_ref 指向内置知识壳时后缀必须与 kind 一致
+        // POS：kind 与 builtin 后缀一致
+        let mut e = sample();
+        e.knowledge_kind = Some("fact".into());
+        e.schema_ref = "builtin:knowledge/fact".into();
+        assert!(e.validate_ingest_contract().is_ok());
+        // NEG：fact 条目挂 model 壳 → 错配拒绝
+        let mut e = sample();
+        e.knowledge_kind = Some("fact".into());
+        e.schema_ref = "builtin:knowledge/model".into();
+        let err = e.validate_ingest_contract().unwrap_err();
+        assert!(err.contains("mismatches knowledge_kind"), "err={err}");
+        // 非 builtin URI（领域目录件）不受闸约束
+        let mut e = sample();
+        e.knowledge_kind = Some("fact".into());
+        e.schema_ref = "https://rpsm.example/schemas/scenario/v1.0.json".into();
+        assert!(e.validate_ingest_contract().is_ok());
+        // 无 kind 条目挂 builtin 也不受闸（旧通路不追溯）
+        let mut e = sample();
+        e.schema_ref = "builtin:knowledge/fact".into();
         assert!(e.validate_ingest_contract().is_ok());
     }
 

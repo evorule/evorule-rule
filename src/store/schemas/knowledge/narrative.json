@@ -1,0 +1,17 @@
+{
+  "$id": "builtin:knowledge/narrative",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "knowledge/narrative builtin shell",
+  "description": "builtin base shell (runtime domain_schemas/ override wins on same $id). Minimal structure only: natural-language string body allowed; domain ontology fields stay open.",
+  "anyOf": [
+    { "type": "string", "minLength": 1 },
+    {
+      "type": "object",
+      "properties": {
+        "body": { "type": "string", "minLength": 1 }
+      },
+      "required": ["body"],
+      "additionalProperties": true
+    }
+  ]
+}

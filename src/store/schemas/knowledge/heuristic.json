@@ -1,0 +1,17 @@
+{
+  "$id": "builtin:knowledge/heuristic",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "knowledge/heuristic builtin shell",
+  "description": "builtin base shell (runtime domain_schemas/ override wins on same $id). Minimal structure only: natural-language string body allowed (plan 3.1); domain ontology fields stay open.",
+  "anyOf": [
+    { "type": "string", "minLength": 1 },
+    {
+      "type": "object",
+      "properties": {
+        "rule": { "type": "string", "minLength": 1 }
+      },
+      "required": ["rule"],
+      "additionalProperties": true
+    }
+  ]
+}

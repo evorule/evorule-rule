@@ -209,6 +209,7 @@ pub struct RuleStore {
     conn: std::sync::Mutex<Connection>,
     /// 领域 schema 目录（D3）：`{db 同级}/domain_schemas/` 下 *.json，
     /// 以 schema `$id`（缺省取文件名）为 `schema_ref` URI 索引。bundle 仓不内置领域，宿主注入。
+    /// 知识域五件 builtin 壳编译期内嵌（[`Self::builtin_schema`]）为底，目录同 `$id` 覆写。
     domain_schema_dir: Option<std::path::PathBuf>,
     /// 领域 schema 缓存 + 加载时目录指纹（O-236 修复 C）：指纹（目录 mtime 与全部
     /// *.json mtime 最大值）未变=直接走缓存；变化=重扫重建——schema 新增/内容修改
@@ -276,7 +277,9 @@ impl RuleStore {
     }
 
     /// 领域 schema 解析（D3，bundle SSOT 门禁注入点）：
-    /// 按目录索引查 `schema_ref` URI；未命中返回 None（门禁显式拒绝，不静默放行）。
+    /// 两源合并——运行时目录索引优先，未命中落内置五件兜底（`builtin:knowledge/{kind}`，
+    /// 见 [`Self::builtin_schema`]）；目录同 `$id` 覆写内置（内置为底、目录覆写）。
+    /// 两源均未命中才返回 None（门禁显式拒绝，不静默放行）。
     ///
     /// 索引键：schema 的 `$id` 字段（**必须是合法 URI**，jsonschema 校验器强制——裸词如
     /// `rpsm-body` 会导致 payload 校验报"领域 schema 本身非法"）；无 `$id` 时回退文件名
@@ -284,30 +287,35 @@ impl RuleStore {
     ///
     /// 缓存语义（O-236 修复 C）：按目录指纹（目录 mtime 与全部 *.json mtime 最大值）
     /// 感知变更——指纹未变直接走缓存，变化即重扫重建，schema 新增/内容修改无需重启；
-    /// 目录不可读时沿用现缓存（不静默清空已加载 schema），从未加载过且不可读=None。
+    /// 目录不可读时沿用现缓存（不静默清空已加载 schema）+ builtin 兜底；内存库无目录，仅 builtin 可用。
     ///
     /// 用法（`DomainSchemaResolver = &dyn Fn`，闭包须由调用方局部绑定后取引用）：
     /// `let resolver = |uri: &str| store.lookup_domain_schema(uri);`
     pub fn lookup_domain_schema(&self, uri: &str) -> Option<serde_json::Value> {
-        let dir = self.domain_schema_dir.as_ref()?;
+        let dir = match self.domain_schema_dir.as_ref() {
+            Some(d) => d,
+            // 内存库无运行时目录：builtin 五件仍可解析（新部署/测试开箱即用）
+            None => return Self::builtin_schema(uri),
+        };
         let fp = Self::domain_schema_fingerprint(dir);
         {
             let cache = self.domain_schema_cache.lock().unwrap();
             match cache.as_ref() {
                 Some((map, cached_fp)) => {
-                    // 目录不可读（指纹 None）→ 沿用现缓存；指纹未变 → 直接命中
+                    // 目录不可读（指纹 None）→ 沿用现缓存；指纹未变 → 直接命中；
+                    // 目录 miss → builtin 兜底
                     if fp.is_none() || fp == *cached_fp {
-                        return map.get(uri).cloned();
+                        return map.get(uri).cloned().or_else(|| Self::builtin_schema(uri));
                     }
                 }
-                None if fp.is_none() => return None, // 从未加载且目录不可读
-                None => {}                           // 首次加载，落到重扫
+                None if fp.is_none() => return Self::builtin_schema(uri), // 从未加载且目录不可读
+                None => {}                                                // 首次加载，落到重扫
             }
         }
         let mut map = std::collections::BTreeMap::new();
         let Ok(dirs) = std::fs::read_dir(dir) else {
-            // 竞态：指纹已取到但 read_dir 失败——与原语义一致，不写缓存，下次重试
-            return None;
+            // 竞态：指纹已取到但 read_dir 失败——与原语义一致，不写缓存，下次重试；builtin 兜底
+            return Self::builtin_schema(uri);
         };
         for e in dirs.flatten() {
             let p = e.path();
@@ -335,7 +343,13 @@ impl RuleStore {
         }
         let mut cache = self.domain_schema_cache.lock().unwrap();
         *cache = Some((map, fp));
-        cache.as_ref().unwrap().0.get(uri).cloned()
+        cache
+            .as_ref()
+            .unwrap()
+            .0
+            .get(uri)
+            .cloned()
+            .or_else(|| Self::builtin_schema(uri))
     }
 
     /// 领域 schema 目录指纹（O-236 修复 C）：目录 mtime 与全部 *.json mtime 的最大值。
@@ -354,6 +368,51 @@ impl RuleStore {
             }
         }
         Some(max)
+    }
+
+    /// 内置领域 schema（知识域五件，知识资产化 A1-1b）：编译期内嵌
+    /// `src/store/schemas/knowledge/{fact,procedure,heuristic,narrative,model}.json`，
+    /// 惰性解析一次。以 `$id` 为键（缺省 `builtin:knowledge/{kind}`）。
+    /// 内置件定位=最小结构壳（底座兜底，新部署/内存库开箱即用），领域严校验由
+    /// 运行时目录件负责（同 `$id` 覆写内置）。
+    fn builtin_schema(uri: &str) -> Option<serde_json::Value> {
+        static BUILTIN: std::sync::OnceLock<std::collections::BTreeMap<String, serde_json::Value>> =
+            std::sync::OnceLock::new();
+        let map = BUILTIN.get_or_init(|| {
+            let mut m = std::collections::BTreeMap::new();
+            for (kind, text) in [
+                ("fact", include_str!("schemas/knowledge/fact.json")),
+                (
+                    "procedure",
+                    include_str!("schemas/knowledge/procedure.json"),
+                ),
+                (
+                    "heuristic",
+                    include_str!("schemas/knowledge/heuristic.json"),
+                ),
+                (
+                    "narrative",
+                    include_str!("schemas/knowledge/narrative.json"),
+                ),
+                ("model", include_str!("schemas/knowledge/model.json")),
+            ] {
+                let Ok(v) = serde_json::from_str::<serde_json::Value>(text) else {
+                    // 内嵌资产损坏=工程错误：运行时静默跳过（与目录件损坏 continue 同型），
+                    // 由 test_builtin_domain_schemas_embedded 单测强制兜住
+                    continue;
+                };
+                let key = v
+                    .get("$id")
+                    .and_then(|i| i.as_str())
+                    .map(str::to_string)
+                    .unwrap_or_else(|| format!("builtin:knowledge/{kind}"));
+                if !key.is_empty() {
+                    m.insert(key, v);
+                }
+            }
+            m
+        });
+        map.get(uri).cloned()
     }
 
     fn init_schema(&self) -> Result<(), StoreError> {
@@ -6720,6 +6779,65 @@ mod tests {
                 updated_by: None,
             },
         }
+    }
+
+    #[test]
+    fn test_builtin_domain_schemas_embedded() {
+        // A1-1b：内存库无运行时目录，五件 builtin 壳仍可解析（开箱即用）
+        let store = RuleStore::in_memory().unwrap();
+        for kind in ["fact", "procedure", "heuristic", "narrative", "model"] {
+            let uri = format!("builtin:knowledge/{kind}");
+            let v = store
+                .lookup_domain_schema(&uri)
+                .unwrap_or_else(|| panic!("builtin schema missing: {uri}"));
+            assert_eq!(
+                v.get("$id").and_then(|i| i.as_str()),
+                Some(uri.as_str()),
+                "$id must equal lookup URI: {uri}"
+            );
+        }
+        // 未注册 URI 仍拒绝（门禁语义不因内置而放松）
+        assert!(store
+            .lookup_domain_schema("builtin:knowledge/nope")
+            .is_none());
+        assert!(store
+            .lookup_domain_schema("https://rpsm.example/schemas/x.json")
+            .is_none());
+    }
+
+    #[test]
+    fn test_builtin_schema_dir_override_and_fallback() {
+        // A1-1b 两源合并：目录同 $id 覆写内置；目录 miss → builtin 兜底
+        static SEQ: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let n = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!("q12-builtin-{}-{n}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("domain_schemas")).unwrap();
+        // 目录覆写件：同 $id=builtin:knowledge/fact，带标记字段
+        std::fs::write(
+            dir.join("domain_schemas").join("fact-override.json"),
+            r#"{"$id":"builtin:knowledge/fact","type":"object","required":["statement"],"properties":{"statement":{"type":"string"}},"additionalProperties":true,"x-builtin-override":"dir"}"#,
+        )
+        .unwrap();
+        let store = RuleStore::open(dir.join("db.sqlite").to_str().unwrap()).unwrap();
+        // 目录赢：返回件带标记字段（覆写生效）
+        let fact = store
+            .lookup_domain_schema("builtin:knowledge/fact")
+            .unwrap();
+        assert_eq!(
+            fact.get("x-builtin-override").and_then(|x| x.as_str()),
+            Some("dir")
+        );
+        // 目录 miss：model 无目录件 → builtin 兜底（无标记字段，$id 为内置件）
+        let model = store
+            .lookup_domain_schema("builtin:knowledge/model")
+            .unwrap();
+        assert!(model.get("x-builtin-override").is_none());
+        assert_eq!(
+            model.get("$id").and_then(|i| i.as_str()),
+            Some("builtin:knowledge/model")
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     fn knowledge_entry() -> crate::model::knowledge::KnowledgeEntry {

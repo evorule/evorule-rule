@@ -21,6 +21,8 @@ evorule-rule 的所有显著变更都记录在此文件。
 - 🆕 **API 机器闸两端点**：`POST /v1/entries/{id}/machine-gate-promote`（审批者角色，服务端现场跑六检不信任客户端声明；T2/未过→422 返回报告摘要；通过则按状态机合法路径逐跳放行，行权上限=Active）+ `GET /v1/audit/machine-gate/post-review-queue`（T1 事后追认队列）
 - 🆕 **发布闸 LLM 产出双保险**：`publish_dataset_with_cause` 扫描数据集内全部规则/知识条目，任一 llm_generated 旗标命中即拒绝发布（条目级迁移闸之外防"绕过条目面直接整包发布"通路，Published 永远人工不松动）
 - 🆕 集成测试：机器闸放行全链（人工路径回归+两跳落链断言+追认队列）、T0 无追认、非法 tier 拒绝、发布闸双保险、API E2E（角色 403/非法 target 400/T0 直通两跳/T1 降梯位追认队列恰 1 项）
+- 🆕 **知识域内置 schema 五件（A1-1b）**：`fact/procedure/heuristic/narrative/model` 五件最小结构壳编译期内嵌（`src/store/schemas/knowledge/`），`schema_ref` 以 `builtin:knowledge/{kind}` 引用；两源合并=内置为底、运行时 `domain_schemas/` 目录同 `$id` 覆写，内存库/新部署零目录开箱即用，未注册 URI 拒绝语义不变
+- 🆕 契约一致性闸：`validate_ingest_contract` 增 builtin 校验——schema_ref 带 `builtin:knowledge/` 前缀时后缀必须与 `knowledge_kind` 一致（无 kind 存量条目不受约束）
 
 ### ⚠️ Breaking Change
 
