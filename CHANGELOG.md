@@ -16,7 +16,11 @@ evorule-rule 的所有显著变更都记录在此文件。
 - 🆕 新错误变体 `LlmGeneratedNotPublishable`（llm_generated → Published 硬拒的显式表达，与发布审批双保险）
 - 🆕 `StateChange` 增 gate/tier/post_review_required 字段（serde 缺省，历史数据零迁移，全初始化点 8 处补齐）
 - 🆕 `MachineGateContext` 上下文（tier/checks_passed/state_change_id 审计锚）
-- 🆕 四组门禁单测（正向放行/无证据拒绝/Published 永人工/非 llm 兼容）
+- 🆕 **机器闸执行器模块 `gate`**：六检确定性纯函数（M1 复用既有校验 SSOT〔rule=符号三方一致 / knowledge=入账契约完整性〕、M2 快照连续性、M3 词法域冲突、M4 影响面、M5 LLM 信誉、M6 可回滚），梯位裁决=全过+低影响→T0 直通 / 全过→T1 事后追认 / 任一不过→T2 拒绝机器放行；执行器只产报告不落库，同输入同结论可回放复算
+- 🆕 **store 机器闸写入路径**：`transition_entry_status_machine` / `transition_knowledge_entry_status_machine`（tier 字面量校验 + 机器闸凭据校验 + 同事务落链，gate/tier/post_review_required 三审计列随迁移落盘）+ `gate_probe_rule` / `gate_probe_knowledge` 探针（M2-M6 存储事实采集）+ `machine_gate_post_review_queue` 追认队列查询（两审计表 UNION）；SQLite 存量库动态迁移（ALTER ADD COLUMN），历史行 NULL=human 语义逐字节兼容
+- 🆕 **API 机器闸两端点**：`POST /v1/entries/{id}/machine-gate-promote`（审批者角色，服务端现场跑六检不信任客户端声明；T2/未过→422 返回报告摘要；通过则按状态机合法路径逐跳放行，行权上限=Active）+ `GET /v1/audit/machine-gate/post-review-queue`（T1 事后追认队列）
+- 🆕 **发布闸 LLM 产出双保险**：`publish_dataset_with_cause` 扫描数据集内全部规则/知识条目，任一 llm_generated 旗标命中即拒绝发布（条目级迁移闸之外防"绕过条目面直接整包发布"通路，Published 永远人工不松动）
+- 🆕 集成测试：机器闸放行全链（人工路径回归+两跳落链断言+追认队列）、T0 无追认、非法 tier 拒绝、发布闸双保险、API E2E（角色 403/非法 target 400/T0 直通两跳/T1 降梯位追认队列恰 1 项）
 
 ### ⚠️ Breaking Change
 
