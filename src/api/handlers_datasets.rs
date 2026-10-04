@@ -826,6 +826,99 @@ pub async fn get_bundle(
     ))
 }
 
+// ----------------------------------------------------------------------
+// 治理侧外部导入（知识资产化 A3-1：外部 bundle → 既有 knowledge 数据集，
+// 06 号设计档 §三：一律 Draft 落账 + 强制 external:{source} 打标，RuleEngineer+）
+// ----------------------------------------------------------------------
+
+#[derive(Deserialize)]
+pub struct ImportKnowledgeReq {
+    pub bundle: crate::bundle::DatasetBundle,
+    /// 导入者声明的来源标识（强制打标 `external:{source}`；bundle 内字段不采信，可伪造）
+    pub source: String,
+}
+
+/// 导入错误映射：校验链失败 = 客户端 400（显式、不静默），其余走统一映射
+fn import_knowledge_err(e: crate::store::StoreError) -> ApiError {
+    match e {
+        crate::store::StoreError::Bundle(b) => {
+            ApiError::bad_request(format!("导入校验失败（不静默降级）: {b}"))
+        }
+        other => ApiError::from(other),
+    }
+}
+
+/// 共用执行核（dry-run 与正式导入同一实现，预检与入库无旁路）
+async fn exec_import_knowledge(
+    state: &AppState,
+    ctx: &AuthContext,
+    dataset_id: &str,
+    req: ImportKnowledgeReq,
+    dry_run: bool,
+) -> Result<crate::store::KnowledgeImportResult, ApiError> {
+    if !can(ctx.role, Action::Create) {
+        return Err(ApiError::forbidden(
+            "外部知识导入=创建 Draft 条目，需规则工程师及以上角色",
+        ));
+    }
+    let source = req.source.trim().to_string();
+    if source.is_empty() {
+        return Err(ApiError::bad_request(
+            "source 必填：外部导入须显式声明来源（bundle 内字段不采信，可伪造）",
+        ));
+    }
+    let at = iso_from_unix(unix_now());
+    state
+        .store
+        .import_knowledge_entries(dataset_id, &req.bundle, &source, &ctx.user_id, &at, dry_run)
+        .map_err(import_knowledge_err)
+}
+
+/// POST /datasets/{id}/import_knowledge —— 治理侧外部导入（RuleEngineer+）：
+/// 外部快照包条目导入既有 knowledge 数据集；一律 Draft 落账 + 强制 external:{source}
+/// 打标（包自带 human/llm 视为冒充，400 显式拒绝）；六项校验链全跑 + 入账契约闸
+/// （external 必带 license_ref）+ 凭据扫描；单事务原子，任一条失败整体回滚。
+pub async fn import_knowledge(
+    State(state): State<AppState>,
+    Extension(ctx): Extension<AuthContext>,
+    Path(id): Path<String>,
+    Json(req): Json<ImportKnowledgeReq>,
+) -> Result<(StatusCode, Json<Value>), ApiError> {
+    let result = exec_import_knowledge(&state, &ctx, &id, req, false).await?;
+    Ok((
+        StatusCode::CREATED,
+        Json(serde_json::json!({
+            "import_id": format!("imp-{}", unix_now()),
+            "status": "imported",
+            "dataset_id": result.dataset_id,
+            "bundle_id": result.bundle_id,
+            "trust_tag": result.trust_tag,
+            "imported_count": result.imported.len(),
+            "entry_ids": result.imported,
+        })),
+    ))
+}
+
+/// POST /datasets/{id}/import_knowledge/dry-run —— 导入预检（与正式导入同一实现，
+/// 全闸跑完零写入）
+pub async fn import_knowledge_dry_run(
+    State(state): State<AppState>,
+    Extension(ctx): Extension<AuthContext>,
+    Path(id): Path<String>,
+    Json(req): Json<ImportKnowledgeReq>,
+) -> Result<Json<Value>, ApiError> {
+    let result = exec_import_knowledge(&state, &ctx, &id, req, true).await?;
+    Ok(Json(serde_json::json!({
+        "valid": true,
+        "dry_run": true,
+        "dataset_id": result.dataset_id,
+        "bundle_id": result.bundle_id,
+        "trust_tag": result.trust_tag,
+        "imported_count": result.imported.len(),
+        "entry_ids": result.imported,
+    })))
+}
+
 async fn export_for(
     state: &AppState,
     tenant_id: &str,

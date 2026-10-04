@@ -296,6 +296,13 @@ impl From<crate::store::StoreError> for ApiError {
                 ApiError::bad_request(format!("版本 diff 区间非法: from=`{from}` to=`{to}`（需均存在于版本链且 from 先于 to）"))
             }
             crate::store::StoreError::Validation(e) => ApiError::bad_request(e.to_string()),
+            // 入账契约闸失败=客户端契约不完整（三通道同闸，add_entry 通路同映射 400）
+            crate::store::StoreError::InvalidIngestContract(m) => {
+                ApiError::bad_request(format!("知识入账契约校验失败: {m}"))
+            }
+            crate::store::StoreError::TrustImpersonation { entry, claimed } => ApiError::bad_request(
+                format!("外部导入拒绝：条目 `{entry}` 冒充 trust_level=`{claimed}`（human/llm 来源不可经外部通路声明，一律强制打标 external:{{source}}）"),
+            ),
             other => ApiError::internal(other.to_string()),
         }
     }
@@ -589,6 +596,16 @@ pub fn router(state: AppState) -> Router {
             "/datasets/{id}/entries",
             get(handlers_datasets::list_entries).post(handlers_datasets::add_entry),
         )
+        // 治理侧外部导入（知识资产化 A3-1）：外部 bundle → 既有 knowledge 数据集，
+        // Draft 落账 + 强制 external:{source} 打标；dry-run 与正式导入同一实现仅零写入
+        .route(
+            "/datasets/{id}/import_knowledge",
+            post(handlers_datasets::import_knowledge),
+        )
+        .route(
+            "/datasets/{id}/import_knowledge/dry-run",
+            post(handlers_datasets::import_knowledge_dry_run),
+        )
         .route(
             "/entries",
             get(handlers_entries::list_entries_all).post(handlers_entries::create_entry),
@@ -781,6 +798,280 @@ mod tests {
     use crate::model::governance::{Governance, LlmGenerated};
     use crate::model::lifecycle::LifecycleStatus;
     use crate::model::provenance::Provenance;
+
+    // ------------------------------------------------------------------
+    // A3-1 治理侧外部导入 E2E（POST /datasets/{id}/import_knowledge[/dry-run]
+    // + 机器闸 external 前置拒绝；06 号设计档 §六）
+    // ------------------------------------------------------------------
+
+    /// A3-1 夹具：合法外部知识包 JSON（builtin:knowledge/fact 壳；防篡改哈希经
+    /// DatasetBundle 反序列化→重算→回填，与 store::tests external_knowledge_bundle 同构）
+    fn a31_bundle_json(
+        entry_id: &str,
+        trust_level: serde_json::Value,
+        license_ref: serde_json::Value,
+    ) -> serde_json::Value {
+        let raw = serde_json::json!({
+            "bundle_schema_version": "1.0",
+            "bundle_id": format!("bdl-api-{entry_id}"),
+            "dataset": {
+                "dataset_id": "ds-external-src",
+                "name": "外部知识包",
+                "tenant_id": "org-partner",
+                "instance_id": "inst-partner",
+                "versioning": { "current": "v1", "chain": ["v1"] },
+                "law_ref": { "document_id": "ext-doc-1", "effective_from": "2026-01-01" }
+            },
+            "entries": [{
+                "entry_id": entry_id,
+                "entry_kind": "knowledge",
+                "rule_body": { "statement": "外部事实条目（合作方提供）" },
+                "schema_ref": "builtin:knowledge/fact",
+                "provenance": { "source": "外部合作方 partner-x", "document_id": "ext-doc-1" },
+                "domain": "tax",
+                "knowledge_kind": "fact",
+                "trust_level": trust_level,
+                "license_ref": license_ref
+            }],
+            "tests": { "verdict": "pass" },
+            "audit": {
+                "exported_at": "t1",
+                "exported_by": "partner-x",
+                "source_version": "v1",
+                "content_hash": "",
+                "hash_algo": "blake3"
+            }
+        });
+        let mut parsed: crate::bundle::DatasetBundle = serde_json::from_value(raw).unwrap();
+        parsed.audit.content_hash = parsed.compute_content_hash();
+        serde_json::to_value(&parsed).unwrap()
+    }
+
+    #[tokio::test]
+    async fn test_a31_import_knowledge_end_to_end() {
+        let (app, state) = build_app();
+        let token = register_login(&app).await; // rule_engineer
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/datasets",
+            Some(&token),
+            Some(json!({
+                "dataset_id": "ds-a31",
+                "name": "A3-1 验收集",
+                "domain": ["tax"],
+                "dataset_kind": "knowledge"
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "{body}");
+
+        let bundle = a31_bundle_json("ext-e2e-1", serde_json::Value::Null, json!("CC-BY-4.0"));
+
+        // ① dry-run：全闸通过、零写入（条目详情 404）
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/datasets/ds-a31/import_knowledge/dry-run",
+            Some(&token),
+            Some(json!({ "bundle": bundle, "source": "partner-x" })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["valid"], true);
+        assert_eq!(body["trust_tag"], "external:partner-x");
+        assert_eq!(body["imported_count"], 1);
+        let (status, _) = send(
+            app.clone(),
+            "GET",
+            "/v1/entries/ext-e2e-1",
+            Some(&token),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "dry-run 零写入");
+
+        // ② 正式导入：201 + 强制打标 + Draft 落账
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/datasets/ds-a31/import_knowledge",
+            Some(&token),
+            Some(json!({ "bundle": bundle, "source": "partner-x" })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "{body}");
+        assert_eq!(body["status"], "imported");
+        assert_eq!(body["trust_tag"], "external:partner-x");
+        assert_eq!(body["entry_ids"], json!(["ext-e2e-1"]));
+        let (status, body) = send(
+            app.clone(),
+            "GET",
+            "/v1/entries/ext-e2e-1",
+            Some(&token),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["status"], "Draft", "一律 Draft 落账");
+
+        // ③ 机器闸前置拒绝 external（A3-4 提前收口）：审批者角色 + 403 来源治理判定
+        let admin = admin_token(&state).await;
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/entries/ext-e2e-1/machine-gate-promote",
+            Some(&admin),
+            Some(json!({ "target": "candidate" })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+        assert!(
+            body["error"]["message"]
+                .as_str()
+                .unwrap()
+                .contains("external"),
+            "{body}"
+        );
+
+        // ④ 人工批通路不受影响：Draft → Candidate → Active（E2E T-A3 链收口）
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/entries/ext-e2e-1/submit-candidate",
+            Some(&admin),
+            Some(json!({ "sandbox_report_id": "sr-external-001" })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/entries/ext-e2e-1/approve",
+            Some(&admin),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        let (status, body) = send(
+            app.clone(),
+            "GET",
+            "/v1/entries/ext-e2e-1",
+            Some(&token),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["status"], "Active", "人工批后 Active");
+    }
+
+    #[tokio::test]
+    async fn test_a31_import_knowledge_gates_over_api() {
+        let (app, state) = build_app();
+        let token = register_login(&app).await; // rule_engineer
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/datasets",
+            Some(&token),
+            Some(json!({
+                "dataset_id": "ds-a31-gates",
+                "name": "A3-1 闸验收集",
+                "domain": ["tax"],
+                "dataset_kind": "knowledge"
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "{body}");
+
+        // ① 冒充拒绝（包自带 trust_level=human）→ 400 显式
+        let imp = a31_bundle_json("ext-imp", json!("human"), json!("CC-BY-4.0"));
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/datasets/ds-a31-gates/import_knowledge",
+            Some(&token),
+            Some(json!({ "bundle": imp, "source": "partner-x" })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+        assert!(
+            body["error"]["message"].as_str().unwrap().contains("冒充"),
+            "{body}"
+        );
+
+        // ② 缺 license_ref（external 打标后由契约闸强制）→ 400
+        let no_license = a31_bundle_json(
+            "ext-nolicense",
+            serde_json::Value::Null,
+            serde_json::Value::Null,
+        );
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/datasets/ds-a31-gates/import_knowledge",
+            Some(&token),
+            Some(json!({ "bundle": no_license, "source": "partner-x" })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+        assert!(
+            body["error"]["message"]
+                .as_str()
+                .unwrap()
+                .contains("license_ref"),
+            "{body}"
+        );
+
+        // ③ source 空白 → 400（导入者声明必填，bundle 内字段不采信）
+        let bundle = a31_bundle_json("ext-src", serde_json::Value::Null, json!("CC-BY-4.0"));
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/datasets/ds-a31-gates/import_knowledge",
+            Some(&token),
+            Some(json!({ "bundle": bundle, "source": "   " })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+
+        // ④ 角色闸：viewer → 403（导入=创建 Draft 条目，RuleEngineer+）
+        state
+            .auth
+            .register(
+                &state.store,
+                "tenant_a",
+                "viewer-a31",
+                "password123",
+                Role::Viewer,
+                unix_now(),
+            )
+            .expect("register viewer");
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/auth/login",
+            None,
+            Some(json!({
+                "tenant_id": "tenant_a",
+                "username": "viewer-a31",
+                "password": "password123"
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        let viewer = body["access_token"].as_str().unwrap().to_string();
+        let bundle = a31_bundle_json("ext-role", serde_json::Value::Null, json!("CC-BY-4.0"));
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/datasets/ds-a31-gates/import_knowledge",
+            Some(&viewer),
+            Some(json!({ "bundle": bundle, "source": "partner-x" })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+    }
 
     /// 测试辅助：缺省模式建数据集（无锚草稿工作流，不阻断创建）
     async fn machine_gate_seed_dataset(app: &Router, token: &str, dataset_id: &str) {

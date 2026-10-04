@@ -147,6 +147,23 @@ pub enum StoreError {
 
     #[error("数据条目 `{entry}` 的 schema_ref 缺失或为空")]
     KnowledgeMissingSchemaRef { entry: String },
+
+    #[error(
+        "条目 `{entry}` 自带 trust_level=`{claimed}`：外部导入通路禁止冒充 human/llm 来源（来源信任级是治理判定不是数据声明，一律强制打标 external:{{source}}）"
+    )]
+    TrustImpersonation { entry: String, claimed: String },
+}
+
+/// 治理侧外部知识导入结果（知识资产化 A3-1，06 号设计档）
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KnowledgeImportResult {
+    pub dataset_id: String,
+    pub bundle_id: String,
+    /// 强制打标的信任级（`external:{source}`）
+    pub trust_tag: String,
+    /// 落账（或 dry_run 预检通过）的 entry_id，保持包内顺序
+    pub imported: Vec<String>,
+    pub dry_run: bool,
 }
 
 /// 条目二态视图（R4）：顶层 `/entries/{id}` 路由跨表（规则/知识平行表）定位后的统一返回
@@ -4098,6 +4115,152 @@ impl RuleStore {
         Ok(result)
     }
 
+    // ------------------------------------------------------------------
+    // 治理侧外部导入（知识资产化 A3-1：外部 bundle → 既有 knowledge 数据集）
+    // ------------------------------------------------------------------
+
+    /// 治理侧外部知识导入（A3-1，06 号设计档 §二）：外部快照包条目导入**既有**
+    /// knowledge 数据集——与 [`Self::import_bundle`] 的「版本整体替换」语义并存，
+    /// 本方法不动数据集版本链/既有条目。
+    ///
+    /// 治理化语义（不静默）：
+    /// - 一律 Draft 落账（外部内容先过治理；external 条目结构性不给机器闸，见 A3-4）；
+    /// - 强制打标 `trust_level=external:{source}`：来源信任级是治理判定不是数据声明，
+    ///   包自带 human/llm 视为冒充，显式拒绝（`TrustImpersonation`）；
+    /// - 复用六项校验链（`BundleImporter::validate`，全链口径：schema 版本→防篡改→
+    ///   版本链→逐条 D3→事件 schema→闸门一 verdict）+ 入账契约闸（external 必带
+    ///   license_ref 由闸强制）+ 凭据扫描（A3 外部导入通路接线）；
+    /// - 写入复用 [`Self::add_knowledge_entry_conn`]（唯一性 + BLAKE3 快照去重免费获得）；
+    /// - `dry_run=true` 与正式导入同一实现，仅跳过写入（预检与入库无旁路）；
+    /// - 单事务原子：任一条失败整体回滚，不留半状态。
+    pub fn import_knowledge_entries(
+        &self,
+        dataset_id: &str,
+        bundle: &DatasetBundle,
+        source: &str,
+        by: &str,
+        at: &str,
+        dry_run: bool,
+    ) -> Result<KnowledgeImportResult, StoreError> {
+        let source = source.trim();
+        if source.is_empty() {
+            return Err(StoreError::Validation(ValidationError::Message(
+                "source 必填：外部导入须显式声明来源（bundle 内字段不采信，可伪造）".into(),
+            )));
+        }
+        let trust_tag = format!("external:{source}");
+        // 本通路只向 knowledge 数据集导条目：含 Rule 条目即显式拒绝（不静默混装）
+        if bundle
+            .entries
+            .iter()
+            .any(|e| e.entry_kind == EntryKind::Rule)
+        {
+            return Err(StoreError::MixedBundleKinds(bundle.bundle_id.clone()));
+        }
+        // 全链口径（06 号设计档 D6）：六项校验链全跑，与 import_bundle 同一 SSOT 一字不减
+        let resolver = |uri: &str| self.lookup_domain_schema(uri);
+        BundleImporter::validate(bundle, &resolver)?;
+        // schema 预热：包内全部 schema_ref 显式解析（锁外，持锁期间零 FS I/O）
+        for be in &bundle.entries {
+            if let Some(sr) = &be.schema_ref {
+                let _ = self.lookup_domain_schema(sr);
+            }
+        }
+        // 目标数据集核验（存在 + knowledge 类型；dry_run 同样核验，预检口径一致）
+        let ds = self
+            .get_dataset(dataset_id)?
+            .ok_or_else(|| StoreError::DatasetNotFound(dataset_id.to_string()))?;
+        if ds.dataset_kind != DatasetKind::Knowledge {
+            return Err(StoreError::DatasetKindMismatch {
+                dataset: ds.dataset_id.clone(),
+                expected: "数据（knowledge）",
+                actual: ds.dataset_kind.as_str(),
+            });
+        }
+        // 逐条组装 + 全闸（组装阶段零写入：全部闸通过才进事务落库）
+        let mut prepared = Vec::with_capacity(bundle.entries.len());
+        for be in &bundle.entries {
+            // 冒充拒绝：包自带 human/llm = 冒充人工/LLM 来源，显式拒绝（不静默覆盖）
+            if let Some(claimed) = &be.trust_level {
+                if claimed == "human" || claimed == "llm" {
+                    return Err(StoreError::TrustImpersonation {
+                        entry: be.entry_id.clone(),
+                        claimed: claimed.clone(),
+                    });
+                }
+            }
+            let schema_ref =
+                be.schema_ref
+                    .clone()
+                    .ok_or_else(|| StoreError::KnowledgeMissingSchemaRef {
+                        entry: be.entry_id.clone(),
+                    })?;
+            let entry = KnowledgeEntry {
+                entry_id: be.entry_id.clone(),
+                dataset_id: dataset_id.to_string(),
+                version: 1,
+                status: Some(LifecycleStatus::Draft),
+                provenance: be.provenance.clone(),
+                domain: be.domain.clone(),
+                tags: be.tags.clone(),
+                payload: be.rule_body.clone(),
+                schema_ref,
+                governance: Some(Governance {
+                    author: Some(by.into()),
+                    updater: None,
+                    llm_generated: None,
+                    lifecycle_timestamps: Some(crate::model::governance::LifecycleTimestamps {
+                        drafted_at: Some(at.into()),
+                        candidate_at: None,
+                        active_at: None,
+                    }),
+                }),
+                knowledge_kind: be.knowledge_kind.clone(),
+                // 强制打标（D2-a）：外部导入通路的定义即「来源不可信」
+                trust_level: Some(trust_tag.clone()),
+                license_ref: be.license_ref.clone(),
+                execution_contract: be.execution_contract.clone(),
+            };
+            // 入账契约闸（三通道同一校验）：打标后 external 必带 license_ref 由闸强制
+            entry
+                .validate_ingest_contract()
+                .map_err(StoreError::InvalidIngestContract)?;
+            // 凭据扫描（A3 外部导入通路接线；MVP 范围=payload 本体）
+            let serialized = serde_json::to_string(&entry.payload)?;
+            let hits = scan_credentials(&serialized);
+            if !hits.is_empty() {
+                return Err(StoreError::Validation(
+                    ValidationError::CredentialScanFailed { hits },
+                ));
+            }
+            prepared.push(entry);
+        }
+        let imported: Vec<String> = prepared.iter().map(|e| e.entry_id.clone()).collect();
+        if dry_run {
+            return Ok(KnowledgeImportResult {
+                dataset_id: dataset_id.to_string(),
+                bundle_id: bundle.bundle_id.clone(),
+                trust_tag,
+                imported,
+                dry_run: true,
+            });
+        }
+        // 单事务落库：任一条失败整体回滚（唯一性冲突 EntryExists 亦在此暴露）
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        for entry in &prepared {
+            self.add_knowledge_entry_conn(&tx, entry)?;
+        }
+        tx.commit()?;
+        Ok(KnowledgeImportResult {
+            dataset_id: dataset_id.to_string(),
+            bundle_id: bundle.bundle_id.clone(),
+            trust_tag,
+            imported,
+            dry_run: false,
+        })
+    }
+
     /// 删除数据集全部条目核心：纯 SQL 走参数连接，零拿锁、零自带事务——
     /// 事务边界由调用方裁定（import_bundle 大事务内调用，与数据集更新/条目插入同生共死；
     /// 独立使用须自行包事务，见测试 test_delete_dataset_entries_cleans_snapshot_tables）。
@@ -6961,6 +7124,320 @@ mod tests {
         let err = store.add_knowledge_entry(&missing).unwrap_err();
         assert!(matches!(err, StoreError::KnowledgeMissingSchemaRef { .. }));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ==================================================================
+    // A3-1 治理侧外部导入（import_knowledge_entries）单测（06 号设计档 §六）
+    // ==================================================================
+
+    /// 造外部 knowledge 快照包（builtin:knowledge/fact 壳 + tests verdict=pass，
+    /// 防篡改哈希现场重算）：entry_id/trust_level/license_ref 可注入变体
+    fn external_knowledge_bundle(
+        entry_id: &str,
+        trust_level: Option<String>,
+        license_ref: Option<String>,
+    ) -> crate::bundle::DatasetBundle {
+        let mut bundle = crate::bundle::DatasetBundle {
+            bundle_schema_version: crate::bundle::BUNDLE_SCHEMA_VERSION.into(),
+            bundle_id: format!("bdl-ext-{entry_id}"),
+            dataset: crate::bundle::BundleDatasetMeta {
+                dataset_id: "ds-external-src".into(),
+                name: "外部知识包".into(),
+                tenant_id: "org-partner".into(),
+                instance_id: "inst-partner".into(),
+                versioning: Default::default(),
+                version_selection: None,
+                law_ref: Some(crate::model::version::LawRef {
+                    document_id: "ext-doc-1".into(),
+                    law_version: None,
+                    effective_from: Some("2026-01-01".into()),
+                    effective_to: None,
+                }),
+                view_of: None,
+                event_schemas: vec![],
+            },
+            entries: vec![crate::bundle::BundleEntry {
+                entry_id: entry_id.into(),
+                entry_kind: crate::bundle::EntryKind::Knowledge,
+                rule_body: serde_json::json!({ "statement": "外部事实条目（合作方提供）" }),
+                schema_ref: Some("builtin:knowledge/fact".into()),
+                provenance: Provenance {
+                    source: "外部合作方 partner-x".into(),
+                    clause: None,
+                    document_id: Some("ext-doc-1".into()),
+                    effective_from: None,
+                    effective_to: None,
+                    last_verified: None,
+                    verified_by: None,
+                },
+                domain: "rpsm".into(),
+                tags: vec![],
+                dependencies: vec![],
+                knowledge_kind: Some("fact".into()),
+                trust_level,
+                license_ref,
+                execution_contract: None,
+            }],
+            data_dependencies: None,
+            tests: crate::bundle::BundleTests {
+                subset: vec![],
+                fixtures: vec![],
+                verdict: crate::bundle::TestVerdict::Pass,
+            },
+            audit: crate::bundle::BundleAudit {
+                exported_at: "t1".into(),
+                exported_by: "partner-x".into(),
+                source_version: "v1".into(),
+                content_hash: String::new(),
+                hash_algo: "blake3".into(),
+            },
+        };
+        bundle.audit.content_hash = bundle.compute_content_hash();
+        bundle
+    }
+
+    /// A3-1 导入目标：独立 knowledge 数据集（不复用 ds-rpsm-assets，避免测试间串扰）
+    fn ext_import_target() -> RuleDataset {
+        let mut ds = knowledge_dataset();
+        ds.dataset_id = "ds-ext-import".into();
+        ds
+    }
+
+    /// T1 Draft 落账 + T2 强制打标：包 None / external:other 均落 external:{source}
+    #[test]
+    fn test_a31_import_knowledge_draft_and_forced_tag() {
+        let store = RuleStore::in_memory().unwrap();
+        store.create_dataset(&ext_import_target()).unwrap();
+        let cases = [None, Some("external:other-src".to_string())];
+        for (i, trust) in cases.iter().enumerate() {
+            let bundle = external_knowledge_bundle(
+                &format!("ext-{i}"),
+                trust.clone(),
+                Some("CC-BY-4.0".into()),
+            );
+            let r = store
+                .import_knowledge_entries(
+                    "ds-ext-import",
+                    &bundle,
+                    "partner-x",
+                    "importer",
+                    "t1",
+                    false,
+                )
+                .unwrap();
+            assert_eq!(r.trust_tag, "external:partner-x");
+            assert_eq!(r.imported, vec![format!("ext-{i}")]);
+            assert!(!r.dry_run);
+            let got = store
+                .get_latest_knowledge_entry("ds-ext-import", &format!("ext-{i}"))
+                .unwrap()
+                .unwrap();
+            assert_eq!(got.status, Some(LifecycleStatus::Draft), "T1：一律 Draft");
+            assert_eq!(
+                got.trust_level.as_deref(),
+                Some("external:partner-x"),
+                "T2：强制打标，包内声明不采信"
+            );
+            assert_eq!(got.license_ref.as_deref(), Some("CC-BY-4.0"));
+            assert_eq!(
+                got.governance.as_ref().unwrap().author.as_deref(),
+                Some("importer")
+            );
+            let ts = got
+                .governance
+                .as_ref()
+                .unwrap()
+                .lifecycle_timestamps
+                .as_ref()
+                .unwrap();
+            assert_eq!(
+                ts.drafted_at.as_deref(),
+                Some("t1"),
+                "导入时间落 drafted_at"
+            );
+        }
+    }
+
+    /// T2b 冒充显式拒绝：包自带 human/llm → TrustImpersonation（不静默覆盖）
+    #[test]
+    fn test_a31_import_knowledge_impersonation_rejected() {
+        let store = RuleStore::in_memory().unwrap();
+        store.create_dataset(&ext_import_target()).unwrap();
+        for claimed in ["human", "llm"] {
+            let bundle = external_knowledge_bundle(
+                "ext-imp",
+                Some(claimed.into()),
+                Some("CC-BY-4.0".into()),
+            );
+            let err = store
+                .import_knowledge_entries("ds-ext-import", &bundle, "partner-x", "u", "t", false)
+                .unwrap_err();
+            match err {
+                StoreError::TrustImpersonation { claimed: c, .. } => assert_eq!(c, claimed),
+                other => panic!("expected TrustImpersonation, got {other}"),
+            }
+        }
+    }
+
+    /// T3 打标后 external 必带 license_ref（契约闸强制；dry_run 同口径拦截）
+    #[test]
+    fn test_a31_import_knowledge_license_ref_enforced() {
+        let store = RuleStore::in_memory().unwrap();
+        store.create_dataset(&ext_import_target()).unwrap();
+        let bundle = external_knowledge_bundle("ext-nolicense", None, None);
+        for dry in [false, true] {
+            let err = store
+                .import_knowledge_entries("ds-ext-import", &bundle, "partner-x", "u", "t", dry)
+                .unwrap_err();
+            assert!(
+                matches!(err, StoreError::InvalidIngestContract(ref m) if m.contains("license_ref")),
+                "dry_run={dry}: {err}"
+            );
+        }
+    }
+
+    /// T4 D3 门禁：schema_ref 未命中 → 六项校验链显式拒绝（SchemaNotResolved）
+    #[test]
+    fn test_a31_import_knowledge_d3_schema_not_resolved() {
+        let store = RuleStore::in_memory().unwrap();
+        store.create_dataset(&ext_import_target()).unwrap();
+        let mut bundle = external_knowledge_bundle("ext-badschema", None, Some("CC-BY-4.0".into()));
+        bundle.entries[0].schema_ref = Some("builtin:knowledge/nope".into());
+        bundle.audit.content_hash = bundle.compute_content_hash(); // 变体后重算防篡改哈希
+        let err = store
+            .import_knowledge_entries("ds-ext-import", &bundle, "partner-x", "u", "t", false)
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            StoreError::Bundle(BundleError::SchemaNotResolved { .. })
+        ));
+    }
+
+    /// T5 唯一性 + 快照去重：重导同 entry → EntryExists；同内容不同 entry → 快照仅一份
+    #[test]
+    fn test_a31_import_knowledge_uniqueness_and_dedup() {
+        let store = RuleStore::in_memory().unwrap();
+        store.create_dataset(&ext_import_target()).unwrap();
+        let bundle = external_knowledge_bundle("ext-dup", None, Some("CC-BY-4.0".into()));
+        store
+            .import_knowledge_entries("ds-ext-import", &bundle, "partner-x", "u", "t", false)
+            .unwrap();
+        let err = store
+            .import_knowledge_entries("ds-ext-import", &bundle, "partner-x", "u", "t2", false)
+            .unwrap_err();
+        assert!(matches!(err, StoreError::EntryExists { .. }), "{err}");
+        let b2 = external_knowledge_bundle("ext-dup-2", None, Some("CC-BY-4.0".into()));
+        store
+            .import_knowledge_entries("ds-ext-import", &b2, "partner-x", "u", "t3", false)
+            .unwrap();
+        assert_eq!(reg094_count(&store, "knowledge_entries"), 2);
+        assert_eq!(
+            reg094_count(&store, "knowledge_snapshots"),
+            1,
+            "同内容快照去重"
+        );
+    }
+
+    /// T6 目标闸 + source 闸：数据集不存在 / 非 knowledge 类型 / 含 Rule 条目 / source 空白
+    #[test]
+    fn test_a31_import_knowledge_target_and_source_gates() {
+        let store = RuleStore::in_memory().unwrap();
+        store.create_dataset(&tax_dataset()).unwrap(); // rule_set
+        store.create_dataset(&ext_import_target()).unwrap();
+        let bundle = external_knowledge_bundle("ext-gate", None, Some("CC-BY-4.0".into()));
+        // 数据集不存在
+        let err = store
+            .import_knowledge_entries("ds-nope", &bundle, "s", "u", "t", false)
+            .unwrap_err();
+        assert!(matches!(err, StoreError::DatasetNotFound(_)));
+        // 目标非 knowledge 类型
+        let err = store
+            .import_knowledge_entries("ds-tax-2024", &bundle, "s", "u", "t", false)
+            .unwrap_err();
+        assert!(matches!(err, StoreError::DatasetKindMismatch { .. }));
+        // 包含 Rule 条目（混装即拒，组装前显式拦截）
+        let mut mixed = external_knowledge_bundle("ext-gate", None, Some("CC-BY-4.0".into()));
+        let mut rule_entry = mixed.entries[0].clone();
+        rule_entry.entry_kind = crate::bundle::EntryKind::Rule;
+        mixed.entries.push(rule_entry);
+        let err = store
+            .import_knowledge_entries("ds-ext-import", &mixed, "s", "u", "t", false)
+            .unwrap_err();
+        assert!(matches!(err, StoreError::MixedBundleKinds(_)));
+        // source 空白 → 显式拒绝
+        let err = store
+            .import_knowledge_entries("ds-ext-import", &bundle, "   ", "u", "t", false)
+            .unwrap_err();
+        assert!(matches!(err, StoreError::Validation(_)), "{err}");
+    }
+
+    /// T7 凭据扫描接线（O-323 导入侧闭环）：payload 疑似凭据 → CredentialScanFailed
+    #[test]
+    fn test_a31_import_knowledge_credential_scan() {
+        let store = RuleStore::in_memory().unwrap();
+        store.create_dataset(&ext_import_target()).unwrap();
+        let mut bundle = external_knowledge_bundle("ext-cred", None, Some("CC-BY-4.0".into()));
+        bundle.entries[0].rule_body =
+            serde_json::json!({ "statement": "db api_key: supersecret123" });
+        bundle.audit.content_hash = bundle.compute_content_hash();
+        let err = store
+            .import_knowledge_entries("ds-ext-import", &bundle, "partner-x", "u", "t", false)
+            .unwrap_err();
+        assert!(
+            matches!(
+                err,
+                StoreError::Validation(ValidationError::CredentialScanFailed { .. })
+            ),
+            "{err}"
+        );
+    }
+
+    /// T8 dry_run：全闸跑过、零写入（entries/snapshots 双零）
+    #[test]
+    fn test_a31_import_knowledge_dry_run_no_write() {
+        let store = RuleStore::in_memory().unwrap();
+        store.create_dataset(&ext_import_target()).unwrap();
+        let bundle = external_knowledge_bundle("ext-dry", None, Some("CC-BY-4.0".into()));
+        let r = store
+            .import_knowledge_entries("ds-ext-import", &bundle, "partner-x", "u", "t", true)
+            .unwrap();
+        assert!(r.dry_run);
+        assert_eq!(r.imported, vec!["ext-dry".to_string()]);
+        assert_eq!(
+            reg094_count(&store, "knowledge_entries"),
+            0,
+            "dry_run 零写入"
+        );
+        assert_eq!(reg094_count(&store, "knowledge_snapshots"), 0);
+    }
+
+    /// T9 原子性：包内任一条与既有条目冲突 → 整体回滚，新包零残留
+    #[test]
+    fn test_a31_import_knowledge_atomic_rollback() {
+        let store = RuleStore::in_memory().unwrap();
+        store.create_dataset(&ext_import_target()).unwrap();
+        let first = external_knowledge_bundle("ext-a1", None, Some("CC-BY-4.0".into()));
+        store
+            .import_knowledge_entries("ds-ext-import", &first, "partner-x", "u", "t", false)
+            .unwrap();
+        // 新包两条：ext-b1（新）+ ext-a1（与既有冲突）
+        let mut bundle = external_knowledge_bundle("ext-b1", None, Some("CC-BY-4.0".into()));
+        bundle.entries.push(
+            external_knowledge_bundle("ext-a1", None, Some("CC-BY-4.0".into()))
+                .entries
+                .remove(0),
+        );
+        bundle.bundle_id = "bdl-ext-mixed".into();
+        bundle.audit.content_hash = bundle.compute_content_hash();
+        let err = store
+            .import_knowledge_entries("ds-ext-import", &bundle, "partner-x", "u", "t2", false)
+            .unwrap_err();
+        assert!(matches!(err, StoreError::EntryExists { .. }), "{err}");
+        assert_eq!(
+            reg094_count(&store, "knowledge_entries"),
+            1,
+            "仅既有 1 条，失败包零残留"
+        );
     }
 
     #[test]

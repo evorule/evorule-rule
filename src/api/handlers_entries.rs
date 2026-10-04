@@ -336,6 +336,19 @@ pub async fn machine_gate_promote(
         }
     };
     let (dataset_id, entry) = locate_entry(&state, &ctx.tenant_id, &entry_id)?;
+    // A3-4：external 来源条目结构性不给机器闸（来源不可信者仅可人工审批放行；
+    // 这是来源治理判定而非六检结果——403 拒绝，gate 纯函数与可回放口径不动。
+    // Rule 条目无 trust_level 字段，不受影响，不追溯）
+    if let AnyEntry::Knowledge(e) = &entry {
+        if e.trust_level
+            .as_deref()
+            .is_some_and(|t| t.starts_with("external:"))
+        {
+            return Err(ApiError::forbidden(
+                "external 来源条目不给机器闸：来源不可信者仅可人工审批放行",
+            ));
+        }
+    }
     // 先取分流信息再消费 entry 所有权（跳数规划与落链分流通 Both 需要）
     let current = match &entry {
         AnyEntry::Rule(e) => e.status,
