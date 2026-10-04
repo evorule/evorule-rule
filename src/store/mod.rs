@@ -6567,6 +6567,11 @@ mod tests {
             "新增 schema 应无需重启即可解析"
         );
         // b) 既有 schema 内容修改 → 重扫后取新内容
+        // 时序退避：Linux 内核 inode 时间戳按 jiffies 粒度（~4ms）更新，CI 极速下
+        // a/b 两步 mtime 可能完全相等 → max-mtime 指纹无变化 → 重扫被跳过
+        //（2026-10-04 GitHub CI 实测红）；NTFS 100ns 粒度本地绿。退避 50ms 保证
+        // b 的 mtime 严格晚于 a 的重扫时刻。指纹感知重扫本身为 best-effort 设计。
+        std::thread::sleep(std::time::Duration::from_millis(50));
         std::fs::write(
             dir.join("domain_schemas").join("rpsm-body.json"),
             r#"{"$id":"https://evorule.dev/domain/rpsm-body.json","type":"object","required":["mass","volume"],"properties":{"mass":{"type":"number"},"volume":{"type":"number"}},"additionalProperties":false}"#,
