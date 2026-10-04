@@ -2790,6 +2790,7 @@ impl RuleStore {
     /// 状态 UPDATE → 审计落链（gate=machine + tier + post_review_required；
     /// 先校验后落链，防先放行后补票）。人工路径走 [`Self::transition_entry_status`]
     /// （gate 列落 NULL = human 语义，历史行为逐字节）。
+    #[allow(clippy::too_many_arguments)] // 机器闸凭据（tier）独立于既有迁移参数，合并会弱化类型语义
     pub fn transition_entry_status_machine(
         &self,
         dataset_id: &str,
@@ -2884,6 +2885,7 @@ impl RuleStore {
     }
 
     /// 条目级状态迁移·机器闸放行（knowledge 平行表；同 rule 口径）
+    #[allow(clippy::too_many_arguments)] // 同 rule 机器闸方法
     pub fn transition_knowledge_entry_status_machine(
         &self,
         dataset_id: &str,
