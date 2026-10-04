@@ -210,6 +210,14 @@ impl ApiError {
             message: msg.into(),
         }
     }
+    /// 422 Unprocessable Entity（机器闸行权通路：六检不过=T2，返回报告不迁移不落链）
+    pub fn unprocessable_entity(msg: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::UNPROCESSABLE_ENTITY,
+            code: "unprocessable_entity",
+            message: msg.into(),
+        }
+    }
     pub fn internal(msg: impl Into<String>) -> Self {
         Self {
             status: StatusCode::INTERNAL_SERVER_ERROR,
@@ -596,6 +604,14 @@ pub fn router(state: AppState) -> Router {
             post(handlers_entries::submit_candidate),
         )
         .route("/entries/{id}/approve", post(handlers_entries::approve))
+        .route(
+            "/entries/{id}/machine-gate-promote",
+            post(handlers_entries::machine_gate_promote),
+        )
+        .route(
+            "/audit/machine-gate/post-review-queue",
+            get(handlers_entries::machine_gate_post_review_queue),
+        )
         .route("/entries/{id}/history", get(handlers_entries::history))
         .route("/entries/{id}/deps", get(handlers_entries::deps))
         .route(
@@ -755,6 +771,172 @@ mod tests {
         let (status, body) = send(app.clone(), "GET", "/v1/datasets", None, None).await;
         assert_eq!(status, StatusCode::UNAUTHORIZED, "{body}");
         assert_eq!(body["error"]["code"], "unauthorized");
+    }
+
+    // ------------------------------------------------------------------
+    // 机器闸行权通路 E2E（POST /entries/{id}/machine-gate-promote + 追认队列）
+    // ------------------------------------------------------------------
+
+    use crate::model::entry::RuleEntry;
+    use crate::model::governance::{Governance, LlmGenerated};
+    use crate::model::lifecycle::LifecycleStatus;
+    use crate::model::provenance::Provenance;
+
+    /// 测试辅助：缺省模式建数据集（无锚草稿工作流，不阻断创建）
+    async fn machine_gate_seed_dataset(app: &Router, token: &str, dataset_id: &str) {
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/datasets",
+            Some(token),
+            Some(json!({
+                "dataset_id": dataset_id,
+                "name": "机器闸验收集",
+                "domain": ["tax"]
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "{body}");
+    }
+
+    /// 测试辅助：store 层直插 llm_generated Draft 条目（API 建条目通路不收 governance，
+    /// 机器闸验收需要 LLM 产出旗标——与 store::tests llm_entry 同模式就地重建）。
+    /// 无服务绑定+纯 set 形态：无绑定条目 M1 符号一致早退通过（validate/mod.rs §无绑定直接通过），
+    /// 免除数据集服务声明前置
+    fn machine_gate_llm_entry(state: &AppState, dataset_id: &str, entry_id: &str) {
+        let entry = RuleEntry {
+            entry_id: entry_id.to_string(),
+            dataset_id: dataset_id.to_string(),
+            version: 1,
+            status: Some(LifecycleStatus::Draft),
+            provenance: Provenance {
+                source: "机器闸验收".into(),
+                clause: None,
+                document_id: None,
+                effective_from: None,
+                effective_to: None,
+                last_verified: None,
+                verified_by: None,
+            },
+            domain: "tax".into(),
+            tags: vec![],
+            data_source_binding: vec![],
+            consumed_inputs: vec![],
+            rule_body: serde_json::json!({
+                "transform": [{"type": "set", "params": {"attr": "x", "operation": "set", "value": 1}}]
+            }),
+            governance: Some(Governance {
+                llm_generated: Some(LlmGenerated {
+                    flag: true,
+                    model: None,
+                    op: Some("draft_rule".into()),
+                    timestamp: None,
+                }),
+                ..Default::default()
+            }),
+        };
+        state.store.add_entry(&entry).expect("seed llm entry");
+    }
+
+    #[tokio::test]
+    async fn test_machine_gate_promote_end_to_end() {
+        let (app, state) = build_app();
+        let token = register_login(&app).await; // rule_engineer
+        machine_gate_seed_dataset(&app, &token, "ds-mg-1").await;
+        machine_gate_llm_entry(&state, "ds-mg-1", "mg-rule-1");
+
+        // ① 无行权角色（rule_engineer）→ 403（机器闸放行=行权动作）
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/entries/mg-rule-1/machine-gate-promote",
+            Some(&token),
+            Some(json!({ "target": "active" })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+
+        // ② 非法 target（published=永远人工，结构性立宪不松动）→ 400
+        let admin = admin_token(&state).await;
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/entries/mg-rule-1/machine-gate-promote",
+            Some(&admin),
+            Some(json!({ "target": "published" })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+
+        // ③ 审批者放行 active：六检全过+低影响 → T0 直通两跳（Draft→Candidate→Active，
+        //    每跳独立落链 gate=machine；报告/审计摘要进 cause）
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/entries/mg-rule-1/machine-gate-promote",
+            Some(&admin),
+            Some(json!({ "target": "active", "cause": "机器闸放行验收" })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["tier"], "T0");
+        assert_eq!(body["post_review_required"], false);
+        assert_eq!(body["entry"]["status"], "Active");
+
+        // ④ T1 事后追认队列：无 T1 放行 → 空数组
+        let (status, body) = send(
+            app.clone(),
+            "GET",
+            "/v1/audit/machine-gate/post-review-queue",
+            Some(&admin),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body.as_array().expect("queue array").len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_machine_gate_t1_promote_post_review_queue() {
+        let (app, state) = build_app();
+        let token = register_login(&app).await;
+        machine_gate_seed_dataset(&app, &token, "ds-mg-2").await;
+        machine_gate_llm_entry(&state, "ds-mg-2", "mg-rule-t1");
+        // M4 高影响：数据集条目总数超阈（52 > 50）→ 六检全过但降 T1（事后追认）
+        for i in 0..51 {
+            machine_gate_llm_entry(&state, "ds-mg-2", &format!("filler-{i}"));
+        }
+
+        let admin = admin_token(&state).await;
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/entries/mg-rule-t1/machine-gate-promote",
+            Some(&admin),
+            Some(json!({ "target": "active" })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["tier"], "T1");
+        assert_eq!(body["post_review_required"], true);
+        assert_eq!(body["entry"]["status"], "Active");
+
+        // 追认队列：Active+T1+追认标记 → 恰 1 项（Candidate 跳不入队列）
+        let (status, body) = send(
+            app.clone(),
+            "GET",
+            "/v1/audit/machine-gate/post-review-queue",
+            Some(&admin),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        let queue = body.as_array().expect("queue array");
+        assert_eq!(queue.len(), 1, "{body}");
+        assert_eq!(queue[0]["dataset_id"], "ds-mg-2");
+        assert_eq!(queue[0]["entry_id"], "mg-rule-t1");
+        assert_eq!(queue[0]["to_state"], "Active");
+        assert_eq!(queue[0]["tier"], "T1");
     }
 
     #[tokio::test]

@@ -5,7 +5,7 @@
 //! - M1 复用既有校验 SSOT（rule=符号三方一致；knowledge=入账契约完整性）；
 //! - M2 黄金样本回归以「快照连续性」替代首版（样本复算待执行引擎接入，随机器闸演进收紧）；
 //! - M3 词法域冲突（同数据集同内容 Active=重复提案拒绝；同 domain 重叠=警告不拦截）；
-//! - M4/M5 影响面与信誉只做梯位降级（超阈→T2 走人工），默认通过档；
+//! - M4/M5 影响面与信誉只做梯位降级（超阈→T1 事后追认），默认通过档；
 //! - 梯位裁决：全过且低影响→T0（直通）；全过→T1（事后追认）；任一不过→T2（拒绝机器放行）。
 //!
 //! 执行器只产报告不落库：写入路径（store 机器闸迁移方法 + machine-gate-promote 端点）
@@ -210,7 +210,7 @@ pub fn evaluate(input: &GateInput) -> MachineGateReport {
     if input.probe.dataset_entry_count > thresholds::MAX_DATASET_ENTRIES_T0 {
         downgrade = true;
         m4_notes.push(format!(
-            "数据集条目总数 {} > {}（高影响降 T2）",
+            "数据集条目总数 {} > {}（高影响降梯位）",
             input.probe.dataset_entry_count,
             thresholds::MAX_DATASET_ENTRIES_T0
         ));
@@ -218,9 +218,9 @@ pub fn evaluate(input: &GateInput) -> MachineGateReport {
     if binding_count > thresholds::MAX_SERVICE_BINDINGS_T0 {
         downgrade = true;
         m4_notes.push(format!(
-            "服务绑定数 {binding_count} > {}（高影响降 T2）",
-            thresholds::MAX_SERVICE_BINDINGS_T0
-        ));
+                "服务绑定数 {binding_count} > {}（高影响降梯位）",
+                thresholds::MAX_SERVICE_BINDINGS_T0
+            ));
     }
     checks.push(item(
         CHECK_NAMES[3],

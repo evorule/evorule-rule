@@ -14,6 +14,7 @@ use evorule_bundle::validate_rule_structure;
 
 use crate::api::handlers_auth::now_iso;
 use crate::api::{paginate, ApiError, AppState, AuthContext, Page};
+use crate::gate::{self, GateInput};
 use crate::model::auth::{can, Action};
 use crate::model::dependency::SourceBinding;
 use crate::model::entry::RuleEntry;
@@ -246,6 +247,174 @@ pub async fn history(
             .get_knowledge_entry_state_history(&dataset_id, &entry_id)?;
     }
     Ok(Json(hist))
+}
+
+// ----------------------------------------------------------------------
+// 机器闸行权通路（POST /entries/{id}/machine-gate-promote + T1 追认队列）
+// ----------------------------------------------------------------------
+
+/// 追认队列返回上限（最小版固定；排序精化随机器闸演进）
+const POST_REVIEW_QUEUE_LIMIT: usize = 200;
+
+/// POST /entries/{id}/machine-gate-promote 请求体
+#[derive(Deserialize)]
+pub struct MachineGatePromoteReq {
+    /// 目标状态：`candidate` | `active`（active 自 Draft 时顺序两跳，每跳独立落链）
+    pub target: String,
+    /// 审计 cause（可选；机器闸报告摘要恒由服务端追加，不可覆盖）
+    #[serde(default)]
+    pub cause: Option<String>,
+}
+
+/// 现场跑机器闸执行器（不信任客户端「检查通过」声明：store 探针采集 M2-M6 事实，
+/// gate 模块纯函数出报告——同输入同结论，可回放可复算）
+fn run_machine_gate(
+    state: &AppState,
+    dataset_id: &str,
+    entry: AnyEntry,
+) -> Result<gate::MachineGateReport, ApiError> {
+    let dataset = state
+        .store
+        .get_dataset(dataset_id)?
+        .ok_or_else(|| ApiError::not_found(format!("数据集 `{dataset_id}` 不存在")))?;
+    let stats = state.store.llm_audit_stats()?;
+    let input = match entry {
+        AnyEntry::Rule(e) => {
+            let probe = state.store.gate_probe_rule(dataset_id, &e)?;
+            GateInput {
+                entry_id: e.entry_id.clone(),
+                version: e.version,
+                is_rule: true,
+                dataset,
+                rule_entry: Some(e),
+                knowledge_entry: None,
+                probe,
+                llm_total: stats.total,
+                llm_failed: stats.failed,
+            }
+        }
+        AnyEntry::Knowledge(e) => {
+            let probe = state.store.gate_probe_knowledge(dataset_id, &e)?;
+            GateInput {
+                entry_id: e.entry_id.clone(),
+                version: e.version,
+                is_rule: false,
+                dataset,
+                rule_entry: None,
+                knowledge_entry: Some(e),
+                probe,
+                llm_total: stats.total,
+                llm_failed: stats.failed,
+            }
+        }
+    };
+    Ok(gate::evaluate(&input))
+}
+
+/// POST /entries/{id}/machine-gate-promote —— 机器闸行权通路（行权动作，Approve 角色）：
+/// 服务端现场跑六检执行器；T2（任一检不过）→ 422 返回报告，不迁移不落链；
+/// 全过 → 按状态机合法路径逐跳机器放行（每跳独立落链 gate=machine；先校验后落链）。
+/// 行权上限=Active（Published 永远人工，结构性立宪不松动）。
+pub async fn machine_gate_promote(
+    State(state): State<AppState>,
+    Extension(ctx): Extension<AuthContext>,
+    Path(entry_id): Path<String>,
+    Json(req): Json<MachineGatePromoteReq>,
+) -> Result<Json<Value>, ApiError> {
+    if !can(ctx.role, Action::Approve) {
+        return Err(ApiError::forbidden("机器闸放行=行权动作，需审批者及以上角色"));
+    }
+    let target = match req.target.as_str() {
+        "candidate" => LifecycleStatus::Candidate,
+        "active" => LifecycleStatus::Active,
+        other => {
+            return Err(ApiError::bad_request(format!(
+                "target `{other}` 非法（仅 candidate|active；机器闸行权上限=Active，Published 永远人工）"
+            )))
+        }
+    };
+    let (dataset_id, entry) = locate_entry(&state, &ctx.tenant_id, &entry_id)?;
+    // 先取分流信息再消费 entry 所有权（跳数规划与落链分流通 Both 需要）
+    let current = match &entry {
+        AnyEntry::Rule(e) => e.status,
+        AnyEntry::Knowledge(e) => e.status,
+    };
+    let is_rule = matches!(entry, AnyEntry::Rule(_));
+    let report = run_machine_gate(&state, &dataset_id, entry)?;
+    if !report.all_passed() || report.tier == "T2" {
+        return Err(ApiError::unprocessable_entity(format!(
+            "机器闸未放行（{}）: {}",
+            report.tier,
+            report.summary()
+        )));
+    }
+    // 跳数规划（状态机合法路径 Draft→Candidate→Active；None 语义与 store 迁移口径一致）
+    let hops: Vec<LifecycleStatus> = match (current.unwrap_or(LifecycleStatus::Active), target) {
+        (LifecycleStatus::Draft, LifecycleStatus::Candidate) => vec![LifecycleStatus::Candidate],
+        (LifecycleStatus::Draft, LifecycleStatus::Active) => {
+            vec![LifecycleStatus::Candidate, LifecycleStatus::Active]
+        }
+        (LifecycleStatus::Candidate, LifecycleStatus::Active) => vec![LifecycleStatus::Active],
+        (cur, tgt) if cur == tgt => {
+            return Err(ApiError::bad_request(format!(
+                "条目已处于目标状态 {tgt:?}（机器闸行权上限=Active）"
+            )))
+        }
+        (cur, tgt) => {
+            return Err(ApiError::bad_request(format!(
+                "当前状态 {cur:?} 无法经机器闸到达 {tgt:?}（合法路径 Draft→Candidate→Active；Published/Rejected 走人工流程）"
+            )))
+        }
+    };
+    let base = req.cause.unwrap_or_else(|| "机器闸放行（六检全过）".into());
+    let cause = format!("{base} | machine-gate {}", report.summary());
+    let at = now_iso();
+    for hop in &hops {
+        if is_rule {
+            state.store.transition_entry_status_machine(
+                &dataset_id,
+                &entry_id,
+                *hop,
+                &ctx.user_id,
+                &at,
+                &cause,
+                &report.tier,
+            )?;
+        } else {
+            state.store.transition_knowledge_entry_status_machine(
+                &dataset_id,
+                &entry_id,
+                *hop,
+                &ctx.user_id,
+                &at,
+                &cause,
+                &report.tier,
+            )?;
+        }
+    }
+    let (_, updated) = locate_entry(&state, &ctx.tenant_id, &entry_id)?;
+    Ok(Json(serde_json::json!({
+        "tier": report.tier,
+        "report": serde_json::to_value(&report).unwrap_or(Value::Null),
+        "post_review_required": report.tier == "T1",
+        "entry": updated.to_json(),
+    })))
+}
+
+/// GET /audit/machine-gate/post-review-queue —— 机器闸 T1 事后追认队列（最小版：
+/// 两审计表 UNION Active+T1+追认标记，按 at DESC；Approve 角色）
+pub async fn machine_gate_post_review_queue(
+    State(state): State<AppState>,
+    Extension(ctx): Extension<AuthContext>,
+) -> Result<Json<Vec<crate::model::lifecycle::PostReviewItem>>, ApiError> {
+    if !can(ctx.role, Action::Approve) {
+        return Err(ApiError::forbidden("追认队列查看需审批者及以上角色"));
+    }
+    Ok(Json(
+        state
+            .store
+            .machine_gate_post_review_queue(POST_REVIEW_QUEUE_LIMIT)?,
+    ))
 }
 
 /// GET /entries/{id}/deps —— 条目级 data_source_binding（设计文档 §3 层 2 绑定）
