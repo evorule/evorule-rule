@@ -541,6 +541,7 @@ impl RuleStore {
             CREATE INDEX IF NOT EXISTS idx_api_keys_tenant ON api_keys(tenant_id, revoked_at);
 
             -- 设计文档 §5：条目级状态迁移审计（only-append，`GET /entries/{id}/history`）
+            -- 机器闸行权通路：gate/tier/post_review_required 三列（人工路径落 NULL=human 语义）
             CREATE TABLE IF NOT EXISTS entry_state_history (
                 id         INTEGER PRIMARY KEY AUTOINCREMENT,
                 dataset_id TEXT NOT NULL,
@@ -551,6 +552,9 @@ impl RuleStore {
                 at         TEXT NOT NULL,
                 by         TEXT NOT NULL,
                 cause      TEXT NOT NULL,
+                gate       TEXT,
+                tier       TEXT,
+                post_review_required INTEGER,
                 FOREIGN KEY (dataset_id, entry_id, version)
                     REFERENCES entries(dataset_id, entry_id, version)
             );
@@ -613,6 +617,29 @@ impl RuleStore {
             "ALTER TABLE knowledge_entries ADD COLUMN knowledge_meta TEXT",
             [],
         );
+        // 机器闸行权通路：两审计表补 gate/tier/post_review_required 三列（存量行 NULL=
+        // human 语义，向后兼容；先例=consumed_inputs/dataset_kind 动态迁移）
+        let _ = conn.execute("ALTER TABLE entry_state_history ADD COLUMN gate TEXT", []);
+        let _ = conn.execute(
+            "ALTER TABLE entry_state_history ADD COLUMN tier TEXT",
+            [],
+        );
+        let _ = conn.execute(
+            "ALTER TABLE entry_state_history ADD COLUMN post_review_required INTEGER",
+            [],
+        );
+        let _ = conn.execute(
+            "ALTER TABLE knowledge_state_history ADD COLUMN gate TEXT",
+            [],
+        );
+        let _ = conn.execute(
+            "ALTER TABLE knowledge_state_history ADD COLUMN tier TEXT",
+            [],
+        );
+        let _ = conn.execute(
+            "ALTER TABLE knowledge_state_history ADD COLUMN post_review_required INTEGER",
+            [],
+        );
         // Q12 数据资产化 R3：knowledge 条目平行表（方案 D 定案：rule 查询热路径零扰动）
         conn.execute_batch(
             r#"
@@ -635,6 +662,7 @@ impl RuleStore {
             CREATE INDEX IF NOT EXISTS idx_kentry_ds ON knowledge_entries(dataset_id);
 
             -- knowledge 条目状态迁移审计（only-append；独立于 entry_state_history，FK 指向平行表）
+            -- 机器闸行权通路：gate/tier/post_review_required 三列（同 entry_state_history 口径）
             CREATE TABLE IF NOT EXISTS knowledge_state_history (
                 id         INTEGER PRIMARY KEY AUTOINCREMENT,
                 dataset_id TEXT NOT NULL,
@@ -645,6 +673,9 @@ impl RuleStore {
                 at         TEXT NOT NULL,
                 by         TEXT NOT NULL,
                 cause      TEXT NOT NULL,
+                gate       TEXT,
+                tier       TEXT,
+                post_review_required INTEGER,
                 FOREIGN KEY (dataset_id, entry_id, version)
                     REFERENCES knowledge_entries(dataset_id, entry_id, version)
             );
@@ -1288,15 +1319,15 @@ impl RuleStore {
                 entry: entry.entry_id.clone(),
             });
         }
-        // 3) LLM 边界（历史批次强约束同口径：LLM 产出只能停留 Draft）
-        if entry.is_llm_generated() && entry.status != Some(LifecycleStatus::Draft) {
-            return Err(StoreError::Validation(
-                ValidationError::LlmGeneratedNotDraft {
-                    entry: entry.entry_id.clone(),
-                    status: entry.status.unwrap_or(LifecycleStatus::Active),
-                },
-            ));
-        }
+        // 3) LLM 边界（历史批次强约束同口径：LLM 产出只能停留 Draft；
+        // 统一走通用判定，gate=None = 历史行为逐字节）
+        Validator::validate_llm_boundary_gated(
+            entry.is_llm_generated(),
+            &entry.entry_id,
+            &entry.status.unwrap_or(LifecycleStatus::Active),
+            None,
+        )
+        .map_err(StoreError::Validation)?;
         // 4) D3 门禁（SSOT）：payload 过领域 jsonschema 校验；resolver 未命中 = 拒绝
         // 知识资产化批次 A：门禁视图流通四字段（与 knowledge_entry_to_bundle 同口径）
         let bundle_entry = BundleEntry {
@@ -1673,15 +1704,10 @@ impl RuleStore {
             });
         };
         let from = entry.status.unwrap_or(LifecycleStatus::Active);
-        // LLM 产出只能停留 Draft（历史批次强约束，同 RuleEntry 口径）
-        if entry.is_llm_generated() && to != LifecycleStatus::Draft {
-            return Err(StoreError::Validation(
-                ValidationError::LlmGeneratedNotDraft {
-                    entry: entry_id.into(),
-                    status: to,
-                },
-            ));
-        }
+        // LLM 产出只能停留 Draft（历史批次强约束，同 RuleEntry 口径；
+        // 统一走通用判定，gate=None = 历史行为逐字节）
+        Validator::validate_llm_boundary_gated(entry.is_llm_generated(), entry_id, &to, None)
+            .map_err(StoreError::Validation)?;
         let valid = matches!(
             (from, to),
             (LifecycleStatus::Draft, LifecycleStatus::Candidate)
@@ -1747,7 +1773,8 @@ impl RuleStore {
     ) -> Result<Vec<StateChange>, StoreError> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT from_state, to_state, at, by, cause FROM knowledge_state_history
+            "SELECT from_state, to_state, at, by, cause, gate, tier, post_review_required
+             FROM knowledge_state_history
              WHERE dataset_id=?1 AND entry_id=?2 ORDER BY id",
         )?;
         let rows = stmt.query_map(params![dataset_id, entry_id], |r| {
@@ -1758,9 +1785,9 @@ impl RuleStore {
                 by: r.get(3)?,
                 cause: r.get(4)?,
                 published_as: None,
-                gate: None,
-                tier: None,
-                post_review_required: None,
+                gate: r.get(5)?,
+                tier: r.get(6)?,
+                post_review_required: r.get::<_, Option<i64>>(7)?.map(|v| v != 0),
             })
         })?;
         rows.collect::<Result<_, _>>().map_err(Into::into)
@@ -2638,20 +2665,15 @@ impl RuleStore {
         // 专项拦截（设计文档 §5 强约束）：LLM 产出（llm_generated=true）只能停留 Draft。
         // 状态机层禁止其离开 Draft（含 Draft→Candidate），不只靠人工闸门；validate_llm_boundary
         // 仅拦截"当前状态非 Draft"，此处补"迁移目标非 Draft"的离开拦截。
-        if entry
+        // 统一走通用判定（机器闸行权通路）：gate=None = 历史行为逐字节；
+        // 机器闸放行走 transition_entry_status_machine（gate=Some）。
+        let is_llm = entry
             .governance
             .as_ref()
             .map(|g| g.is_llm_generated())
-            .unwrap_or(false)
-            && to != LifecycleStatus::Draft
-        {
-            return Err(StoreError::Validation(
-                ValidationError::LlmGeneratedNotDraft {
-                    entry: entry_id.into(),
-                    status: to,
-                },
-            ));
-        }
+            .unwrap_or(false);
+        Validator::validate_llm_boundary_gated(is_llm, entry_id, &to, None)
+            .map_err(StoreError::Validation)?;
         let valid = matches!(
             (from, to),
             (LifecycleStatus::Draft, LifecycleStatus::Candidate)
@@ -2718,7 +2740,8 @@ impl RuleStore {
     ) -> Result<Vec<StateChange>, StoreError> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT from_state, to_state, at, by, cause FROM entry_state_history
+            "SELECT from_state, to_state, at, by, cause, gate, tier, post_review_required
+             FROM entry_state_history
              WHERE dataset_id=?1 AND entry_id=?2 ORDER BY id",
         )?;
         let rows = stmt.query_map(params![dataset_id, entry_id], |r| {
@@ -2729,12 +2752,359 @@ impl RuleStore {
                 by: r.get(3)?,
                 cause: r.get(4)?,
                 published_as: None,
-                gate: None,
-                tier: None,
-                post_review_required: None,
+                gate: r.get(5)?,
+                tier: r.get(6)?,
+                post_review_required: r.get::<_, Option<i64>>(7)?.map(|v| v != 0),
             })
         })?;
         rows.collect::<Result<_, _>>().map_err(Into::into)
+    }
+
+    // ------------------------------------------------------------------
+    // 机器闸行权通路（六检全过后的机器放行写入路径；人工路径零改动）
+    // ------------------------------------------------------------------
+
+    /// 条目级状态迁移·机器闸放行（rule 平行表）：
+    ///
+    /// 仅在 API 层机器闸执行器六检全过后调用（T2 不入本通路，梯位字面量显式校验）；
+    /// 本方法同事务完成 LLM 边界复核（validate_llm_boundary_gated，gate=Some）→
+    /// 状态 UPDATE → 审计落链（gate=machine + tier + post_review_required；
+    /// 先校验后落链，防先放行后补票）。人工路径走 [`Self::transition_entry_status`]
+    /// （gate 列落 NULL = human 语义，历史行为逐字节）。
+    pub fn transition_entry_status_machine(
+        &self,
+        dataset_id: &str,
+        entry_id: &str,
+        to: LifecycleStatus,
+        by: &str,
+        at: &str,
+        cause: &str,
+        tier: &str,
+    ) -> Result<(), StoreError> {
+        if !matches!(tier, "T0" | "T1") {
+            return Err(StoreError::Validation(ValidationError::Message(format!(
+                "机器闸梯位 `{tier}` 非法（仅 T0/T1 可入机器放行通路，T2 走人工）"
+            ))));
+        }
+        let Some(mut entry) = self.get_latest_entry(dataset_id, entry_id)? else {
+            return Err(StoreError::EntryNotFound {
+                dataset: dataset_id.into(),
+                entry: entry_id.into(),
+            });
+        };
+        let from = entry.status.unwrap_or(LifecycleStatus::Active);
+        let is_llm = entry
+            .governance
+            .as_ref()
+            .map(|g| g.is_llm_generated())
+            .unwrap_or(false);
+        let gate_ctx = crate::validate::MachineGateContext {
+            tier: tier.to_string(),
+            checks_passed: true,
+            state_change_id: format!("{dataset_id}/{entry_id}/v{}/{}", entry.version, at),
+        };
+        Validator::validate_llm_boundary_gated(is_llm, entry_id, &to, Some(&gate_ctx))
+            .map_err(StoreError::Validation)?;
+        let valid = matches!(
+            (from, to),
+            (LifecycleStatus::Draft, LifecycleStatus::Candidate)
+                | (LifecycleStatus::Candidate, LifecycleStatus::Active)
+                | (LifecycleStatus::Candidate, LifecycleStatus::Rejected)
+                | (LifecycleStatus::Draft, LifecycleStatus::Rejected)
+        );
+        if !valid {
+            return Err(StoreError::IllegalTransition {
+                from: Some(from),
+                to,
+            });
+        }
+        entry.status = Some(to);
+        let mut gov = entry.governance.clone().unwrap_or_default();
+        let mut ts = gov.lifecycle_timestamps.clone().unwrap_or_default();
+        match to {
+            LifecycleStatus::Candidate => ts.candidate_at = Some(at.into()),
+            LifecycleStatus::Active => ts.active_at = Some(at.into()),
+            _ => {}
+        }
+        gov.lifecycle_timestamps = Some(ts);
+        entry.governance = Some(gov);
+        // W2 同生共死（同人工路径口径）：状态 UPDATE 与审计 INSERT 同事务
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        tx.execute(
+            "UPDATE entries SET status=?1, governance=?2
+             WHERE dataset_id=?3 AND entry_id=?4 AND version=?5",
+            params![
+                serde_json::to_string(&entry.status)?,
+                serde_json::to_string(&entry.governance)?,
+                dataset_id,
+                entry_id,
+                entry.version,
+            ],
+        )?;
+        tx.execute(
+            "INSERT INTO entry_state_history
+                (dataset_id, entry_id, version, from_state, to_state, at, by, cause,
+                 gate, tier, post_review_required)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'machine', ?9, ?10)",
+            params![
+                dataset_id,
+                entry_id,
+                entry.version,
+                format!("{:?}", from),
+                format!("{:?}", to),
+                at,
+                by,
+                cause,
+                tier,
+                (tier == "T1") as i64,
+            ],
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// 条目级状态迁移·机器闸放行（knowledge 平行表；同 rule 口径）
+    pub fn transition_knowledge_entry_status_machine(
+        &self,
+        dataset_id: &str,
+        entry_id: &str,
+        to: LifecycleStatus,
+        by: &str,
+        at: &str,
+        cause: &str,
+        tier: &str,
+    ) -> Result<(), StoreError> {
+        if !matches!(tier, "T0" | "T1") {
+            return Err(StoreError::Validation(ValidationError::Message(format!(
+                "机器闸梯位 `{tier}` 非法（仅 T0/T1 可入机器放行通路，T2 走人工）"
+            ))));
+        }
+        let Some(mut entry) = self.get_latest_knowledge_entry(dataset_id, entry_id)? else {
+            return Err(StoreError::EntryNotFound {
+                dataset: dataset_id.into(),
+                entry: entry_id.into(),
+            });
+        };
+        let from = entry.status.unwrap_or(LifecycleStatus::Active);
+        let gate_ctx = crate::validate::MachineGateContext {
+            tier: tier.to_string(),
+            checks_passed: true,
+            state_change_id: format!("{dataset_id}/{entry_id}/v{}/{}", entry.version, at),
+        };
+        Validator::validate_llm_boundary_gated(
+            entry.is_llm_generated(),
+            entry_id,
+            &to,
+            Some(&gate_ctx),
+        )
+        .map_err(StoreError::Validation)?;
+        let valid = matches!(
+            (from, to),
+            (LifecycleStatus::Draft, LifecycleStatus::Candidate)
+                | (LifecycleStatus::Candidate, LifecycleStatus::Active)
+                | (LifecycleStatus::Candidate, LifecycleStatus::Rejected)
+                | (LifecycleStatus::Draft, LifecycleStatus::Rejected)
+        );
+        if !valid {
+            return Err(StoreError::IllegalTransition {
+                from: Some(from),
+                to,
+            });
+        }
+        entry.status = Some(to);
+        let mut gov = entry.governance.clone().unwrap_or_default();
+        let mut ts = gov.lifecycle_timestamps.clone().unwrap_or_default();
+        match to {
+            LifecycleStatus::Candidate => ts.candidate_at = Some(at.into()),
+            LifecycleStatus::Active => ts.active_at = Some(at.into()),
+            _ => {}
+        }
+        gov.lifecycle_timestamps = Some(ts);
+        entry.governance = Some(gov);
+        // W2 同生共死（同人工路径口径）：状态 UPDATE 与审计 INSERT 同事务
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        tx.execute(
+            "UPDATE knowledge_entries SET status=?1, governance=?2
+             WHERE dataset_id=?3 AND entry_id=?4 AND version=?5",
+            params![
+                serde_json::to_string(&entry.status)?,
+                serde_json::to_string(&entry.governance)?,
+                dataset_id,
+                entry_id,
+                entry.version,
+            ],
+        )?;
+        tx.execute(
+            "INSERT INTO knowledge_state_history
+                (dataset_id, entry_id, version, from_state, to_state, at, by, cause,
+                 gate, tier, post_review_required)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'machine', ?9, ?10)",
+            params![
+                dataset_id,
+                entry_id,
+                entry.version,
+                format!("{:?}", from),
+                format!("{:?}", to),
+                at,
+                by,
+                cause,
+                tier,
+                (tier == "T1") as i64,
+            ],
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// 机器闸 T1 事后追认队列（最小版）：两审计表 UNION
+    /// `to_state='Active' AND tier='T1' AND post_review_required=1`，按 at DESC；
+    /// 排序精化（影响面×运行表现）随机器闸演进。
+    pub fn machine_gate_post_review_queue(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<crate::model::lifecycle::PostReviewItem>, StoreError> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT dataset_id, entry_id, version, from_state, to_state, at, by, cause, tier
+             FROM entry_state_history
+             WHERE to_state='Active' AND tier='T1' AND post_review_required=1
+             UNION ALL
+             SELECT dataset_id, entry_id, version, from_state, to_state, at, by, cause, tier
+             FROM knowledge_state_history
+             WHERE to_state='Active' AND tier='T1' AND post_review_required=1
+             ORDER BY at DESC LIMIT ?1",
+        )?;
+        let rows = stmt.query_map(params![limit as i64], |r| {
+            Ok(crate::model::lifecycle::PostReviewItem {
+                dataset_id: r.get(0)?,
+                entry_id: r.get(1)?,
+                version: r.get(2)?,
+                from_state: r.get(3)?,
+                to_state: r.get(4)?,
+                at: r.get(5)?,
+                by: r.get(6)?,
+                cause: r.get(7)?,
+                tier: r.get(8)?,
+            })
+        })?;
+        rows.collect::<Result<_, _>>().map_err(Into::into)
+    }
+
+    /// 机器闸执行器输入探针（rule 条目）：现场采集 M2-M6 所需事实，
+    /// 执行器本体保持纯函数（gate 模块）。status 判定按 JSON 串写入口径（`"Active"`）。
+    pub fn gate_probe_rule(
+        &self,
+        dataset_id: &str,
+        entry: &RuleEntry,
+    ) -> Result<crate::gate::GateProbe, StoreError> {
+        let conn = self.conn.lock().unwrap();
+        let active = serde_json::to_string(&LifecycleStatus::Active)?;
+        let dataset_entry_count: u64 = conn.query_row(
+            "SELECT COUNT(DISTINCT entry_id) FROM entries WHERE dataset_id=?1",
+            params![dataset_id],
+            |r| r.get(0),
+        )?;
+        let active_same_hash: u64 = conn.query_row(
+            "SELECT COUNT(DISTINCT entry_id) FROM entries
+             WHERE dataset_id=?1 AND content_hash=?2 AND status=?3 AND entry_id != ?4",
+            params![dataset_id, entry.content_hash(), active, entry.entry_id],
+            |r| r.get(0),
+        )?;
+        let active_same_domain: u64 = conn.query_row(
+            "SELECT COUNT(DISTINCT entry_id) FROM entries
+             WHERE dataset_id=?1 AND domain=?2 AND status=?3 AND entry_id != ?4",
+            params![dataset_id, entry.domain, active, entry.entry_id],
+            |r| r.get(0),
+        )?;
+        let prev_version_hash: Option<String> = if entry.version > 1 {
+            match conn.query_row(
+                "SELECT content_hash FROM entries WHERE dataset_id=?1 AND entry_id=?2 AND version=?3",
+                params![dataset_id, entry.entry_id, entry.version - 1],
+                |r| r.get(0),
+            ) {
+                Ok(h) => Some(h),
+                Err(rusqlite::Error::QueryReturnedNoRows) => None,
+                Err(e) => return Err(e.into()),
+            }
+        } else {
+            None
+        };
+        let prev_snapshot_exists = match &prev_version_hash {
+            Some(h) => Some(
+                conn.query_row(
+                    "SELECT EXISTS(SELECT 1 FROM entry_snapshots WHERE dataset_id=?1 AND content_hash=?2)",
+                    params![dataset_id, h],
+                    |r| r.get::<_, i64>(0),
+                )? != 0,
+            ),
+            None => None,
+        };
+        Ok(crate::gate::GateProbe {
+            dataset_entry_count,
+            active_same_hash,
+            active_same_domain,
+            prev_version_hash,
+            prev_snapshot_exists,
+        })
+    }
+
+    /// 机器闸执行器输入探针（knowledge 条目；同 rule 口径，平行表）
+    pub fn gate_probe_knowledge(
+        &self,
+        dataset_id: &str,
+        entry: &KnowledgeEntry,
+    ) -> Result<crate::gate::GateProbe, StoreError> {
+        let conn = self.conn.lock().unwrap();
+        let active = serde_json::to_string(&LifecycleStatus::Active)?;
+        let dataset_entry_count: u64 = conn.query_row(
+            "SELECT COUNT(DISTINCT entry_id) FROM knowledge_entries WHERE dataset_id=?1",
+            params![dataset_id],
+            |r| r.get(0),
+        )?;
+        let active_same_hash: u64 = conn.query_row(
+            "SELECT COUNT(DISTINCT entry_id) FROM knowledge_entries
+             WHERE dataset_id=?1 AND content_hash=?2 AND status=?3 AND entry_id != ?4",
+            params![dataset_id, entry.content_hash(), active, entry.entry_id],
+            |r| r.get(0),
+        )?;
+        let active_same_domain: u64 = conn.query_row(
+            "SELECT COUNT(DISTINCT entry_id) FROM knowledge_entries
+             WHERE dataset_id=?1 AND domain=?2 AND status=?3 AND entry_id != ?4",
+            params![dataset_id, entry.domain, active, entry.entry_id],
+            |r| r.get(0),
+        )?;
+        let prev_version_hash: Option<String> = if entry.version > 1 {
+            match conn.query_row(
+                "SELECT content_hash FROM knowledge_entries WHERE dataset_id=?1 AND entry_id=?2 AND version=?3",
+                params![dataset_id, entry.entry_id, entry.version - 1],
+                |r| r.get(0),
+            ) {
+                Ok(h) => Some(h),
+                Err(rusqlite::Error::QueryReturnedNoRows) => None,
+                Err(e) => return Err(e.into()),
+            }
+        } else {
+            None
+        };
+        let prev_snapshot_exists = match &prev_version_hash {
+            Some(h) => Some(
+                conn.query_row(
+                    "SELECT EXISTS(SELECT 1 FROM knowledge_snapshots WHERE dataset_id=?1 AND content_hash=?2)",
+                    params![dataset_id, h],
+                    |r| r.get::<_, i64>(0),
+                )? != 0,
+            ),
+            None => None,
+        };
+        Ok(crate::gate::GateProbe {
+            dataset_entry_count,
+            active_same_hash,
+            active_same_domain,
+            prev_version_hash,
+            prev_snapshot_exists,
+        })
     }
 
     /// 租户内定位条目（设计文档 §5 顶层 `/entries/{id}` 路由用；entry_id 仅数据集内唯一，
@@ -4311,6 +4681,136 @@ mod tests {
             }),
             governance: None,
         }
+    }
+
+    fn llm_entry() -> RuleEntry {
+        let mut e = draft_entry();
+        e.governance = Some(crate::model::Governance {
+            llm_generated: Some(crate::model::LlmGenerated {
+                flag: true,
+                model: None,
+                op: Some("draft_rule".into()),
+                timestamp: None,
+            }),
+            ..Default::default()
+        });
+        e
+    }
+
+    #[test]
+    fn test_machine_gate_promotion_pathway() {
+        let store = RuleStore::in_memory().unwrap();
+        store.create_dataset(&tax_dataset()).unwrap();
+        store.add_entry(&llm_entry()).unwrap();
+
+        // 人工路径：llm 条目离开 Draft 仍硬拒（历史行为逐字节回归）
+        let err = store
+            .transition_entry_status(
+                "ds-tax-2024",
+                "tax-001",
+                LifecycleStatus::Candidate,
+                "human",
+                "t1",
+                "闸门一",
+            )
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            StoreError::Validation(ValidationError::LlmGeneratedNotDraft { .. })
+        ));
+
+        // 机器闸放行：Draft→Candidate→Active 两跳（T1 事后追认档）
+        store
+            .transition_entry_status_machine(
+                "ds-tax-2024",
+                "tax-001",
+                LifecycleStatus::Candidate,
+                "machine",
+                "t2",
+                "机器闸放行",
+                "T1",
+            )
+            .unwrap();
+        store
+            .transition_entry_status_machine(
+                "ds-tax-2024",
+                "tax-001",
+                LifecycleStatus::Active,
+                "machine",
+                "t3",
+                "机器闸放行",
+                "T1",
+            )
+            .unwrap();
+        let got = store
+            .get_latest_entry("ds-tax-2024", "tax-001")
+            .unwrap()
+            .unwrap();
+        assert_eq!(got.status, Some(LifecycleStatus::Active));
+
+        // 审计落链：gate=machine / tier=T1 / post_review_required=true（同事务可回查）
+        let hist = store
+            .get_entry_state_history("ds-tax-2024", "tax-001")
+            .unwrap();
+        assert_eq!(hist.len(), 2);
+        assert_eq!(hist[0].gate.as_deref(), Some("machine"));
+        assert_eq!(hist[0].tier.as_deref(), Some("T1"));
+        assert_eq!(hist[0].post_review_required, Some(true));
+
+        // 追认队列可查（最小版）
+        let queue = store.machine_gate_post_review_queue(100).unwrap();
+        assert_eq!(queue.len(), 1);
+        assert_eq!(queue[0].entry_id, "tax-001");
+        assert_eq!(queue[0].to_state, "Active");
+        assert_eq!(queue[0].tier, "T1");
+    }
+
+    #[test]
+    fn test_machine_gate_t0_no_post_review() {
+        let store = RuleStore::in_memory().unwrap();
+        store.create_dataset(&tax_dataset()).unwrap();
+        store.add_entry(&llm_entry()).unwrap();
+        store
+            .transition_entry_status_machine(
+                "ds-tax-2024",
+                "tax-001",
+                LifecycleStatus::Candidate,
+                "machine",
+                "t2",
+                "机器闸放行",
+                "T0",
+            )
+            .unwrap();
+        let hist = store
+            .get_entry_state_history("ds-tax-2024", "tax-001")
+            .unwrap();
+        assert_eq!(hist[0].gate.as_deref(), Some("machine"));
+        assert_eq!(hist[0].tier.as_deref(), Some("T0"));
+        assert_eq!(hist[0].post_review_required, Some(false));
+        // T0 直通不入追认队列
+        assert!(store.machine_gate_post_review_queue(100).unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_machine_gate_rejects_invalid_tier() {
+        let store = RuleStore::in_memory().unwrap();
+        store.create_dataset(&tax_dataset()).unwrap();
+        store.add_entry(&llm_entry()).unwrap();
+        let err = store
+            .transition_entry_status_machine(
+                "ds-tax-2024",
+                "tax-001",
+                LifecycleStatus::Candidate,
+                "machine",
+                "t",
+                "c",
+                "T2",
+            )
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            StoreError::Validation(ValidationError::Message(_))
+        ));
     }
 
     #[test]

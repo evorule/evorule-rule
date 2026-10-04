@@ -46,6 +46,21 @@ pub struct StateChange {
     pub post_review_required: Option<bool>,
 }
 
+/// 机器闸 T1 事后追认队列项（机器闸行权通路最小版）：待人工追认的 Active 变更事实
+/// （两审计表 UNION 查询产物，`to_state='Active' AND tier='T1' AND post_review_required=1`）
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PostReviewItem {
+    pub dataset_id: String,
+    pub entry_id: String,
+    pub version: u32,
+    pub from_state: String,
+    pub to_state: String,
+    pub at: String,
+    pub by: String,
+    pub cause: String,
+    pub tier: String,
+}
+
 /// 数据集级生命周期
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Lifecycle {
