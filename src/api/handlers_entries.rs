@@ -322,7 +322,9 @@ pub async fn machine_gate_promote(
     Json(req): Json<MachineGatePromoteReq>,
 ) -> Result<Json<Value>, ApiError> {
     if !can(ctx.role, Action::Approve) {
-        return Err(ApiError::forbidden("机器闸放行=行权动作，需审批者及以上角色"));
+        return Err(ApiError::forbidden(
+            "机器闸放行=行权动作，需审批者及以上角色",
+        ));
     }
     let target = match req.target.as_str() {
         "candidate" => LifecycleStatus::Candidate,

@@ -620,10 +620,7 @@ impl RuleStore {
         // 机器闸行权通路：两审计表补 gate/tier/post_review_required 三列（存量行 NULL=
         // human 语义，向后兼容；先例=consumed_inputs/dataset_kind 动态迁移）
         let _ = conn.execute("ALTER TABLE entry_state_history ADD COLUMN gate TEXT", []);
-        let _ = conn.execute(
-            "ALTER TABLE entry_state_history ADD COLUMN tier TEXT",
-            [],
-        );
+        let _ = conn.execute("ALTER TABLE entry_state_history ADD COLUMN tier TEXT", []);
         let _ = conn.execute(
             "ALTER TABLE entry_state_history ADD COLUMN post_review_required INTEGER",
             [],
@@ -4810,7 +4807,10 @@ mod tests {
         assert_eq!(hist[0].tier.as_deref(), Some("T0"));
         assert_eq!(hist[0].post_review_required, Some(false));
         // T0 直通不入追认队列
-        assert!(store.machine_gate_post_review_queue(100).unwrap().is_empty());
+        assert!(store
+            .machine_gate_post_review_queue(100)
+            .unwrap()
+            .is_empty());
     }
 
     #[test]

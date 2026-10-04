@@ -129,10 +129,16 @@ pub fn evaluate(input: &GateInput) -> MachineGateReport {
     } else {
         match &input.knowledge_entry {
             Some(e) => match e.validate_ingest_contract() {
-                Ok(()) => (true, "入账契约完整（kind/trust/license/contract）".to_string()),
+                Ok(()) => (
+                    true,
+                    "入账契约完整（kind/trust/license/contract）".to_string(),
+                ),
                 Err(reason) => (false, format!("入账契约不完整: {reason}")),
             },
-            None => (false, "knowledge 条目载荷缺失（执行器输入不完整）".to_string()),
+            None => (
+                false,
+                "knowledge 条目载荷缺失（执行器输入不完整）".to_string(),
+            ),
         }
     };
     checks.push(item(CHECK_NAMES[0], m1.0, m1.1));
@@ -142,10 +148,14 @@ pub fn evaluate(input: &GateInput) -> MachineGateReport {
         checks.push(item(
             CHECK_NAMES[1],
             true,
-            "首版本：无前序版本，快照连续性不适用（样本复算待执行引擎接入，随机器闸演进收紧）".into(),
+            "首版本：无前序版本，快照连续性不适用（样本复算待执行引擎接入，随机器闸演进收紧）"
+                .into(),
         ));
     } else {
-        match (&input.probe.prev_version_hash, input.probe.prev_snapshot_exists) {
+        match (
+            &input.probe.prev_version_hash,
+            input.probe.prev_snapshot_exists,
+        ) {
             (Some(hash), Some(true)) => checks.push(item(
                 CHECK_NAMES[1],
                 true,
@@ -165,10 +175,7 @@ pub fn evaluate(input: &GateInput) -> MachineGateReport {
             (None, _) => checks.push(item(
                 CHECK_NAMES[1],
                 false,
-                format!(
-                    "上一版本 v{} 条目行缺失，连续性不可判定",
-                    input.version - 1
-                ),
+                format!("上一版本 v{} 条目行缺失，连续性不可判定", input.version - 1),
             )),
         }
     }
@@ -218,9 +225,9 @@ pub fn evaluate(input: &GateInput) -> MachineGateReport {
     if binding_count > thresholds::MAX_SERVICE_BINDINGS_T0 {
         downgrade = true;
         m4_notes.push(format!(
-                "服务绑定数 {binding_count} > {}（高影响降梯位）",
-                thresholds::MAX_SERVICE_BINDINGS_T0
-            ));
+            "服务绑定数 {binding_count} > {}（高影响降梯位）",
+            thresholds::MAX_SERVICE_BINDINGS_T0
+        ));
     }
     checks.push(item(
         CHECK_NAMES[3],
@@ -255,7 +262,11 @@ pub fn evaluate(input: &GateInput) -> MachineGateReport {
             format!("{rate_note} 超阈 → 降 T2"),
         ));
     } else {
-        checks.push(item(CHECK_NAMES[4], true, format!("{rate_note}（默认通过档）")));
+        checks.push(item(
+            CHECK_NAMES[4],
+            true,
+            format!("{rate_note}（默认通过档）"),
+        ));
     }
 
     // M6 可回滚
@@ -419,7 +430,11 @@ mod tests {
     #[test]
     fn test_tier_t0_all_pass_low_impact() {
         // 全过 + 低影响 → T0 直通
-        let report = evaluate(&gate_input(sample_dataset(), sample_rule_entry(), probe_v1()));
+        let report = evaluate(&gate_input(
+            sample_dataset(),
+            sample_rule_entry(),
+            probe_v1(),
+        ));
         assert_eq!(report.tier, "T0");
         assert!(report.all_passed());
         assert_eq!(report.checks.len(), 6);
@@ -536,7 +551,11 @@ mod tests {
 
     #[test]
     fn test_summary_contains_tier_and_checks() {
-        let report = evaluate(&gate_input(sample_dataset(), sample_rule_entry(), probe_v1()));
+        let report = evaluate(&gate_input(
+            sample_dataset(),
+            sample_rule_entry(),
+            probe_v1(),
+        ));
         let s = report.summary();
         assert!(s.starts_with("tier=T0"));
         assert!(s.contains("M1_schema=pass"));
