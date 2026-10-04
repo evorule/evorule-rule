@@ -236,7 +236,7 @@ impl Validator {
             .as_ref()
             .map(|g| g.is_llm_generated())
             .unwrap_or(false);
-        let status = entry.status.clone().unwrap_or(LifecycleStatus::Draft);
+        let status = entry.status.unwrap_or(LifecycleStatus::Draft);
         Self::validate_llm_boundary_gated(is_llm, &entry.entry_id, &status, None)
     }
 
@@ -269,7 +269,7 @@ impl Validator {
         }
         Err(ValidationError::LlmGeneratedNotDraft {
             entry: entry_id.to_string(),
-            status: status.clone(),
+            status: *status,
         })
     }
 
