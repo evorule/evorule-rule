@@ -49,6 +49,9 @@ pub enum StoreError {
     #[error("快照包错误: {0}")]
     Bundle(#[from] BundleError),
 
+    #[error("知识入账契约校验失败: {0}")]
+    InvalidIngestContract(String),
+
     #[error("数据集 `{0}` 不存在")]
     DatasetNotFound(String),
 
@@ -604,6 +607,12 @@ impl RuleStore {
             "ALTER TABLE datasets ADD COLUMN event_schemas TEXT NOT NULL DEFAULT '[]'",
             [],
         );
+        // 知识资产化批次 A：knowledge_entries 表补 knowledge_meta 列（JSON nullable，
+        // 存量行 NULL = 全 None，零迁移成本；同 consumed_inputs/dataset_kind 先例）
+        let _ = conn.execute(
+            "ALTER TABLE knowledge_entries ADD COLUMN knowledge_meta TEXT",
+            [],
+        );
         // Q12 数据资产化 R3：knowledge 条目平行表（方案 D 定案：rule 查询热路径零扰动）
         conn.execute_batch(
             r#"
@@ -618,6 +627,7 @@ impl RuleStore {
                 payload      TEXT NOT NULL,          -- 领域结构化 JSON（content_hash 的内容源，零转译）
                 schema_ref   TEXT NOT NULL,          -- 领域 JSON Schema 引用 URI（D3）
                 governance   TEXT,                   -- JSON nullable
+                knowledge_meta TEXT,                 -- JSON nullable（知识资产化批次 A：kind/trust/license/contract 打包）
                 content_hash TEXT NOT NULL,
                 PRIMARY KEY (dataset_id, entry_id, version),
                 FOREIGN KEY (dataset_id) REFERENCES datasets(dataset_id)
@@ -1176,6 +1186,10 @@ impl RuleStore {
             domain: entry.domain.clone(),
             tags: entry.tags.clone(),
             dependencies: entry.data_source_binding.clone(),
+            knowledge_kind: None,
+            trust_level: None,
+            license_ref: None,
+            execution_contract: None,
         };
         let resolver = |uri: &str| self.lookup_domain_schema(uri);
         BundleImporter::validate_entry(&bundle_entry, &declared_services, &resolver)?;
@@ -1284,6 +1298,7 @@ impl RuleStore {
             ));
         }
         // 4) D3 门禁（SSOT）：payload 过领域 jsonschema 校验；resolver 未命中 = 拒绝
+        // 知识资产化批次 A：门禁视图流通四字段（与 knowledge_entry_to_bundle 同口径）
         let bundle_entry = BundleEntry {
             entry_id: entry.entry_id.clone(),
             entry_kind: EntryKind::Knowledge,
@@ -1293,6 +1308,10 @@ impl RuleStore {
             domain: entry.domain.clone(),
             tags: entry.tags.clone(),
             dependencies: vec![],
+            knowledge_kind: entry.knowledge_kind.clone(),
+            trust_level: entry.trust_level.clone(),
+            license_ref: entry.license_ref.clone(),
+            execution_contract: entry.execution_contract.clone(),
         };
         let resolver = |uri: &str| self.lookup_domain_schema(uri);
         BundleImporter::validate_entry(&bundle_entry, &[], &resolver)?;
@@ -1324,8 +1343,8 @@ impl RuleStore {
         conn.execute(
             "INSERT INTO knowledge_entries
                (dataset_id, entry_id, version, status, provenance, domain, tags,
-                payload, schema_ref, governance, content_hash)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                payload, schema_ref, governance, knowledge_meta, content_hash)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             params![
                 entry.dataset_id,
                 entry.entry_id,
@@ -1344,6 +1363,16 @@ impl RuleStore {
                     .as_ref()
                     .map(serde_json::to_string)
                     .transpose()?,
+                // 知识资产化批次 A：全 None → 存 NULL（ knowledge_meta 列）
+                if entry.knowledge_kind.is_none()
+                    && entry.trust_level.is_none()
+                    && entry.license_ref.is_none()
+                    && entry.execution_contract.is_none()
+                {
+                    None::<String>
+                } else {
+                    Some(serde_json::to_string(&entry.knowledge_meta())?)
+                },
                 entry.content_hash(),
             ],
         )?;
@@ -1360,7 +1389,7 @@ impl RuleStore {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
             "SELECT entry_id, dataset_id, version, status, provenance, domain, tags,
-                    payload, schema_ref, governance
+                    payload, schema_ref, governance, knowledge_meta
              FROM knowledge_entries WHERE dataset_id=?1 AND entry_id=?2 AND version=?3",
         )?;
         let mut rows = stmt.query_map(params![dataset_id, entry_id, version], |r| {
@@ -1375,6 +1404,7 @@ impl RuleStore {
                 r.get::<_, String>(7)?,
                 r.get::<_, String>(8)?,
                 r.get::<_, Option<String>>(9)?,
+                r.get::<_, Option<String>>(10)?,
             ))
         })?;
         let Some(row) = rows.next() else {
@@ -1391,7 +1421,11 @@ impl RuleStore {
             payload,
             schema_ref,
             governance,
+            knowledge_meta,
         ) = row?;
+        // 知识资产化批次 A：存量行 knowledge_meta=NULL → 全 None（存量不追溯）
+        let meta: Option<crate::model::knowledge::KnowledgeMeta> =
+            knowledge_meta.and_then(|s| serde_json::from_str(&s).ok());
         Ok(Some(KnowledgeEntry {
             entry_id,
             dataset_id,
@@ -1403,6 +1437,10 @@ impl RuleStore {
             payload: serde_json::from_str(&payload)?,
             schema_ref,
             governance: governance.map(|s| serde_json::from_str(&s)).transpose()?,
+            knowledge_kind: meta.as_ref().and_then(|m| m.knowledge_kind.clone()),
+            trust_level: meta.as_ref().and_then(|m| m.trust_level.clone()),
+            license_ref: meta.as_ref().and_then(|m| m.license_ref.clone()),
+            execution_contract: meta.and_then(|m| m.execution_contract),
         }))
     }
 
@@ -1526,6 +1564,10 @@ impl RuleStore {
             domain: entry.domain.clone(),
             tags: entry.tags.clone(),
             dependencies: vec![],
+            knowledge_kind: entry.knowledge_kind.clone(),
+            trust_level: entry.trust_level.clone(),
+            license_ref: entry.license_ref.clone(),
+            execution_contract: entry.execution_contract.clone(),
         };
         let resolver = |uri: &str| self.lookup_domain_schema(uri);
         BundleImporter::validate_entry(&bundle_entry, &[], &resolver)?;
@@ -3587,7 +3629,16 @@ impl RuleStore {
                             llm_generated: None,
                             lifecycle_timestamps: None,
                         }),
+                        // 知识资产化批次 A：bundle→治理条目字段流通（bundle 导入通路）
+                        knowledge_kind: be.knowledge_kind.clone(),
+                        trust_level: be.trust_level.clone(),
+                        license_ref: be.license_ref.clone(),
+                        execution_contract: be.execution_contract.clone(),
                     };
+                    // 导入条目同过入账契约闸（三通道同一校验，A3 外部导入通路依赖）
+                    entry
+                        .validate_ingest_contract()
+                        .map_err(StoreError::InvalidIngestContract)?;
                     self.add_knowledge_entry_conn(&tx, &entry)?;
                 }
             }
@@ -4256,7 +4307,7 @@ mod tests {
             }],
             consumed_inputs: vec![],
             rule_body: serde_json::json!({
-                "transform": [{"type": "io_request", "params": {"service_name": "payroll_svc"}}]
+                "transform": [{"type": "io_request", "params": {"io_type": "call_service", "service_name": "payroll_svc"}}]
             }),
             governance: None,
         }
@@ -5390,7 +5441,7 @@ mod tests {
         // 往规则体里塞疑似凭据（设计文档 §6/§9-3：发布前扫描拦截）
         let mut entry = draft_entry();
         entry.rule_body = serde_json::json!({
-            "transform": [{ "type": "io_request", "params": { "service_name": "payroll_svc" } }],
+            "transform": [{ "type": "io_request", "params": { "io_type": "call_service", "service_name": "payroll_svc" } }],
             "note": "内嵌了一个不该存在的密钥",
             "env": { "api_key": "SK-LIVE-abc12345" }
         });
@@ -6107,6 +6158,10 @@ mod tests {
             payload: serde_json::json!({ "mass": 1.5 }),
             schema_ref: "https://evorule.dev/domain/rpsm-body.json".into(),
             governance: None,
+            knowledge_kind: None,
+            trust_level: None,
+            license_ref: None,
+            execution_contract: None,
         }
     }
 

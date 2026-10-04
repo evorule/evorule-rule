@@ -488,7 +488,7 @@ mod tests {
     fn test_io_services_from_rule_body() {
         let rb = serde_json::json!({
             "transform": [
-                {"type": "io_request", "params": {"service_name": "payroll_svc", "args": {}}},
+                {"type": "io_request", "params": {"io_type": "call_service", "service_name": "payroll_svc", "args": {}}},
                 {"type": "set", "params": {"x": 1}}
             ]
         });
@@ -500,7 +500,7 @@ mod tests {
     fn test_symbol_consistency_ok() {
         let ds = sample_dataset();
         let entry = sample_entry(serde_json::json!({
-            "transform": [{"type": "io_request", "params": {"service_name": "payroll_svc"}}]
+            "transform": [{"type": "io_request", "params": {"io_type": "call_service", "service_name": "payroll_svc"}}]
         }));
         assert!(Validator::validate_symbol_consistency(&ds, &entry).is_ok());
     }
@@ -509,7 +509,7 @@ mod tests {
     fn test_symbol_consistency_not_declared() {
         let ds = sample_dataset();
         let mut entry = sample_entry(serde_json::json!({
-            "transform": [{"type": "io_request", "params": {"service_name": "other_svc"}}]
+            "transform": [{"type": "io_request", "params": {"io_type": "call_service", "service_name": "other_svc"}}]
         }));
         // rule_body 有 other_svc，但数据集未声明
         entry.data_source_binding[0].service_name = "other_svc".into();
@@ -539,7 +539,7 @@ mod tests {
         let entry = sample_entry(serde_json::json!({
             "transform": [{
                 "type": "io_request",
-                "params": {"service_name": "__exec__.instruction.params.service_name"}
+                "params": {"io_type": "call_service", "service_name": "__exec__.instruction.params.service_name"}
             }]
         }));
         let err = Validator::validate_symbol_consistency(&ds, &entry).unwrap_err();

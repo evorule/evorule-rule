@@ -2406,7 +2406,7 @@ mod tests {
             consumed_inputs: vec![],
             rule_body: serde_json::json!({
                 "rule_id": "e-pay-1",
-                "transform": [{ "type": "io_request", "params": { "service_name": "payroll_svc" } }]
+                "transform": [{ "type": "io_request", "params": { "io_type": "call_service", "service_name": "payroll_svc" } }]
             }),
             governance: None,
         };
@@ -2585,6 +2585,10 @@ mod tests {
             payload: serde_json::json!({ "scenario_id": scenario, "gravity": 9.8 }),
             schema_ref: "https://rpsm.example/schemas/scenario/v1.0.json".into(),
             governance: None,
+            knowledge_kind: None,
+            trust_level: None,
+            license_ref: None,
+            execution_contract: None,
         }
     }
 

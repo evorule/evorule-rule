@@ -590,6 +590,16 @@ pub struct AddKnowledgeEntryReq {
     pub schema_ref: String,
     #[serde(default)]
     pub provenance: Option<Provenance>,
+    /// 知识资产化批次 A（全 Option，缺省=契约未声明态，旧调用方零破坏）：
+    /// kind 谱系 / 来源信任级 / 许可证域引用 / 运行契约
+    #[serde(default)]
+    pub knowledge_kind: Option<String>,
+    #[serde(default)]
+    pub trust_level: Option<String>,
+    #[serde(default)]
+    pub license_ref: Option<String>,
+    #[serde(default)]
+    pub execution_contract: Option<evorule_bundle::ExecutionContract>,
 }
 
 pub async fn list_entries(
@@ -715,7 +725,15 @@ pub async fn add_entry(
                 payload: req.payload,
                 schema_ref: req.schema_ref,
                 governance: None,
+                knowledge_kind: req.knowledge_kind,
+                trust_level: req.trust_level,
+                license_ref: req.license_ref,
+                execution_contract: req.execution_contract,
             };
+            // 知识资产化批次 A：入账契约完整性校验（三通道同一闸，无通道旁路；§3.2）
+            entry
+                .validate_ingest_contract()
+                .map_err(ApiError::bad_request)?;
             state.store.add_knowledge_entry(&entry)?;
             Ok((
                 StatusCode::CREATED,

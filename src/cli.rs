@@ -475,7 +475,7 @@ mod tests {
             "entry_id": "e1",
             "entry_kind": "rule",
             "rule_body": {
-                "transform": [{"type": "io_request", "params": {"service_name": "payroll_svc"}}]
+                "transform": [{"type": "io_request", "params": {"io_type": "call_service", "service_name": "payroll_svc"}}]
             },
             "provenance": { "source": "《企业所得税法》" },
             "domain": "tax",
@@ -608,7 +608,7 @@ mod tests {
             }],
             consumed_inputs: vec![],
             rule_body: serde_json::json!({
-                "transform": [{"type": "io_request", "params": {"service_name": "payroll_svc"}}]
+                "transform": [{"type": "io_request", "params": {"io_type": "call_service", "service_name": "payroll_svc"}}]
             }),
             governance: None,
         }

@@ -52,10 +52,15 @@ impl BundleExporter {
             domain: e.domain.clone(),
             tags: e.tags.clone(),
             dependencies: e.data_source_binding.clone(),
+            knowledge_kind: None,
+            trust_level: None,
+            license_ref: None,
+            execution_contract: None,
         }
     }
 
     /// KnowledgeEntry → BundleEntry 映射（同上，Q12 数据资产条目视图）
+    /// 知识资产化批次 A：四字段流通到 bundle 视图（None 时序列化不输出，字节兼容）。
     pub fn knowledge_entry_to_bundle(e: &crate::model::knowledge::KnowledgeEntry) -> BundleEntry {
         BundleEntry {
             entry_id: e.entry_id.clone(),
@@ -66,6 +71,10 @@ impl BundleExporter {
             domain: e.domain.clone(),
             tags: e.tags.clone(),
             dependencies: vec![],
+            knowledge_kind: e.knowledge_kind.clone(),
+            trust_level: e.trust_level.clone(),
+            license_ref: e.license_ref.clone(),
+            execution_contract: e.execution_contract.clone(),
         }
     }
 
