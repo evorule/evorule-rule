@@ -1037,6 +1037,9 @@ impl RuleStore {
             by: by.into(),
             cause: format!("创建新版本 {}（{}）", new_version, bump_kind_label(kind)),
             published_as: None,
+            gate: None,
+            tier: None,
+            post_review_required: None,
         });
         // 元数据更新时间
         ds.meta.updated_at = Some(at.into());
@@ -1713,6 +1716,9 @@ impl RuleStore {
                 by: r.get(3)?,
                 cause: r.get(4)?,
                 published_as: None,
+                gate: None,
+                tier: None,
+                post_review_required: None,
             })
         })?;
         rows.collect::<Result<_, _>>().map_err(Into::into)
@@ -2230,6 +2236,9 @@ impl RuleStore {
             by: by.into(),
             cause: cause.into(),
             published_as: None,
+            gate: None,
+            tier: None,
+            post_review_required: None,
         });
         let conn = self.conn.lock().unwrap();
         conn.execute(
@@ -2292,6 +2301,9 @@ impl RuleStore {
             by: publisher.into(),
             cause: cause.into(),
             published_as: Some(published_as),
+            gate: None,
+            tier: None,
+            post_review_required: None,
         });
         let conn = self.conn.lock().unwrap();
         conn.execute(
@@ -2364,6 +2376,9 @@ impl RuleStore {
             by: by.into(),
             cause: "撤销发布（Published→Rejected，独立审批记录在案）".into(),
             published_as: None,
+            gate: None,
+            tier: None,
+            post_review_required: None,
         });
         ds.meta.updated_at = Some(at.into());
         ds.meta.updated_by = Some(by.into());
@@ -2672,6 +2687,9 @@ impl RuleStore {
                 by: r.get(3)?,
                 cause: r.get(4)?,
                 published_as: None,
+                gate: None,
+                tier: None,
+                post_review_required: None,
             })
         })?;
         rows.collect::<Result<_, _>>().map_err(Into::into)
@@ -3466,6 +3484,9 @@ impl RuleStore {
                         bundle.bundle_id, instance_id
                     ),
                     published_as: None,
+                    gate: None,
+                    tier: None,
+                    post_review_required: None,
                 });
                 e.meta.updated_at = Some(at.into());
                 e.meta.updated_by = Some(by.into());
@@ -3499,6 +3520,9 @@ impl RuleStore {
                                 bundle.bundle_id, instance_id
                             ),
                             published_as: None,
+                            gate: None,
+                            tier: None,
+                            post_review_required: None,
                         }],
                     },
                     versioning: bundle.dataset.versioning.clone(),

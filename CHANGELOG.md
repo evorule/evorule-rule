@@ -8,6 +8,22 @@ evorule-rule 的所有显著变更都记录在此文件。
 
 ---
 
+## [0.4.0] - 2026-10-04
+
+### 🆕 新增
+
+- 🆕 **机器闸行权通路**：`validate_llm_boundary` 语义修订——llm_generated 条目的行权封锁从"一刀切只能 Draft"改为"无机器闸证据只能 Draft、有机器闸证据（T0/T1 且六检通过）可至 Candidate/Active、**Published 永远人工**（结构性立宪不松动）"。放行凭据=状态变更审计事实（gate/tier 字段），缺省行为逐字节向后兼容（128 存量测试零改动通过）
+- 🆕 新错误变体 `LlmGeneratedNotPublishable`（llm_generated → Published 硬拒的显式表达，与发布审批双保险）
+- 🆕 `StateChange` 增 gate/tier/post_review_required 字段（serde 缺省，历史数据零迁移，全初始化点 8 处补齐）
+- 🆕 `MachineGateContext` 上下文（tier/checks_passed/state_change_id 审计锚）
+- 🆕 四组门禁单测（正向放行/无证据拒绝/Published 永人工/非 llm 兼容）
+
+### ⚠️ Breaking Change
+
+- ⚠️ `validate_llm_boundary` 保留为兼容包装（等价于无闸上下文调用）；新增 `validate_llm_boundary_gated` 供机器闸通路调用——校验语义变更属 minor 及以上，版本 0.3.2 → 0.4.0
+
+---
+
 ## [0.3.2] - 2026-09-27
 
 **治理与发布纪律对齐批** — 无 crate 行为面变更，测试守卫与公开面加固

@@ -34,6 +34,16 @@ pub struct StateChange {
     /// 发布版本标识（设计文档 §4：`{dataset_id}@{version}`，仅 Published 记录）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub published_as: Option<String>,
+    /// 放行闸类型（机器闸行权通路：`machine`=机器闸放行 / `human`=人工审批；
+    /// 缺省 human——历史数据与人工路径行为不变）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gate: Option<String>,
+    /// 机器闸梯位（`T0` 直通 / `T1` 事后追认；T2 走人工→gate=human）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tier: Option<String>,
+    /// 事后追认标记（T1 档：Active 可用+入追认队列）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub post_review_required: Option<bool>,
 }
 
 /// 数据集级生命周期

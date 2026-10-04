@@ -28,6 +28,9 @@ pub enum ValidationError {
         status: LifecycleStatus,
     },
 
+    #[error("LLM 产出条目 `{entry}` 不可发布（Published 永远人工：机器闸行权上限为 Active，须人工发布审批）")]
+    LlmGeneratedNotPublishable { entry: String },
+
     #[error("rule_body 结构无法解析 transform（需含 type=io_request 且 params.service_name）")]
     InvalidRuleBody,
 
@@ -144,6 +147,26 @@ pub fn scan_credentials(text: &str) -> Vec<String> {
     hits
 }
 
+/// 机器闸放行上下文（机器闸行权通路）：来自待落链的状态变更事实
+/// （StateChange.gate/tier 字段；审计回查锚=state_change_id）。
+/// `None` 闸上下文 = 无机器闸证据，行为与历史版本逐字节一致。
+#[derive(Debug, Clone)]
+pub struct MachineGateContext {
+    /// 机器闸梯位：`T0` 直通 / `T1` 事后追认（T2 走人工，不入此上下文）
+    pub tier: String,
+    /// 机器闸六项检查结论（执行器纯函数产出；本层只消费通过与否）
+    pub checks_passed: bool,
+    /// 对应状态变更事实的审计回查锚
+    pub state_change_id: String,
+}
+
+impl MachineGateContext {
+    /// 闸证据有效性：机器梯位（T0/T1）且六检通过
+    pub fn is_valid_machine_evidence(&self) -> bool {
+        matches!(self.tier.as_str(), "T0" | "T1") && self.checks_passed
+    }
+}
+
 /// 校验器（纯函数，无状态）
 pub struct Validator;
 
@@ -204,22 +227,50 @@ impl Validator {
     }
 
     /// LLM 边界（§9-6 / 历史批次）：llm_generated=true → status 只能是 Draft
+    ///
+    /// 兼容包装：等价于 [`Self::validate_llm_boundary_gated`] 传 `None` 闸上下文
+    /// （无机器闸证据 → 历史行为逐字节保持）。
     pub fn validate_llm_boundary(entry: &RuleEntry) -> Result<(), ValidationError> {
         let is_llm = entry
             .governance
             .as_ref()
             .map(|g| g.is_llm_generated())
             .unwrap_or(false);
-        if is_llm {
-            let status = entry.status.unwrap_or(LifecycleStatus::Draft);
-            if status != LifecycleStatus::Draft {
-                return Err(ValidationError::LlmGeneratedNotDraft {
-                    entry: entry.entry_id.clone(),
-                    status,
-                });
-            }
+        let status = entry.status.clone().unwrap_or(LifecycleStatus::Draft);
+        Self::validate_llm_boundary_gated(is_llm, &entry.entry_id, &status, None)
+    }
+
+    /// LLM 边界·通用判定（机器闸行权通路）：
+    ///
+    /// - 非 llm_generated → 放行；
+    /// - 目标 `Published` → [`ValidationError::LlmGeneratedNotPublishable`]
+    ///   （**Published 永远人工**，机器闸行权上限=Active，结构性立宪不松动）；
+    /// - 有有效机器闸证据（gate 上下文：T0/T1 且六检通过）且目标 ∈
+    ///   {Draft, Candidate, Active} → 放行；
+    /// - 其余（无闸上下文）→ [`ValidationError::LlmGeneratedNotDraft`]
+    ///   （历史行为逐字节保持，向后兼容）。
+    pub fn validate_llm_boundary_gated(
+        is_llm: bool,
+        entry_id: &str,
+        status: &LifecycleStatus,
+        gate: Option<&MachineGateContext>,
+    ) -> Result<(), ValidationError> {
+        if !is_llm {
+            return Ok(());
         }
-        Ok(())
+        if *status == LifecycleStatus::Published {
+            return Err(ValidationError::LlmGeneratedNotPublishable {
+                entry: entry_id.to_string(),
+            });
+        }
+        let machine_allowed = gate.map(|g| g.is_valid_machine_evidence()).unwrap_or(false);
+        if machine_allowed || *status == LifecycleStatus::Draft {
+            return Ok(());
+        }
+        Err(ValidationError::LlmGeneratedNotDraft {
+            entry: entry_id.to_string(),
+            status: status.clone(),
+        })
     }
 
     /// 状态机合法迁移（设计文档 §2）。返回 Err(Some(from,to)) 表示非法迁移。
@@ -266,6 +317,110 @@ impl Validator {
 mod tests {
     use super::*;
     use crate::model::{Governance, LifecycleStatus, LlmGenerated, Provenance, SourceBinding};
+
+    // ===== 机器闸行权通路（LLM 边界通用判定）测试四组 =====
+
+    fn gate_ctx(tier: &str, passed: bool) -> MachineGateContext {
+        MachineGateContext {
+            tier: tier.to_string(),
+            checks_passed: passed,
+            state_change_id: "sc-test".into(),
+        }
+    }
+
+    #[test]
+    fn test_gate_allows_machine_evidence_to_candidate_and_active() {
+        // 正向：llm_generated + 机器闸证据（T0 全过）→ Candidate/Active 放行
+        for target in [LifecycleStatus::Candidate, LifecycleStatus::Active] {
+            let r = Validator::validate_llm_boundary_gated(
+                true,
+                "e1",
+                &target,
+                Some(&gate_ctx("T0", true)),
+            );
+            assert!(
+                r.is_ok(),
+                "{target:?} should pass with machine gate evidence"
+            );
+        }
+        // T1 同样放行
+        assert!(Validator::validate_llm_boundary_gated(
+            true,
+            "e1",
+            &LifecycleStatus::Active,
+            Some(&gate_ctx("T1", true)),
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn test_gate_rejects_without_evidence() {
+        // 负向·无闸：无机器闸证据 → 历史行为逐字节保持（只能 Draft）
+        for target in [LifecycleStatus::Candidate, LifecycleStatus::Active] {
+            let r = Validator::validate_llm_boundary_gated(true, "e1", &target, None);
+            assert!(matches!(
+                r,
+                Err(ValidationError::LlmGeneratedNotDraft { .. })
+            ));
+        }
+        // 检查未全过 = 无有效证据
+        assert!(matches!(
+            Validator::validate_llm_boundary_gated(
+                true,
+                "e1",
+                &LifecycleStatus::Active,
+                Some(&gate_ctx("T0", false)),
+            ),
+            Err(ValidationError::LlmGeneratedNotDraft { .. })
+        ));
+        // 非法梯位字面量 = 无有效证据
+        assert!(matches!(
+            Validator::validate_llm_boundary_gated(
+                true,
+                "e1",
+                &LifecycleStatus::Active,
+                Some(&gate_ctx("T9", true)),
+            ),
+            Err(ValidationError::LlmGeneratedNotDraft { .. })
+        ));
+    }
+
+    #[test]
+    fn test_published_always_human() {
+        // 负向·Published：任何 gate 上下文（含 T0 全过）都硬拒——结构性立宪
+        for gate in [None, Some(gate_ctx("T0", true))] {
+            let r = Validator::validate_llm_boundary_gated(
+                true,
+                "e1",
+                &LifecycleStatus::Published,
+                gate.as_ref(),
+            );
+            assert!(matches!(
+                r,
+                Err(ValidationError::LlmGeneratedNotPublishable { .. })
+            ));
+        }
+    }
+
+    #[test]
+    fn test_non_llm_unaffected() {
+        // 兼容：非 llm_generated 全路径行为不变（含 Published 直传场景——
+        // 真实 Published 入口另有 validate_publish 人工审批，此处仅测本函数语义）
+        assert!(Validator::validate_llm_boundary_gated(
+            false,
+            "e1",
+            &LifecycleStatus::Published,
+            None,
+        )
+        .is_ok());
+        assert!(Validator::validate_llm_boundary_gated(
+            false,
+            "e1",
+            &LifecycleStatus::Active,
+            Some(&gate_ctx("T0", true)),
+        )
+        .is_ok());
+    }
 
     fn sample_dataset() -> RuleDataset {
         RuleDataset {
