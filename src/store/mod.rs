@@ -2361,6 +2361,28 @@ impl RuleStore {
         // 发布前凭据静态扫描（设计文档 §6/§9-3 强约束 MVP 手段）：数据集元数据 + 全部条目规则体。
         // 命中疑似凭据 → 拒绝发布，交由发布审批人复核（不静默放行，硬失败）。
         self.scan_dataset_credentials(dataset_id, &ds)?;
+        // LLM 产出双保险（机器闸行权通路）：条目级迁移闸之外，发布闸独立兜底——
+        // 数据集内任一条目带 llm_generated 旗标即拒绝发布（Published 永远人工，
+        // 结构性立宪不松动）。正常流程中 llm 条目靠机器闸最高行权至 Active，
+        // 人工发布审批前应先行处理或移除；此闸防的是"绕过条目面直接整包发布"的通路。
+        for entry in self.list_entries(dataset_id, None)? {
+            if entry.governance.as_ref().map(|g| g.is_llm_generated()) == Some(true) {
+                return Err(StoreError::Validation(
+                    ValidationError::LlmGeneratedNotPublishable {
+                        entry: format!("{}/{}", dataset_id, entry.entry_id),
+                    },
+                ));
+            }
+        }
+        for entry in self.list_knowledge_entries(dataset_id, None)? {
+            if entry.is_llm_generated() {
+                return Err(StoreError::Validation(
+                    ValidationError::LlmGeneratedNotPublishable {
+                        entry: format!("{}/{}", dataset_id, entry.entry_id),
+                    },
+                ));
+            }
+        }
         let published_as = format!("{}@{}", ds.dataset_id, ds.versioning.current);
         ds.lifecycle.status = LifecycleStatus::Published;
         ds.lifecycle.state_history.push(StateChange {
@@ -4810,6 +4832,66 @@ mod tests {
         assert!(matches!(
             err,
             StoreError::Validation(ValidationError::Message(_))
+        ));
+    }
+
+    #[test]
+    fn test_publish_dataset_blocks_llm_generated_entries() {
+        let store = RuleStore::in_memory().unwrap();
+        store.create_dataset(&tax_dataset()).unwrap();
+        store.add_entry(&llm_entry()).unwrap();
+
+        // 机器闸放行 llm 条目至 Active（行权上限=Active 的合法全链）
+        store
+            .transition_entry_status_machine(
+                "ds-tax-2024",
+                "tax-001",
+                LifecycleStatus::Candidate,
+                "machine",
+                "t1",
+                "机器闸放行",
+                "T0",
+            )
+            .unwrap();
+        store
+            .transition_entry_status_machine(
+                "ds-tax-2024",
+                "tax-001",
+                LifecycleStatus::Active,
+                "machine",
+                "t2",
+                "机器闸放行",
+                "T0",
+            )
+            .unwrap();
+
+        // 数据集推进至 Active（发布前置状态）
+        store
+            .transition_dataset_status(
+                "ds-tax-2024",
+                LifecycleStatus::Candidate,
+                "eng",
+                "提交",
+                "t3",
+            )
+            .unwrap();
+        store
+            .transition_dataset_status(
+                "ds-tax-2024",
+                LifecycleStatus::Active,
+                "approver",
+                "审批",
+                "t4",
+            )
+            .unwrap();
+
+        // 发布闸双保险：数据集内存在 llm_generated 条目 → 拒绝发布（Published 永远人工）
+        let err = store
+            .publish_dataset_with_cause("ds-tax-2024", "approver", "t5", "发布审批")
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            StoreError::Validation(ValidationError::LlmGeneratedNotPublishable { .. })
         ));
     }
 
