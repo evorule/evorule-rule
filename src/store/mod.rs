@@ -154,7 +154,7 @@ pub enum StoreError {
     TrustImpersonation { entry: String, claimed: String },
 }
 
-/// 治理侧外部知识导入结果（知识资产化 A3-1，06 号设计档）
+/// 治理侧外部知识导入结果（知识资产化 A3-1 导入设计）
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KnowledgeImportResult {
     pub dataset_id: String,
@@ -1297,6 +1297,15 @@ impl RuleStore {
         };
         let resolver = |uri: &str| self.lookup_domain_schema(uri);
         BundleImporter::validate_entry(&bundle_entry, &declared_services, &resolver)?;
+        // 3c) 凭据扫描（O-323 收口：写入核心统一兜底——add_entry/import_bundle/版本追加
+        //     全部规则写面共用本核；publish 面另有全数据集扫描双保险，口径一致）
+        let serialized = serde_json::to_string(&entry.rule_body)?;
+        let hits = scan_credentials(&serialized);
+        if !hits.is_empty() {
+            return Err(StoreError::Validation(
+                ValidationError::CredentialScanFailed { hits },
+            ));
+        }
         // 4) 唯一性（entry_id + version 已由主键保证，此处显式检查以便友好报错）
         let exists: bool = conn.query_row(
             "SELECT EXISTS(SELECT 1 FROM entries WHERE dataset_id=?1 AND entry_id=?2 AND version=?3)",
@@ -1401,6 +1410,15 @@ impl RuleStore {
             None,
         )
         .map_err(StoreError::Validation)?;
+        // 3b) 凭据扫描（O-323 收口：写入核心统一兜底——add_knowledge_entry/导入/版本追加
+        //     全部数据写面共用本核；import 通路在组装期已预扫，此处为最终权威防线）
+        let serialized = serde_json::to_string(&entry.payload)?;
+        let hits = scan_credentials(&serialized);
+        if !hits.is_empty() {
+            return Err(StoreError::Validation(
+                ValidationError::CredentialScanFailed { hits },
+            ));
+        }
         // 4) D3 门禁（SSOT）：payload 过领域 jsonschema 校验；resolver 未命中 = 拒绝
         // 知识资产化批次 A：门禁视图流通四字段（与 knowledge_entry_to_bundle 同口径）
         let bundle_entry = BundleEntry {
@@ -1657,6 +1675,14 @@ impl RuleStore {
             return Err(StoreError::KnowledgeMissingSchemaRef {
                 entry: entry.entry_id.clone(),
             });
+        }
+        // 凭据扫描（O-323 收口：PATCH 可整体替换 payload，属条目写面——与 add 同口径）
+        let serialized = serde_json::to_string(&entry.payload)?;
+        let hits = scan_credentials(&serialized);
+        if !hits.is_empty() {
+            return Err(StoreError::Validation(
+                ValidationError::CredentialScanFailed { hits },
+            ));
         }
         // D3 门禁（SSOT）复检：payload 过领域 schema
         let bundle_entry = BundleEntry {
@@ -2295,6 +2321,14 @@ impl RuleStore {
         // 校验通过后原地更新
         Validator::validate_symbol_consistency(&ds, entry)?;
         Validator::validate_llm_boundary(entry)?;
+        // 凭据扫描（O-323 收口：PATCH 可整体替换 rule_body，属条目写面——与 add 同口径）
+        let serialized = serde_json::to_string(&entry.rule_body)?;
+        let hits = scan_credentials(&serialized);
+        if !hits.is_empty() {
+            return Err(StoreError::Validation(
+                ValidationError::CredentialScanFailed { hits },
+            ));
+        }
         // W2：快照落库与主表 UPDATE 同生共死（修复前快照先行独立提交，
         // UPDATE 失败 = 孤儿快照残留；同 knowledge 侧口径）
         let mut conn = self.conn.lock().unwrap();
@@ -3222,6 +3256,23 @@ impl RuleStore {
         Ok(None)
     }
 
+    /// 数据集内定位条目（rule/knowledge 平行表均查，取最新版本）。
+    /// O-324：顶层 `/entries/{id}` 路由 `?dataset_id=` 消歧参数的权威实现——
+    /// 同 entry_id 存在于同租户多数据集时显式指定目标，不依赖「首个匹配」顺序。
+    pub fn find_entry_in_dataset(
+        &self,
+        dataset_id: &str,
+        entry_id: &str,
+    ) -> Result<Option<AnyEntry>, StoreError> {
+        if let Some(e) = self.get_latest_entry(dataset_id, entry_id)? {
+            return Ok(Some(AnyEntry::Rule(e)));
+        }
+        if let Some(e) = self.get_latest_knowledge_entry(dataset_id, entry_id)? {
+            return Ok(Some(AnyEntry::Knowledge(e)));
+        }
+        Ok(None)
+    }
+
     // ------------------------------------------------------------------
     // 数据依赖（设计文档 §7 deps/；历史批次 既定设计决策）
     // ------------------------------------------------------------------
@@ -4119,7 +4170,7 @@ impl RuleStore {
     // 治理侧外部导入（知识资产化 A3-1：外部 bundle → 既有 knowledge 数据集）
     // ------------------------------------------------------------------
 
-    /// 治理侧外部知识导入（A3-1，06 号设计档 §二）：外部快照包条目导入**既有**
+    /// 治理侧外部知识导入（A3-1 导入设计 §二）：外部快照包条目导入**既有**
     /// knowledge 数据集——与 [`Self::import_bundle`] 的「版本整体替换」语义并存，
     /// 本方法不动数据集版本链/既有条目。
     ///
@@ -4157,7 +4208,7 @@ impl RuleStore {
         {
             return Err(StoreError::MixedBundleKinds(bundle.bundle_id.clone()));
         }
-        // 全链口径（06 号设计档 D6）：六项校验链全跑，与 import_bundle 同一 SSOT 一字不减
+        // 全链口径（导入设计 D6）：六项校验链全跑，与 import_bundle 同一 SSOT 一字不减
         let resolver = |uri: &str| self.lookup_domain_schema(uri);
         BundleImporter::validate(bundle, &resolver)?;
         // schema 预热：包内全部 schema_ref 显式解析（锁外，持锁期间零 FS I/O）
@@ -6244,14 +6295,24 @@ mod tests {
     fn test_publish_rejects_credential_scan() {
         let store = RuleStore::in_memory().unwrap();
         store.create_dataset(&tax_dataset()).unwrap();
-        // 往规则体里塞疑似凭据（设计文档 §6/§9-3：发布前扫描拦截）
-        let mut entry = draft_entry();
-        entry.rule_body = serde_json::json!({
+        // 写面已收口：凭据无法经 add/update 通路入库（同口径单测见下方 O-323 三测）。
+        // 发布闸兜底仍保留：SQL 直写模拟写面收口前的历史存量脏数据（双层防线回归）。
+        store.add_entry(&draft_entry()).unwrap();
+        let poisoned = serde_json::to_string(&serde_json::json!({
             "transform": [{ "type": "io_request", "params": { "io_type": "call_service", "service_name": "payroll_svc" } }],
             "note": "内嵌了一个不该存在的密钥",
             "env": { "api_key": "SK-LIVE-abc12345" }
-        });
-        store.add_entry(&entry).unwrap();
+        }))
+        .unwrap();
+        store
+            .conn
+            .lock()
+            .unwrap()
+            .execute(
+                "UPDATE entries SET rule_body=?1 WHERE dataset_id=?2 AND entry_id=?3 AND version=1",
+                rusqlite::params![poisoned, "ds-tax-2024", "tax-001"],
+            )
+            .unwrap();
         for to in [LifecycleStatus::Candidate, LifecycleStatus::Active] {
             store
                 .transition_dataset_status("ds-tax-2024", to, "eng", "提交", "t")
@@ -6270,6 +6331,82 @@ mod tests {
         // 未发布（仍 Active）
         let ds = store.get_dataset("ds-tax-2024").unwrap().unwrap();
         assert_eq!(ds.lifecycle.status, LifecycleStatus::Active);
+    }
+
+    /// O-323 写面收口：add_entry 携疑似凭据 → 写入即拒（不再等发布闸，零落库）
+    #[test]
+    fn test_add_entry_rejects_credential_in_rule_body() {
+        let store = RuleStore::in_memory().unwrap();
+        store.create_dataset(&tax_dataset()).unwrap();
+        let mut entry = draft_entry();
+        entry.rule_body = serde_json::json!({
+            "transform": [{ "type": "io_request", "params": { "io_type": "call_service", "service_name": "payroll_svc" } }],
+            "env": { "api_key": "SK-LIVE-abc12345" }
+        });
+        let err = store.add_entry(&entry).unwrap_err();
+        assert!(
+            matches!(
+                err,
+                StoreError::Validation(ValidationError::CredentialScanFailed { .. })
+            ),
+            "{err}"
+        );
+        assert_eq!(store.list_entries("ds-tax-2024", None).unwrap().len(), 0);
+    }
+
+    /// O-323 写面收口：add_knowledge_entry payload 同口径（扫描先于 D3 门禁）
+    #[test]
+    fn test_add_knowledge_entry_rejects_credential_in_payload() {
+        let store = RuleStore::in_memory().unwrap();
+        store.create_dataset(&knowledge_dataset()).unwrap();
+        let mut e = knowledge_entry();
+        e.payload = serde_json::json!({ "statement": "db api_key: supersecret123" });
+        let err = store.add_knowledge_entry(&e).unwrap_err();
+        assert!(
+            matches!(
+                err,
+                StoreError::Validation(ValidationError::CredentialScanFailed { .. })
+            ),
+            "{err}"
+        );
+    }
+
+    /// O-323 写面收口：PATCH 通路（update_draft_entry / update_draft_knowledge_entry）
+    /// 可整体替换 rule_body/payload，属条目写面——与 add 同口径拒入
+    #[test]
+    fn test_update_draft_entries_reject_credentials() {
+        let store = RuleStore::in_memory().unwrap();
+        store.create_dataset(&tax_dataset()).unwrap();
+        let mut re = draft_entry();
+        store.add_entry(&re).unwrap();
+        re.rule_body = serde_json::json!({
+            "transform": [{ "type": "io_request", "params": { "io_type": "call_service", "service_name": "payroll_svc" } }],
+            "note": "password=hunter2"
+        });
+        let err = store.update_draft_entry(&re).unwrap_err();
+        assert!(
+            matches!(
+                err,
+                StoreError::Validation(ValidationError::CredentialScanFailed { .. })
+            ),
+            "{err}"
+        );
+
+        // knowledge 侧：schema 目录型夹具需文件库（builtin 五壳之外的自有 schema）
+        let (store, _dir) = file_store_with_body_schema();
+        store.create_dataset(&knowledge_dataset()).unwrap();
+        let ke = knowledge_entry();
+        store.add_knowledge_entry(&ke).unwrap();
+        let mut ke2 = ke;
+        ke2.payload = serde_json::json!({ "mass": 1.5, "note": "password=hunter2" });
+        let err = store.update_draft_knowledge_entry(&ke2).unwrap_err();
+        assert!(
+            matches!(
+                err,
+                StoreError::Validation(ValidationError::CredentialScanFailed { .. })
+            ),
+            "{err}"
+        );
     }
 
     #[test]
@@ -7127,7 +7264,7 @@ mod tests {
     }
 
     // ==================================================================
-    // A3-1 治理侧外部导入（import_knowledge_entries）单测（06 号设计档 §六）
+    // A3-1 治理侧外部导入（import_knowledge_entries）单测（导入设计 §六）
     // ==================================================================
 
     /// 造外部 knowledge 快照包（builtin:knowledge/fact 壳 + tests verdict=pass，

@@ -1,6 +1,7 @@
 //! 条目级端点（设计文档 §5 补全）：编辑 / 删除 / 提交候选 / 审批 / 历史 / 依赖
 //!
-//! 路由形态：顶层 `/entries/{id}`（entry_id 租户内定位，跨数据集查首个匹配）。
+//! 路由形态：顶层 `/entries/{id}`（entry_id 租户内定位，跨数据集查首个匹配；
+//! O-324：`?dataset_id=` 可选消歧，严格限定目标数据集，缺省保留首匹配语义）。
 //! 闸门语义（历史批次）：submit-candidate 需携带沙箱证据 `sandbox_report_id`（闸门一）；
 //! approve 为闸门二（Candidate→Active，审批者角色）。
 
@@ -22,16 +23,47 @@ use crate::model::lifecycle::LifecycleStatus;
 use crate::model::provenance::Provenance;
 use crate::store::AnyEntry;
 
-/// 顶层条目路由：租户内定位条目（Q12 R4：规则表与 knowledge 平行表均参与），校验租户归属
+/// 顶层条目路由消歧查询参数（O-324）：同 entry_id 存在于同租户多个数据集时，
+/// 顶层 `/entries/{id}` 的「租户内首个匹配」命中不可控（匹配序未契约化）——
+/// `?dataset_id=` 显式指定目标数据集；缺省保留首个匹配语义（存量调用方零破坏）。
+#[derive(Deserialize)]
+pub struct EntryScopeQuery {
+    /// 消歧：目标数据集 ID（可选；指定后定位严格限定在该数据集内）
+    #[serde(default)]
+    pub dataset_id: Option<String>,
+}
+
+/// 顶层条目路由：租户内定位条目（Q12 R4：规则表与 knowledge 平行表均参与），校验租户归属。
+/// O-324：dataset_hint（`?dataset_id=`）给定时严格限定该数据集（数据集不存在/跨租户/条目
+/// 不在集内均 404），不给定时维持租户内首个匹配的既有语义。
 fn locate_entry(
     state: &AppState,
     tenant_id: &str,
     entry_id: &str,
+    dataset_hint: Option<&str>,
 ) -> Result<(String, AnyEntry), ApiError> {
-    state
-        .store
-        .find_entry_in_tenant(tenant_id, entry_id)?
-        .ok_or_else(|| ApiError::not_found(format!("条目 `{entry_id}` 不存在")))
+    match dataset_hint {
+        Some(ds_id) => {
+            let ds = state
+                .store
+                .get_dataset(ds_id)?
+                .ok_or_else(|| ApiError::not_found("数据集不存在"))?;
+            if ds.tenant_id != tenant_id {
+                return Err(ApiError::not_found("数据集不存在"));
+            }
+            state
+                .store
+                .find_entry_in_dataset(ds_id, entry_id)?
+                .map(|e| (ds_id.to_string(), e))
+                .ok_or_else(|| {
+                    ApiError::not_found(format!("条目 `{entry_id}` 在数据集 `{ds_id}` 中不存在"))
+                })
+        }
+        None => state
+            .store
+            .find_entry_in_tenant(tenant_id, entry_id)?
+            .ok_or_else(|| ApiError::not_found(format!("条目 `{entry_id}` 不存在"))),
+    }
 }
 
 /// PATCH /entries/{id} —— 编辑草稿（frozen 拒绝原地修改）
@@ -62,12 +94,14 @@ pub async fn patch_entry(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
     Path(entry_id): Path<String>,
+    Query(scope): Query<EntryScopeQuery>,
     Json(req): Json<PatchEntryReq>,
 ) -> Result<Json<Value>, ApiError> {
     if !can(ctx.role, Action::Edit) {
         return Err(ApiError::forbidden("需要规则工程师及以上角色"));
     }
-    let (_dataset_id, entry) = locate_entry(&state, &ctx.tenant_id, &entry_id)?;
+    let hint = scope.dataset_id.as_deref();
+    let (_dataset_id, entry) = locate_entry(&state, &ctx.tenant_id, &entry_id, hint)?;
     match entry {
         AnyEntry::Rule(mut e) => {
             if req.payload.is_some() || req.schema_ref.is_some() {
@@ -123,7 +157,7 @@ pub async fn patch_entry(
         }
     }
     // 回读最新状态
-    let (_, updated) = locate_entry(&state, &ctx.tenant_id, &entry_id)?;
+    let (_, updated) = locate_entry(&state, &ctx.tenant_id, &entry_id, hint)?;
     Ok(Json(updated.to_json()))
 }
 
@@ -132,11 +166,17 @@ pub async fn delete_entry(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
     Path(entry_id): Path<String>,
+    Query(scope): Query<EntryScopeQuery>,
 ) -> Result<StatusCode, ApiError> {
     if !can(ctx.role, Action::Edit) {
         return Err(ApiError::forbidden("需要规则工程师及以上角色"));
     }
-    let (dataset_id, entry) = locate_entry(&state, &ctx.tenant_id, &entry_id)?;
+    let (dataset_id, entry) = locate_entry(
+        &state,
+        &ctx.tenant_id,
+        &entry_id,
+        scope.dataset_id.as_deref(),
+    )?;
     match entry {
         AnyEntry::Rule(_) => state.store.delete_entry(&dataset_id, &entry_id)?,
         AnyEntry::Knowledge(_) => state.store.delete_knowledge_entry(&dataset_id, &entry_id)?,
@@ -155,12 +195,14 @@ pub async fn submit_candidate(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
     Path(entry_id): Path<String>,
+    Query(scope): Query<EntryScopeQuery>,
     Json(req): Json<SubmitCandidateReq>,
 ) -> Result<Json<Value>, ApiError> {
     if !can(ctx.role, Action::Edit) {
         return Err(ApiError::forbidden("需要规则工程师及以上角色"));
     }
-    let (dataset_id, _) = locate_entry(&state, &ctx.tenant_id, &entry_id)?;
+    let hint = scope.dataset_id.as_deref();
+    let (dataset_id, _) = locate_entry(&state, &ctx.tenant_id, &entry_id, hint)?;
     transition_any(
         &state,
         &dataset_id,
@@ -169,7 +211,7 @@ pub async fn submit_candidate(
         &ctx.user_id,
         &format!("闸门一通过，沙箱报告 {}", req.sandbox_report_id),
     )?;
-    let (_, updated) = locate_entry(&state, &ctx.tenant_id, &entry_id)?;
+    let (_, updated) = locate_entry(&state, &ctx.tenant_id, &entry_id, hint)?;
     Ok(Json(updated.to_json()))
 }
 
@@ -213,11 +255,17 @@ pub async fn approve(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
     Path(entry_id): Path<String>,
+    Query(scope): Query<EntryScopeQuery>,
 ) -> Result<Json<Value>, ApiError> {
     if !can(ctx.role, Action::Approve) {
         return Err(ApiError::forbidden("审批需审批者及以上角色"));
     }
-    let (dataset_id, _) = locate_entry(&state, &ctx.tenant_id, &entry_id)?;
+    let (dataset_id, _) = locate_entry(
+        &state,
+        &ctx.tenant_id,
+        &entry_id,
+        scope.dataset_id.as_deref(),
+    )?;
     transition_any(
         &state,
         &dataset_id,
@@ -226,7 +274,12 @@ pub async fn approve(
         &ctx.user_id,
         "闸门二审批通过（Candidate→Active）",
     )?;
-    let (_, updated) = locate_entry(&state, &ctx.tenant_id, &entry_id)?;
+    let (_, updated) = locate_entry(
+        &state,
+        &ctx.tenant_id,
+        &entry_id,
+        scope.dataset_id.as_deref(),
+    )?;
     Ok(Json(updated.to_json()))
 }
 
@@ -235,8 +288,14 @@ pub async fn history(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
     Path(entry_id): Path<String>,
+    Query(scope): Query<EntryScopeQuery>,
 ) -> Result<Json<Vec<crate::model::lifecycle::StateChange>>, ApiError> {
-    let (dataset_id, _) = locate_entry(&state, &ctx.tenant_id, &entry_id)?;
+    let (dataset_id, _) = locate_entry(
+        &state,
+        &ctx.tenant_id,
+        &entry_id,
+        scope.dataset_id.as_deref(),
+    )?;
     // Q12 R4：先查规则表历史，空则查 knowledge 平行表
     let mut hist = state
         .store
@@ -319,6 +378,7 @@ pub async fn machine_gate_promote(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
     Path(entry_id): Path<String>,
+    Query(scope): Query<EntryScopeQuery>,
     Json(req): Json<MachineGatePromoteReq>,
 ) -> Result<Json<Value>, ApiError> {
     if !can(ctx.role, Action::Approve) {
@@ -335,7 +395,8 @@ pub async fn machine_gate_promote(
             )))
         }
     };
-    let (dataset_id, entry) = locate_entry(&state, &ctx.tenant_id, &entry_id)?;
+    let hint = scope.dataset_id.as_deref();
+    let (dataset_id, entry) = locate_entry(&state, &ctx.tenant_id, &entry_id, hint)?;
     // A3-4：external 来源条目结构性不给机器闸（来源不可信者仅可人工审批放行；
     // 这是来源治理判定而非六检结果——403 拒绝，gate 纯函数与可回放口径不动。
     // Rule 条目无 trust_level 字段，不受影响，不追溯）
@@ -407,7 +468,7 @@ pub async fn machine_gate_promote(
             )?;
         }
     }
-    let (_, updated) = locate_entry(&state, &ctx.tenant_id, &entry_id)?;
+    let (_, updated) = locate_entry(&state, &ctx.tenant_id, &entry_id, hint)?;
     Ok(Json(serde_json::json!({
         "tier": report.tier,
         "report": serde_json::to_value(&report).unwrap_or(Value::Null),
@@ -437,8 +498,14 @@ pub async fn deps(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
     Path(entry_id): Path<String>,
+    Query(scope): Query<EntryScopeQuery>,
 ) -> Result<Json<Vec<SourceBinding>>, ApiError> {
-    let (_, entry) = locate_entry(&state, &ctx.tenant_id, &entry_id)?;
+    let (_, entry) = locate_entry(
+        &state,
+        &ctx.tenant_id,
+        &entry_id,
+        scope.dataset_id.as_deref(),
+    )?;
     match entry {
         AnyEntry::Rule(e) => Ok(Json(e.data_source_binding)),
         // 数据条目不消费服务（D1：不进 TCB，不经 io_request）；空 = 无绑定（显式语义）
@@ -547,8 +614,14 @@ pub async fn get_entry(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
     Path(entry_id): Path<String>,
+    Query(scope): Query<EntryScopeQuery>,
 ) -> Result<Json<Value>, ApiError> {
-    let (_, entry) = locate_entry(&state, &ctx.tenant_id, &entry_id)?;
+    let (_, entry) = locate_entry(
+        &state,
+        &ctx.tenant_id,
+        &entry_id,
+        scope.dataset_id.as_deref(),
+    )?;
     Ok(Json(entry.to_json()))
 }
 
@@ -557,11 +630,17 @@ pub async fn entry_versions(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
     Path(entry_id): Path<String>,
+    Query(scope): Query<EntryScopeQuery>,
 ) -> Result<Json<Value>, ApiError> {
     if !can(ctx.role, Action::View) {
         return Err(ApiError::forbidden("无查看权限"));
     }
-    let (dataset_id, entry) = locate_entry(&state, &ctx.tenant_id, &entry_id)?;
+    let (dataset_id, entry) = locate_entry(
+        &state,
+        &ctx.tenant_id,
+        &entry_id,
+        scope.dataset_id.as_deref(),
+    )?;
     // Q12 R4 分流：摘要字段同构（version/status/content_hash），载荷类型不影响版本链视图
     let summary: Vec<Value> = match entry {
         AnyEntry::Rule(_) => state
@@ -605,11 +684,17 @@ pub async fn entry_version_payload(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
     Path((entry_id, version)): Path<(String, u32)>,
+    Query(scope): Query<EntryScopeQuery>,
 ) -> Result<Json<Value>, ApiError> {
     if !can(ctx.role, Action::View) {
         return Err(ApiError::forbidden("无查看权限"));
     }
-    let (dataset_id, _) = locate_entry(&state, &ctx.tenant_id, &entry_id)?;
+    let (dataset_id, _) = locate_entry(
+        &state,
+        &ctx.tenant_id,
+        &entry_id,
+        scope.dataset_id.as_deref(),
+    )?;
     let payload = match state.store.get_entry(&dataset_id, &entry_id, version)? {
         Some(e) => serde_json::to_value(e).unwrap_or(Value::Null),
         None => {
@@ -646,11 +731,17 @@ pub async fn entry_diff(
     Extension(ctx): Extension<AuthContext>,
     Path(entry_id): Path<String>,
     Query(query): Query<EntryDiffQuery>,
+    Query(scope): Query<EntryScopeQuery>,
 ) -> Result<Json<Value>, ApiError> {
     if !can(ctx.role, Action::View) {
         return Err(ApiError::forbidden("无查看权限"));
     }
-    let (dataset_id, entry) = locate_entry(&state, &ctx.tenant_id, &entry_id)?;
+    let (dataset_id, entry) = locate_entry(
+        &state,
+        &ctx.tenant_id,
+        &entry_id,
+        scope.dataset_id.as_deref(),
+    )?;
     // Q12 R4 分流：载荷类型不影响内容级 diff 语义（content_hash 刻定内容）
     let out = match entry {
         AnyEntry::Rule(_) => state

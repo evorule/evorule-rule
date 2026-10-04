@@ -23,6 +23,8 @@ evorule-rule 的所有显著变更都记录在此文件。
 - 🆕 集成测试：机器闸放行全链（人工路径回归+两跳落链断言+追认队列）、T0 无追认、非法 tier 拒绝、发布闸双保险、API E2E（角色 403/非法 target 400/T0 直通两跳/T1 降梯位追认队列恰 1 项）
 - 🆕 **知识域内置 schema 五件（A1-1b）**：`fact/procedure/heuristic/narrative/model` 五件最小结构壳编译期内嵌（`src/store/schemas/knowledge/`），`schema_ref` 以 `builtin:knowledge/{kind}` 引用；两源合并=内置为底、运行时 `domain_schemas/` 目录同 `$id` 覆写，内存库/新部署零目录开箱即用，未注册 URI 拒绝语义不变
 - 🆕 契约一致性闸：`validate_ingest_contract` 增 builtin 校验——schema_ref 带 `builtin:knowledge/` 前缀时后缀必须与 `knowledge_kind` 一致（无 kind 存量条目不受约束）
+- 🆕 **治理侧外部知识导入**：`import_knowledge_entries`（外部快照包 → 既有 knowledge 数据集：全链校验 + 冒充拒绝 + 强制 `external:{source}` 打标 + 入账契约闸 + 凭据扫描 + 单事务原子 + `dry_run` 零写入预检）+ REST 端点 `POST /v1/datasets/{id}/import_knowledge` 与 `/dry-run`；机器闸对 external 来源条目前置拒绝（来源不可信者仅可人工审批放行）
+- 🆕 顶层条目路由 `?dataset_id=` 消歧参数：`/v1/entries/{id}` 全系端点支持显式限定目标数据集（未知数据集/条目不在集内均 404 不静默）；缺省保留租户内首匹配语义，存量调用方零破坏
 
 ### ⚠️ Breaking Change
 

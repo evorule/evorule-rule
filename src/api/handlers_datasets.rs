@@ -828,7 +828,7 @@ pub async fn get_bundle(
 
 // ----------------------------------------------------------------------
 // 治理侧外部导入（知识资产化 A3-1：外部 bundle → 既有 knowledge 数据集，
-// 06 号设计档 §三：一律 Draft 落账 + 强制 external:{source} 打标，RuleEngineer+）
+// 导入设计 §三：一律 Draft 落账 + 强制 external:{source} 打标，RuleEngineer+）
 // ----------------------------------------------------------------------
 
 #[derive(Deserialize)]

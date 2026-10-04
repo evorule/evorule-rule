@@ -801,7 +801,7 @@ mod tests {
 
     // ------------------------------------------------------------------
     // A3-1 治理侧外部导入 E2E（POST /datasets/{id}/import_knowledge[/dry-run]
-    // + 机器闸 external 前置拒绝；06 号设计档 §六）
+    // + 机器闸 external 前置拒绝；导入设计 §六）
     // ------------------------------------------------------------------
 
     /// A3-1 夹具：合法外部知识包 JSON（builtin:knowledge/fact 壳；防篡改哈希经
@@ -2116,6 +2116,93 @@ mod tests {
         .await;
         assert_eq!(status, StatusCode::OK, "{body}");
         assert_eq!(body.as_array().map(|a| a.len()).unwrap_or(0), 1);
+    }
+
+    /// 顶层 `/entries/{id}` 的 `?dataset_id=` 消歧：同 entry_id 存在于同租户多个
+    /// 数据集时，显式限定目标数据集；缺省保留首匹配语义（存量调用方零破坏）。
+    #[tokio::test]
+    async fn test_top_level_entry_scope_disambiguation() {
+        let (app, _state) = build_app();
+        let token = register_login(&app).await;
+        seed_dataset(&app, &token, "ds-a").await; // 各含同名条目 rule-01
+        seed_dataset(&app, &token, "ds-b").await;
+
+        // 缺省：首匹配（数据集创建序，ds-a 先建）
+        let (status, body) = send(
+            app.clone(),
+            "GET",
+            "/v1/entries/rule-01",
+            Some(&token),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["dataset_id"], "ds-a");
+
+        // ?dataset_id= 严格限定：命中 ds-b 副本
+        let (status, body) = send(
+            app.clone(),
+            "GET",
+            "/v1/entries/rule-01?dataset_id=ds-b",
+            Some(&token),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["dataset_id"], "ds-b");
+
+        // 未知数据集 → 404（不回退首匹配，不静默）
+        let (status, _) = send(
+            app.clone(),
+            "GET",
+            "/v1/entries/rule-01?dataset_id=ds-nope",
+            Some(&token),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+
+        // PATCH 消歧：只改 ds-b 副本，ds-a 副本零波及
+        let (status, body) = send(
+            app.clone(),
+            "PATCH",
+            "/v1/entries/rule-01?dataset_id=ds-b",
+            Some(&token),
+            Some(json!({ "tags": ["from-b"] })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["dataset_id"], "ds-b");
+        let (_, body) = send(
+            app.clone(),
+            "GET",
+            "/v1/entries/rule-01?dataset_id=ds-a",
+            Some(&token),
+            None,
+        )
+        .await;
+        assert_eq!(body["tags"].as_array().map(|a| a.len()).unwrap_or(0), 0);
+
+        // submit-candidate 消歧：ds-b 副本进 Candidate，ds-a 副本仍 Draft
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/entries/rule-01/submit-candidate?dataset_id=ds-b",
+            Some(&token),
+            Some(json!({ "sandbox_report_id": "sbox-324" })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["status"], "Candidate");
+        let (_, body) = send(
+            app.clone(),
+            "GET",
+            "/v1/entries/rule-01?dataset_id=ds-a",
+            Some(&token),
+            None,
+        )
+        .await;
+        assert_eq!(body["status"], "Draft");
     }
 
     #[tokio::test]
