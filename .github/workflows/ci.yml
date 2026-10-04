@@ -50,7 +50,20 @@ jobs:
         # 镜像同步慢/失败会误报漂移红灯; Gitee 为权威源, 无此依赖。
         # 2026-09-18 修复: actions/checkout 的 repository 参数只接受 {owner}/{repo}
         # (GitHub 仓), 完整 URL 非法 (CI 实测 Invalid repository), 改用 git clone。
-        run: git clone --depth 1 --branch main https://gitee.com/evorule/evorule-server.git evorule-server
+        # 2026-10-04 加固: Gitee 对 GitHub runner 偶发限流, clone 步曾以 exit 128
+        # 失败(校验步未及执行即红灯); 加 3 次重试(对齐镜像推送重试口径), 仍败如实退出。
+        shell: bash
+        run: |
+          for i in 1 2 3; do
+            if git clone --depth 1 --branch main https://gitee.com/evorule/evorule-server.git evorule-server; then
+              exit 0
+            fi
+            echo "[warn] clone 第 $i 次失败, 60s 后重试"
+            rm -rf evorule-server
+            sleep 60
+          done
+          echo "[fail] Gitee clone 3 次均失败"
+          exit 1
       - name: 逐字节校验嵌入副本 vs SSOT
         shell: pwsh
         run: pwsh -NoProfile -File evorule-server/scripts/sync-native-services.ps1 -Verify -RepoRule "${{ github.workspace }}"
