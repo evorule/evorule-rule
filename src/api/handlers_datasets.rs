@@ -15,6 +15,7 @@ use crate::auth::iso_from_unix;
 use crate::model::auth::{can, is_org_admin, Action, Role};
 use crate::model::dataset::{DatasetKind, Meta, RuleDataset, Visibility};
 use crate::model::entry::RuleEntry;
+use crate::model::governance::{Governance, LlmGenerated};
 use crate::model::lifecycle::LifecycleStatus;
 use crate::model::provenance::Provenance;
 use crate::model::version::{BumpKind, LawRef, VersionSelection, Versioning};
@@ -600,6 +601,12 @@ pub struct AddKnowledgeEntryReq {
     pub license_ref: Option<String>,
     #[serde(default)]
     pub execution_contract: Option<evorule_bundle::ExecutionContract>,
+    /// 治理补充信息（O-318 接线：REST 入账收 governance，缺省 None = 旧调用方零破坏）。
+    /// llm_generated.flag=true 的条目入账一律 Draft（store 层 validate_llm_boundary_gated
+    /// 既有强约束）；机器提议通路（/invoke/propose_knowledge_entry）不收本字段——
+    /// 旗标由服务端强制构造，请求值不可生效。
+    #[serde(default)]
+    pub governance: Option<Governance>,
 }
 
 pub async fn list_entries(
@@ -724,7 +731,7 @@ pub async fn add_entry(
                 tags: req.tags,
                 payload: req.payload,
                 schema_ref: req.schema_ref,
-                governance: None,
+                governance: req.governance,
                 knowledge_kind: req.knowledge_kind,
                 trust_level: req.trust_level,
                 license_ref: req.license_ref,
@@ -946,6 +953,158 @@ async fn export_for(
         &state.instance_id,
     )?;
     Ok(Json(bundle))
+}
+
+// ----------------------------------------------------------------------
+// 治理写通路（知识资产化 A2-3：服务级机器提议入账，经 server service_registry
+// 桥消费；宿主唯一律——行为通道以 evorule 引擎为唯一入口，本端点即写端）
+// ----------------------------------------------------------------------
+
+/// 服务级 API Key scope：仅限本端点消费（不外溢 dataset 管理/行权面）
+pub const API_KEY_SCOPE_PROPOSE: &str = "entries:propose";
+
+/// 机器提议入账请求体：entry 与 POST /datasets/{id}/entries 的 knowledge 条目同构。
+/// 治理强制项（请求值不可生效）：
+/// - `governance` 服务端构造写死 llm_generated.flag=true（旗标不可伪造）；
+/// - `trust_level` 强制 `llm`（显式传 human/external:* = 冒充，400 拒绝）；
+/// - `cause` 必填，追加进 provenance 审计锚（审计链可回放）。
+#[derive(Deserialize)]
+pub struct ProposeKnowledgeEntryReq {
+    pub dataset_id: String,
+    pub entry: AddKnowledgeEntryReq,
+    /// 提议事由（审计锚必填）
+    pub cause: String,
+    /// 来源会话锚（提取通道 A2-1/A2-2 候选落点所在会话，可审计回放）
+    #[serde(default)]
+    pub source_session_id: Option<String>,
+}
+
+/// POST /v1/invoke/propose_knowledge_entry —— 服务级机器提议入账（RuleEngineer 写权映射）：
+/// X-Api-Key(scope=entries:propose) 认证（get_bundle pull 先例同构）→ 数据集存在 + 租户
+/// 匹配 → trust 冒充拒绝 → governance 强制构造 → provenance cause 锚 → 复用既有闸链
+/// （validate_ingest_contract → store.add_knowledge_entry 全闸：D3 领域 schema 强校验 +
+/// validate_llm_boundary_gated + 凭据扫描），零新闸零旁路（同一 store 写核收敛）。
+/// 入账一律 Draft（llm_generated=true 条目行权封于生命周期迁移闸，A2-4 接线）。
+pub async fn propose_knowledge_entry(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    Json(body): Json<ProposeKnowledgeEntryReq>,
+) -> Result<(StatusCode, Json<Value>), ApiError> {
+    // 1) 服务级 X-Api-Key（scope 收敛：仅 entries:propose 可用）
+    let k = api_key_from_header(&headers)
+        .ok_or_else(|| ApiError::unauthorized("缺少认证：需 X-Api-Key"))?;
+    let hash = sha256_hex(k);
+    let key = state
+        .store
+        .get_api_key_by_hash(&hash)?
+        .ok_or_else(|| ApiError::unauthorized("API Key 非法"))?;
+    if key.revoked_at.is_some() {
+        return Err(ApiError::unauthorized("API Key 已吊销"));
+    }
+    if key.scope != API_KEY_SCOPE_PROPOSE {
+        return Err(ApiError::forbidden("API Key 无 entries:propose 权限"));
+    }
+    // 服务级 key 映射 RuleEngineer 写权（仅本端点消费，key 身份入审计锚）
+    let tenant_id = key.tenant_id.clone();
+    let actor = format!("apikey:{}", key.key_id);
+    // 2) 数据集存在 + 类型匹配 + 租户隔离（同 add_entry 口径）
+    let ds = state
+        .store
+        .get_dataset(&body.dataset_id)?
+        .ok_or_else(|| ApiError::not_found("数据集不存在"))?;
+    if ds.tenant_id != tenant_id {
+        return Err(ApiError::not_found("数据集不存在"));
+    }
+    if ds.dataset_kind != DatasetKind::Knowledge {
+        return Err(ApiError::bad_request("仅 knowledge 数据集支持提议入账"));
+    }
+    // 3) trust_level 冒充拒绝（强制 llm；与 external 导入强制打标同纪律：
+    //    来源信任级是治理判定不是数据声明，调用方声明不可采信）
+    if let Some(t) = &body.entry.trust_level {
+        if t != "llm" {
+            return Err(ApiError::bad_request(format!(
+                "trust_level 冒充拒绝：机器提议通路强制 trust_level=llm，收到 {t:?}"
+            )));
+        }
+    }
+    // 4) provenance cause 锚（cause 必填 + 来源会话锚追加，审计回放可读）
+    let mut source = body
+        .entry
+        .provenance
+        .as_ref()
+        .map(|p| p.source.clone())
+        .unwrap_or_else(|| "机器提议（知识资产化提取通道）".into());
+    source.push_str(&format!(" | propose_cause: {}", body.cause));
+    if let Some(sid) = &body.source_session_id {
+        source.push_str(&format!(" | source_session: {sid}"));
+    }
+    let provenance = match body.entry.provenance {
+        Some(mut p) => {
+            p.source = source;
+            p
+        }
+        None => Provenance {
+            source,
+            clause: None,
+            document_id: None,
+            effective_from: None,
+            effective_to: None,
+            last_verified: None,
+            verified_by: None,
+        },
+    };
+    // 5) governance 强制构造（请求体 governance 值不可生效——旗标由服务端写死）
+    let governance = Some(Governance {
+        llm_generated: Some(LlmGenerated {
+            flag: true,
+            model: None,
+            op: Some("propose_knowledge_entry".into()),
+            timestamp: Some(now_iso()),
+        }),
+        ..Governance::default()
+    });
+    // 6) 组装条目（与 add_entry 同构：domain 缺省 + Draft 落账）并复用既有闸链
+    let entry = crate::model::knowledge::KnowledgeEntry {
+        entry_id: body.entry.entry_id,
+        dataset_id: body.dataset_id,
+        version: body.entry.version,
+        status: Some(LifecycleStatus::Draft),
+        provenance,
+        domain: body.entry.domain.unwrap_or_else(|| {
+            ds.domain
+                .first()
+                .cloned()
+                .unwrap_or_else(|| "general".to_string())
+        }),
+        tags: body.entry.tags,
+        payload: body.entry.payload,
+        schema_ref: body.entry.schema_ref,
+        governance,
+        knowledge_kind: body.entry.knowledge_kind,
+        trust_level: Some("llm".to_string()),
+        license_ref: body.entry.license_ref,
+        execution_contract: body.entry.execution_contract,
+    };
+    entry
+        .validate_ingest_contract()
+        .map_err(ApiError::bad_request)?;
+    state.store.add_knowledge_entry(&entry)?;
+    tracing::info!(
+        target: "evorule::invoke",
+        "propose_knowledge_entry: dataset={} entry={} v{} by {actor}",
+        entry.dataset_id,
+        entry.entry_id,
+        entry.version
+    );
+    Ok((
+        StatusCode::CREATED,
+        Json(serde_json::json!({
+            "status": "proposed",
+            "entry_id": entry.entry_id,
+            "version": entry.version,
+            "lifecycle": "Draft",
+        })),
+    ))
 }
 
 fn sha256_hex(input: &str) -> String {

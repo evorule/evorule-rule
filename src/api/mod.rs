@@ -544,6 +544,13 @@ pub fn router(state: AppState) -> Router {
     // 故不挂通用 Bearer 中间件（否则执行侧 X-Api-Key 拉取会被 401 拦截）
     let bundle = Router::new().route("/datasets/{id}/bundle", get(handlers_datasets::get_bundle));
 
+    // 治理写通路（A2-3）：服务级机器提议入账，`propose_knowledge_entry` 自管
+    // X-Api-Key(scope=entries:propose) 认证，同 bundle 先例不挂通用 Bearer 中间件
+    let invoke = Router::new().route(
+        "/invoke/propose_knowledge_entry",
+        post(handlers_datasets::propose_knowledge_entry),
+    );
+
     let protected = Router::new()
         .route("/me", get(handlers_auth::me))
         .route("/admin/backend", get(admin_backend))
@@ -709,6 +716,7 @@ pub fn router(state: AppState) -> Router {
         .nest("/v1/auth", protected.clone())
         .nest("/v1", protected)
         .nest("/v1", bundle)
+        .nest("/v1", invoke)
         // 存活探针独立挂载于 /v1/health:不经过 require_auth 中间件(protected 已挂),
         // 保证进程级 liveness 在认证体系异常时仍可探测
         .nest("/v1", Router::new().route("/health", get(health)))
@@ -3561,5 +3569,487 @@ mod tests {
             entries[0]["schema_ref"],
             "https://rpsm.example/schemas/scenario/v1.0.json"
         );
+    }
+
+    // ------------------------------------------------------------------
+    // A2-3 治理写通路 E2E（POST /v1/invoke/propose_knowledge_entry
+    // + O-318 REST governance 接线回归）
+    // ------------------------------------------------------------------
+
+    /// A2-3 发送辅助：携带 X-Api-Key 头的请求（服务级 key 通路不经 Bearer 中间件）
+    async fn send_api_key(
+        app: Router,
+        method: &str,
+        uri: &str,
+        key: Option<&str>,
+        body: Option<serde_json::Value>,
+    ) -> (axum::http::StatusCode, serde_json::Value) {
+        let mut builder = Request::builder().method(method).uri(uri);
+        if let Some(k) = key {
+            builder = builder.header("x-api-key", k);
+        }
+        let req = if let Some(b) = body {
+            builder
+                .header("content-type", "application/json")
+                .body(Body::from(b.to_string()))
+                .unwrap()
+        } else {
+            builder.body(Body::empty()).unwrap()
+        };
+        let resp = app.oneshot(req).await.unwrap();
+        let status = resp.status();
+        let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+        let value = serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null);
+        (status, value)
+    }
+
+    /// A2-3 夹具：直注册 admin + 生成指定 scope 服务级 key（返回明文 key）
+    async fn a23_create_key(app: &Router, state: &AppState, scope: &str) -> String {
+        let now = unix_now();
+        // 幂等注册（同一测试可能生成多种 scope 的 key，二次调用容忍已存在）
+        let _ = state.auth.register(
+            &state.store,
+            "tenant_a",
+            "a23-admin",
+            "password123",
+            Role::Admin,
+            now,
+        );
+        let tokens = state
+            .auth
+            .login(&state.store, "tenant_a", "a23-admin", "password123", now)
+            .expect("admin login");
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/api_keys",
+            Some(&tokens.access_token),
+            Some(json!({ "name": "服务级提议 key", "scope": scope })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "{body}");
+        body["key"].as_str().unwrap().to_string()
+    }
+
+    /// A2-3 夹具：机器提议请求体（overrides 顶层覆盖，供冒充/伪造象限注入）
+    fn a23_propose_body(
+        dataset_id: &str,
+        entry_id: &str,
+        overrides: serde_json::Value,
+    ) -> serde_json::Value {
+        let mut body = json!({
+            "dataset_id": dataset_id,
+            "entry": {
+                "entry_id": entry_id,
+                "version": 1,
+                "payload": { "statement": "LLM 提取的事实条目" },
+                "schema_ref": "builtin:knowledge/fact",
+                "knowledge_kind": "fact",
+                "trust_level": "llm",
+                "provenance": { "source": "A2-2 候选提取" }
+            },
+            "cause": "E2E 验证：候选资产入账",
+            "source_session_id": "sess-a23-e2e"
+        });
+        if let Some(obj) = overrides.as_object() {
+            for (k, v) in obj {
+                body[k] = v.clone();
+            }
+        }
+        body
+    }
+
+    #[tokio::test]
+    async fn test_a23_propose_knowledge_entry_end_to_end() {
+        let (app, state) = build_app();
+        let key = a23_create_key(&app, &state, "entries:propose").await;
+        let token = register_login(&app).await;
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/datasets",
+            Some(&token),
+            Some(json!({
+                "dataset_id": "ds-a23",
+                "name": "A2-3 提议入账集",
+                "domain": ["tax"],
+                "dataset_kind": "knowledge"
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "{body}");
+
+        // ① 机器提议入账：entry 混入请求侧 governance（伪造象限）——服务端强制覆盖
+        let mut overrides = serde_json::Map::new();
+        overrides.insert(
+            "entry".into(),
+            json!({
+                "entry_id": "k-a23-1",
+                "version": 1,
+                "payload": { "statement": "LLM 提取的事实条目" },
+                "schema_ref": "builtin:knowledge/fact",
+                "knowledge_kind": "fact",
+                "trust_level": "llm",
+                "provenance": { "source": "A2-2 候选提取" },
+                "governance": { "llm_generated": { "flag": false }, "author": "forged" }
+            }),
+        );
+        let (status, body) = send_api_key(
+            app.clone(),
+            "POST",
+            "/v1/invoke/propose_knowledge_entry",
+            Some(&key),
+            Some(a23_propose_body(
+                "ds-a23",
+                "ignored",
+                serde_json::Value::Object(overrides),
+            )),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "{body}");
+        assert_eq!(body["status"], "proposed");
+        assert_eq!(body["entry_id"], "k-a23-1");
+        assert_eq!(body["lifecycle"], "Draft");
+
+        // ② rule GET 权威核对：旗标服务端写死（请求侧 flag=false 无效）+ trust 强制 llm
+        //    + provenance cause 锚（cause 必填 + 来源会话）
+        let (status, body) = send(
+            app.clone(),
+            "GET",
+            "/v1/entries/k-a23-1",
+            Some(&token),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["status"], "Draft");
+        assert_eq!(
+            body["governance"]["llm_generated"]["flag"], true,
+            "请求侧 flag=false 不可生效"
+        );
+        assert_eq!(
+            body["governance"]["llm_generated"]["op"],
+            "propose_knowledge_entry"
+        );
+        assert_ne!(
+            body["governance"]["author"], "forged",
+            "请求侧 author 不可生效"
+        );
+        assert_eq!(body["trust_level"], "llm");
+        let source = body["provenance"]["source"].as_str().unwrap();
+        assert!(source.contains("propose_cause: E2E 验证"), "{source}");
+        assert!(source.contains("source_session: sess-a23-e2e"), "{source}");
+    }
+
+    #[tokio::test]
+    async fn test_a23_propose_trust_impersonation_rejected() {
+        let (app, state) = build_app();
+        let key = a23_create_key(&app, &state, "entries:propose").await;
+        let token = register_login(&app).await;
+        send(
+            app.clone(),
+            "POST",
+            "/v1/datasets",
+            Some(&token),
+            Some(json!({
+                "dataset_id": "ds-a23t",
+                "name": "A2-3 冒充拒绝集",
+                "domain": ["tax"],
+                "dataset_kind": "knowledge"
+            })),
+        )
+        .await;
+
+        // human 冒充 → 400
+        let (status, body) = send_api_key(
+            app.clone(),
+            "POST",
+            "/v1/invoke/propose_knowledge_entry",
+            Some(&key),
+            Some(a23_propose_body(
+                "ds-a23t",
+                "k-imp-human",
+                json!({ "entry": { "entry_id": "k-imp-human", "version": 1,
+                    "payload": { "statement": "x" }, "schema_ref": "builtin:knowledge/fact",
+                    "knowledge_kind": "fact", "trust_level": "human" } }),
+            )),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+        assert!(
+            body["error"]["message"]
+                .as_str()
+                .unwrap()
+                .contains("冒充拒绝"),
+            "{body}"
+        );
+
+        // external:* 冒充 → 400
+        let (status, body) = send_api_key(
+            app.clone(),
+            "POST",
+            "/v1/invoke/propose_knowledge_entry",
+            Some(&key),
+            Some(a23_propose_body(
+                "ds-a23t",
+                "k-imp-ext",
+                json!({ "entry": { "entry_id": "k-imp-ext", "version": 1,
+                    "payload": { "statement": "x" }, "schema_ref": "builtin:knowledge/fact",
+                    "knowledge_kind": "fact", "trust_level": "external:partner" } }),
+            )),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+
+        // 两个冒充条目均未落账
+        let (status, _) = send(
+            app.clone(),
+            "GET",
+            "/v1/entries/k-imp-human",
+            Some(&token),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        let (status, _) = send(
+            app.clone(),
+            "GET",
+            "/v1/entries/k-imp-ext",
+            Some(&token),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_a23_propose_contract_gate_4xx() {
+        let (app, state) = build_app();
+        let key = a23_create_key(&app, &state, "entries:propose").await;
+        let token = register_login(&app).await;
+        send(
+            app.clone(),
+            "POST",
+            "/v1/datasets",
+            Some(&token),
+            Some(json!({
+                "dataset_id": "ds-a23g",
+                "name": "A2-3 契约闸集",
+                "domain": ["tax"],
+                "dataset_kind": "knowledge"
+            })),
+        )
+        .await;
+
+        // schema_ref/kind 一致性错配（builtin:knowledge/model 壳挂 fact 条目）→ 400
+        let (status, body) = send_api_key(
+            app.clone(),
+            "POST",
+            "/v1/invoke/propose_knowledge_entry",
+            Some(&key),
+            Some(a23_propose_body(
+                "ds-a23g",
+                "k-bad-schema",
+                json!({ "entry": { "entry_id": "k-bad-schema", "version": 1,
+                    "payload": { "statement": "x" }, "schema_ref": "builtin:knowledge/model",
+                    "knowledge_kind": "fact", "trust_level": "llm" } }),
+            )),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+        assert!(
+            body["error"]["message"]
+                .as_str()
+                .unwrap()
+                .contains("mismatch"),
+            "{body}"
+        );
+
+        // 未知 knowledge_kind → 400
+        let (status, body) = send_api_key(
+            app.clone(),
+            "POST",
+            "/v1/invoke/propose_knowledge_entry",
+            Some(&key),
+            Some(a23_propose_body(
+                "ds-a23g",
+                "k-bad-kind",
+                json!({ "entry": { "entry_id": "k-bad-kind", "version": 1,
+                    "payload": { "statement": "x" }, "schema_ref": "builtin:knowledge/fact",
+                    "knowledge_kind": "ancient_lore", "trust_level": "llm" } }),
+            )),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    }
+
+    #[tokio::test]
+    async fn test_a23_propose_scope_guard() {
+        let (app, state) = build_app();
+        let propose_key = a23_create_key(&app, &state, "entries:propose").await;
+        let pull_key = a23_create_key(&app, &state, "pull").await;
+        let token = register_login(&app).await;
+        send(
+            app.clone(),
+            "POST",
+            "/v1/datasets",
+            Some(&token),
+            Some(json!({
+                "dataset_id": "ds-a23s",
+                "name": "A2-3 scope 守卫集",
+                "domain": ["tax"],
+                "dataset_kind": "knowledge"
+            })),
+        )
+        .await;
+
+        // 无 key → 401
+        let (status, _) = send_api_key(
+            app.clone(),
+            "POST",
+            "/v1/invoke/propose_knowledge_entry",
+            None,
+            Some(a23_propose_body(
+                "ds-a23s",
+                "k-nokey",
+                serde_json::Value::Null,
+            )),
+        )
+        .await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+        // pull key 越权打 propose 端点 → 403（scope 收敛，不外溢）
+        let (status, body) = send_api_key(
+            app.clone(),
+            "POST",
+            "/v1/invoke/propose_knowledge_entry",
+            Some(&pull_key),
+            Some(a23_propose_body(
+                "ds-a23s",
+                "k-pullkey",
+                serde_json::Value::Null,
+            )),
+        )
+        .await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+
+        // propose key 打 pull 端点 → 403（反向同样不外溢）
+        let (status, body) = send_api_key(
+            app.clone(),
+            "GET",
+            "/v1/datasets/ds-a23s/bundle",
+            Some(&propose_key),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+
+        // 越权请求零落账
+        let (status, _) = send(
+            app.clone(),
+            "GET",
+            "/v1/entries/k-pullkey",
+            Some(&token),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_a23_propose_non_knowledge_dataset_rejected() {
+        let (app, state) = build_app();
+        let key = a23_create_key(&app, &state, "entries:propose").await;
+        let token = register_login(&app).await;
+        // rule_set 数据集（缺省 kind）
+        send(
+            app.clone(),
+            "POST",
+            "/v1/datasets",
+            Some(&token),
+            Some(json!({
+                "dataset_id": "ds-a23r",
+                "name": "规则集",
+                "domain": ["tax"]
+            })),
+        )
+        .await;
+        let (status, body) = send_api_key(
+            app.clone(),
+            "POST",
+            "/v1/invoke/propose_knowledge_entry",
+            Some(&key),
+            Some(a23_propose_body(
+                "ds-a23r",
+                "k-wrong-ds",
+                serde_json::Value::Null,
+            )),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+        assert!(
+            body["error"]["message"]
+                .as_str()
+                .unwrap()
+                .contains("knowledge"),
+            "{body}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_o318_rest_add_entry_governance_passthrough() {
+        // O-318 回归：既有 POST /datasets/{id}/entries 收 governance（可选，缺省 None
+        // 零破坏）；llm_generated.flag=true 条目入账 Draft 放行（gated 既有语义）
+        let (app, _state) = build_app();
+        let token = register_login(&app).await;
+        send(
+            app.clone(),
+            "POST",
+            "/v1/datasets",
+            Some(&token),
+            Some(json!({
+                "dataset_id": "ds-o318",
+                "name": "O-318 回归集",
+                "domain": ["tax"],
+                "dataset_kind": "knowledge"
+            })),
+        )
+        .await;
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/datasets/ds-o318/entries",
+            Some(&token),
+            Some(json!({
+                "entry_id": "k-o318",
+                "version": 1,
+                "payload": { "statement": "REST 通路 llm 条目" },
+                "schema_ref": "builtin:knowledge/fact",
+                "knowledge_kind": "fact",
+                "trust_level": "llm",
+                "governance": { "llm_generated": { "flag": true, "op": "rest_add" } }
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "{body}");
+        assert_eq!(body["governance"]["llm_generated"]["flag"], true);
+        assert_eq!(body["status"], "Draft", "llm 条目入账一律 Draft");
+
+        // governance 缺省 None 旧调用方零破坏
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/datasets/ds-o318/entries",
+            Some(&token),
+            Some(json!({
+                "entry_id": "k-o318-legacy",
+                "version": 1,
+                "payload": { "statement": "旧通路条目" },
+                "schema_ref": "builtin:knowledge/fact"
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "{body}");
+        assert!(body["governance"].is_null(), "{body}");
     }
 }

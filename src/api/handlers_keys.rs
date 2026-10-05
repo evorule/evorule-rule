@@ -15,7 +15,7 @@ use crate::model::auth::{is_org_admin, ApiKey};
 #[derive(Deserialize)]
 pub struct CreateKeyReq {
     pub name: String,
-    /// MVP 仅支持 pull（执行侧拉取快照包）
+    /// scope 白名单：pull（执行侧拉取快照包）| entries:propose（治理写通路机器提议入账）
     #[serde(default)]
     pub scope: Option<String>,
 }
@@ -40,8 +40,10 @@ pub async fn create(
         return Err(ApiError::forbidden("仅管理员可创建 API Key"));
     }
     let scope = req.scope.unwrap_or_else(|| "pull".to_string());
-    if scope != "pull" {
-        return Err(ApiError::bad_request("MVP 仅支持 scope=pull"));
+    if scope != "pull" && scope != crate::api::handlers_datasets::API_KEY_SCOPE_PROPOSE {
+        return Err(ApiError::bad_request(
+            "scope 仅支持 pull 或 entries:propose",
+        ));
     }
     let (key_id, plain) = generate_key();
     let key = ApiKey {

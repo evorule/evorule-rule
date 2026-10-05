@@ -8,6 +8,15 @@ evorule-rule 的所有显著变更都记录在此文件。
 
 ---
 
+## [Unreleased]
+
+### 🆕 新增
+
+- 🆕 **治理写通路·机器提议入账**：`POST /v1/invoke/propose_knowledge_entry`（服务级机器对知识数据集提议条目入账，经服务编排层服务注册桥消费）——X-Api-Key 认证新增 scope `entries:propose`（服务级 key，仅限本端点消费不外溢数据集管理与行权面）；`trust_level` 强制 `llm`（显式传 human/external 视为冒充，400 显式拒绝）；`governance.llm_generated.flag` 由服务端强制构造（请求值不可生效）；`cause` 必填并连同来源会话锚追加进溯源记录；入账复用既有全闸链（入账契约闸 + 领域 schema 强校验 + LLM 边界闸 + 凭据扫描），一律 Draft 落账
+- 🆕 REST 直录入通路接线治理字段：`POST /v1/datasets/{id}/entries` 的 knowledge 条目请求体增可选 `governance` 字段（缺省省略 = 既有调用方零破坏；llm 旗标条目入账一律 Draft 的既有强约束不变）
+
+---
+
 ## [0.4.0] - 2026-10-04
 
 ### 🆕 新增
