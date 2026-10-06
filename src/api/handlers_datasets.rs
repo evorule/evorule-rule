@@ -962,6 +962,9 @@ async fn export_for(
 
 /// 服务级 API Key scope：仅限本端点消费（不外溢 dataset 管理/行权面）
 pub const API_KEY_SCOPE_PROPOSE: &str = "entries:propose";
+/// 服务级机器行权 scope（A2-4 接线）：与 propose 同族的收窄写权——只能把
+/// 机器闸六检全过的知识候选放行至 Active，不能入账、不能触 Published。
+pub const API_KEY_SCOPE_TRANSITION: &str = "entries:transition";
 
 /// 机器提议入账请求体：entry 与 POST /datasets/{id}/entries 的 knowledge 条目同构。
 /// 治理强制项（请求值不可生效）：
@@ -1103,6 +1106,142 @@ pub async fn propose_knowledge_entry(
             "entry_id": entry.entry_id,
             "version": entry.version,
             "lifecycle": "Draft",
+        })),
+    ))
+}
+
+/// POST /v1/invoke/transition_entry 请求体（A2-4 机器行权）
+#[derive(Deserialize)]
+pub struct TransitionEntryReq {
+    pub dataset_id: String,
+    pub entry_id: String,
+    /// 目标状态：首版仅 `active`（机器闸行权上限=Active，Published 永远人工）
+    pub to: String,
+    /// 审计 cause（必填，溯源锚——与 propose 同纪律）
+    pub cause: String,
+}
+
+/// POST /v1/invoke/transition_entry —— 服务级机器行权（A2-4 接线，「机器行权，人工追认」
+/// 最小闭环的受端）：X-Api-Key(scope=entries:transition) 认证 → 数据集存在 + 租户匹配 +
+/// knowledge 域 → external 来源不给机器闸（同 machine-gate-promote 口径）→ 服务端现场跑
+/// 六检执行器（不信任客户端「检查通过」声明）→ 非全过/T2 = 422 附 MachineGateReport 全文
+/// （fail-visible，不静默降级，不落状态不落链）；全过按状态机合法路径逐跳机器放行
+/// （Draft 起点两跳各自独立落链，gate=machine + tier 审计留痕；T1 进追认队列）。
+pub async fn transition_entry(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    Json(body): Json<TransitionEntryReq>,
+) -> Result<(StatusCode, Json<Value>), ApiError> {
+    // 1) 服务级 X-Api-Key（scope 收敛：仅 entries:transition 可用）
+    let k = api_key_from_header(&headers)
+        .ok_or_else(|| ApiError::unauthorized("缺少认证：需 X-Api-Key"))?;
+    let hash = sha256_hex(&k);
+    let key = state
+        .store
+        .get_api_key_by_hash(&hash)?
+        .ok_or_else(|| ApiError::unauthorized("API Key 非法"))?;
+    if key.revoked_at.is_some() {
+        return Err(ApiError::unauthorized("API Key 已吊销"));
+    }
+    if key.scope != API_KEY_SCOPE_TRANSITION {
+        return Err(ApiError::forbidden("API Key 无 entries:transition 权限"));
+    }
+    // 服务级 key 映射机器行权身份（仅本端点消费，key 身份入审计锚）
+    let tenant_id = key.tenant_id.clone();
+    let actor = format!("apikey:{}", key.key_id);
+    // 2) 数据集存在 + 类型匹配 + 租户隔离（同 propose 口径）
+    let ds = state
+        .store
+        .get_dataset(&body.dataset_id)?
+        .ok_or_else(|| ApiError::not_found("数据集不存在"))?;
+    if ds.tenant_id != tenant_id {
+        return Err(ApiError::not_found("数据集不存在"));
+    }
+    if ds.dataset_kind != DatasetKind::Knowledge {
+        return Err(ApiError::bad_request("仅 knowledge 数据集支持机器行权"));
+    }
+    // 3) 目标状态：首版仅 Active（机器闸行权上限=Active，结构性立宪不松动）
+    if body.to != "active" {
+        return Err(ApiError::bad_request(format!(
+            "to `{}` 非法（首版仅 `active`；机器闸行权上限=Active，Published 永远人工）",
+            body.to
+        )));
+    }
+    if body.cause.trim().is_empty() {
+        return Err(ApiError::bad_request("cause 必填（溯源锚）"));
+    }
+    // 4) 条目在场 + external 来源不给机器闸（来源不可信者仅可人工审批放行）
+    let entry = state
+        .store
+        .get_latest_knowledge_entry(&body.dataset_id, &body.entry_id)?
+        .ok_or_else(|| ApiError::not_found("条目不存在"))?;
+    if entry
+        .trust_level
+        .as_deref()
+        .is_some_and(|t| t.starts_with("external:"))
+    {
+        return Err(ApiError::forbidden(
+            "external 来源条目不给机器闸：来源不可信者仅可人工审批放行",
+        ));
+    }
+    let current = entry.status.unwrap_or(LifecycleStatus::Draft);
+    // 5) 现场跑六检执行器（同 machine-gate-promote：store 探针采集事实，纯函数出报告）
+    let report = crate::api::handlers_entries::run_machine_gate(
+        &state,
+        &body.dataset_id,
+        crate::store::AnyEntry::Knowledge(entry),
+    )?;
+    if !report.all_passed() || report.tier == "T2" {
+        return Err(ApiError::unprocessable_entity(format!(
+            "机器闸未放行（{}）: {}",
+            report.tier,
+            report.summary()
+        )));
+    }
+    // 6) 跳数规划（状态机合法路径 Draft→Candidate→Active；首版语义=把候选推到 Active）
+    let hops: Vec<LifecycleStatus> = match current {
+        LifecycleStatus::Candidate => vec![LifecycleStatus::Active],
+        LifecycleStatus::Draft => vec![LifecycleStatus::Candidate, LifecycleStatus::Active],
+        cur => {
+            return Err(ApiError::bad_request(format!(
+                "当前状态 {cur:?} 无法经机器闸行权至 Active（合法路径 Draft→Candidate→Active；Published/Rejected 走人工流程）"
+            )))
+        }
+    };
+    let cause = format!(
+        "{} | machine-gate {} | actor {}",
+        body.cause,
+        report.summary(),
+        actor
+    );
+    let at = now_iso();
+    for hop in &hops {
+        state.store.transition_knowledge_entry_status_machine(
+            &body.dataset_id,
+            &body.entry_id,
+            *hop,
+            &actor,
+            &at,
+            &cause,
+            &report.tier,
+        )?;
+    }
+    tracing::info!(
+        target: "evorule::invoke",
+        "transition_entry: dataset={} entry={} to=Active tier={} by {actor}",
+        body.dataset_id,
+        body.entry_id,
+        report.tier
+    );
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "status": "transitioned",
+            "entry_id": body.entry_id,
+            "lifecycle": "Active",
+            "tier": report.tier,
+            "post_review_required": report.tier == "T1",
+            "report": serde_json::to_value(&report).unwrap_or(Value::Null),
         })),
     ))
 }

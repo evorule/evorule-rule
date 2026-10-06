@@ -16,6 +16,7 @@ use crate::model::auth::{is_org_admin, ApiKey};
 pub struct CreateKeyReq {
     pub name: String,
     /// scope 白名单：pull（执行侧拉取快照包）| entries:propose（治理写通路机器提议入账）
+    /// | entries:transition（治理写通路机器行权，A2-4）
     #[serde(default)]
     pub scope: Option<String>,
 }
@@ -40,9 +41,12 @@ pub async fn create(
         return Err(ApiError::forbidden("仅管理员可创建 API Key"));
     }
     let scope = req.scope.unwrap_or_else(|| "pull".to_string());
-    if scope != "pull" && scope != crate::api::handlers_datasets::API_KEY_SCOPE_PROPOSE {
+    if scope != "pull"
+        && scope != crate::api::handlers_datasets::API_KEY_SCOPE_PROPOSE
+        && scope != crate::api::handlers_datasets::API_KEY_SCOPE_TRANSITION
+    {
         return Err(ApiError::bad_request(
-            "scope 仅支持 pull 或 entries:propose",
+            "scope 仅支持 pull、entries:propose 或 entries:transition",
         ));
     }
     let (key_id, plain) = generate_key();

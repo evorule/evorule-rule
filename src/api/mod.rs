@@ -544,12 +544,17 @@ pub fn router(state: AppState) -> Router {
     // 故不挂通用 Bearer 中间件（否则执行侧 X-Api-Key 拉取会被 401 拦截）
     let bundle = Router::new().route("/datasets/{id}/bundle", get(handlers_datasets::get_bundle));
 
-    // 治理写通路（A2-3）：服务级机器提议入账，`propose_knowledge_entry` 自管
-    // X-Api-Key(scope=entries:propose) 认证，同 bundle 先例不挂通用 Bearer 中间件
-    let invoke = Router::new().route(
-        "/invoke/propose_knowledge_entry",
-        post(handlers_datasets::propose_knowledge_entry),
-    );
+    // 治理写通路（A2-3/A2-4）：服务级机器提议入账与机器行权，两个 handler 自管
+    // X-Api-Key(scope=entries:propose|entries:transition) 认证，同 bundle 先例不挂通用 Bearer 中间件
+    let invoke = Router::new()
+        .route(
+            "/invoke/propose_knowledge_entry",
+            post(handlers_datasets::propose_knowledge_entry),
+        )
+        .route(
+            "/invoke/transition_entry",
+            post(handlers_datasets::transition_entry),
+        );
 
     let protected = Router::new()
         .route("/me", get(handlers_auth::me))
@@ -3994,6 +3999,303 @@ mod tests {
                 .contains("knowledge"),
             "{body}"
         );
+    }
+
+    // ------------------------------------------------------------------
+    // A2-4 机器行权 E2E（POST /v1/invoke/transition_entry：
+    // 「机器行权，人工追认」最小闭环受端）
+    // ------------------------------------------------------------------
+
+    /// A2-4 夹具：机器行权请求体
+    fn a24_transition_body(dataset_id: &str, entry_id: &str, cause: &str) -> serde_json::Value {
+        json!({
+            "dataset_id": dataset_id,
+            "entry_id": entry_id,
+            "to": "active",
+            "cause": cause,
+        })
+    }
+
+    #[tokio::test]
+    async fn test_a24_transition_entry_end_to_end() {
+        let (app, state) = build_app();
+        let propose_key = a23_create_key(&app, &state, "entries:propose").await;
+        let transition_key = a23_create_key(&app, &state, "entries:transition").await;
+        let token = register_login(&app).await;
+        send(
+            app.clone(),
+            "POST",
+            "/v1/datasets",
+            Some(&token),
+            Some(json!({
+                "dataset_id": "ds-a24",
+                "name": "A2-4 机器行权集",
+                "domain": ["tax"],
+                "dataset_kind": "knowledge"
+            })),
+        )
+        .await;
+
+        // ① 机器提议入账：Draft 落账
+        let (status, body) = send_api_key(
+            app.clone(),
+            "POST",
+            "/v1/invoke/propose_knowledge_entry",
+            Some(&propose_key),
+            Some(a23_propose_body(
+                "ds-a24",
+                "k-a24-1",
+                serde_json::Value::Null,
+            )),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "{body}");
+        assert_eq!(body["lifecycle"], "Draft");
+
+        // ② 机器行权：六检全过 → Active（Draft 起点两跳）
+        let (status, body) = send_api_key(
+            app.clone(),
+            "POST",
+            "/v1/invoke/transition_entry",
+            Some(&transition_key),
+            Some(a24_transition_body(
+                "ds-a24",
+                "k-a24-1",
+                "E2E：机器行权放行",
+            )),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["status"], "transitioned");
+        assert_eq!(body["lifecycle"], "Active");
+        assert_eq!(body["tier"], "T0");
+        assert_eq!(body["post_review_required"], false);
+        assert!(
+            body["report"]["checks"].as_array().unwrap().len() == 6,
+            "{body}"
+        );
+
+        // ③ rule GET 权威核对：状态 Active
+        let (status, body) = send(
+            app.clone(),
+            "GET",
+            "/v1/entries/k-a24-1",
+            Some(&token),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["status"], "Active");
+
+        // ④ 审计落链：两跳各自 gate=machine + tier=T0 留痕
+        let (status, body) = send(
+            app.clone(),
+            "GET",
+            "/v1/entries/k-a24-1/history",
+            Some(&token),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        let hist = body.as_array().unwrap();
+        assert_eq!(hist.len(), 2, "{body}");
+        for h in hist {
+            assert_eq!(h["gate"], "machine", "{body}");
+            assert_eq!(h["tier"], "T0", "{body}");
+            assert!(
+                h["cause"]
+                    .as_str()
+                    .unwrap()
+                    .contains("machine-gate tier=T0"),
+                "{body}"
+            );
+        }
+        assert_eq!(hist[0]["from"], "Draft");
+        assert_eq!(hist[0]["to"], "Candidate");
+        assert_eq!(hist[1]["to"], "Active");
+    }
+
+    #[tokio::test]
+    async fn test_a24_transition_gate_fail_422_no_state_change() {
+        let (app, state) = build_app();
+        let propose_key = a23_create_key(&app, &state, "entries:propose").await;
+        let transition_key = a23_create_key(&app, &state, "entries:transition").await;
+        let token = register_login(&app).await;
+        send(
+            app.clone(),
+            "POST",
+            "/v1/datasets",
+            Some(&token),
+            Some(json!({
+                "dataset_id": "ds-a24f",
+                "name": "A2-4 闸拒集",
+                "domain": ["tax"],
+                "dataset_kind": "knowledge"
+            })),
+        )
+        .await;
+
+        // 同内容两条候选：第一条行权成功后，第二条 M3 重复提案检 → T2 → 422
+        for id in ["k-a24f-1", "k-a24f-2"] {
+            let mut body = a23_propose_body("ds-a24f", id, serde_json::Value::Null);
+            body["entry"]["payload"] = json!({ "statement": "重复内容同一候选" });
+            let (status, resp) = send_api_key(
+                app.clone(),
+                "POST",
+                "/v1/invoke/propose_knowledge_entry",
+                Some(&propose_key),
+                Some(body),
+            )
+            .await;
+            assert_eq!(status, StatusCode::CREATED, "{resp}");
+        }
+        let (status, _) = send_api_key(
+            app.clone(),
+            "POST",
+            "/v1/invoke/transition_entry",
+            Some(&transition_key),
+            Some(a24_transition_body("ds-a24f", "k-a24f-1", "第一条放行")),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+
+        // 第二条：M3 同内容 Active 已在场 → 非全过 → 422 + 报告全文
+        let (status, body) = send_api_key(
+            app.clone(),
+            "POST",
+            "/v1/invoke/transition_entry",
+            Some(&transition_key),
+            Some(a24_transition_body("ds-a24f", "k-a24f-2", "应被闸拒")),
+        )
+        .await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+        assert!(
+            body["error"]["message"]
+                .as_str()
+                .unwrap()
+                .contains("机器闸未放行"),
+            "{body}"
+        );
+
+        // fail-visible：不落状态不落链（条目仍 Draft，历史零新增）
+        let (status, body) = send(
+            app.clone(),
+            "GET",
+            "/v1/entries/k-a24f-2",
+            Some(&token),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["status"], "Draft");
+        let (status, body) = send(
+            app.clone(),
+            "GET",
+            "/v1/entries/k-a24f-2/history",
+            Some(&token),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body.as_array().unwrap().len(), 0, "{body}");
+    }
+
+    #[tokio::test]
+    async fn test_a24_transition_scope_guard_and_forged_quadrant() {
+        let (app, state) = build_app();
+        let propose_key = a23_create_key(&app, &state, "entries:propose").await;
+        let transition_key = a23_create_key(&app, &state, "entries:transition").await;
+        let token = register_login(&app).await;
+        send(
+            app.clone(),
+            "POST",
+            "/v1/datasets",
+            Some(&token),
+            Some(json!({
+                "dataset_id": "ds-a24g",
+                "name": "A2-4 守卫集",
+                "domain": ["tax"],
+                "dataset_kind": "knowledge"
+            })),
+        )
+        .await;
+        let (status, _) = send_api_key(
+            app.clone(),
+            "POST",
+            "/v1/invoke/propose_knowledge_entry",
+            Some(&propose_key),
+            Some(a23_propose_body(
+                "ds-a24g",
+                "k-a24g-1",
+                serde_json::Value::Null,
+            )),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED);
+
+        // ① 无 key → 401
+        let (status, _) = send_api_key(
+            app.clone(),
+            "POST",
+            "/v1/invoke/transition_entry",
+            None,
+            Some(a24_transition_body("ds-a24g", "k-a24g-1", "无 key")),
+        )
+        .await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+        // ② propose key 越权打行权端点 → 403（scope 收敛不外溢）
+        let (status, body) = send_api_key(
+            app.clone(),
+            "POST",
+            "/v1/invoke/transition_entry",
+            Some(&propose_key),
+            Some(a24_transition_body("ds-a24g", "k-a24g-1", "越权")),
+        )
+        .await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+
+        // ③ 非法 to → 400（Published 永远人工立宪不松动）
+        let (status, body) = send_api_key(
+            app.clone(),
+            "POST",
+            "/v1/invoke/transition_entry",
+            Some(&transition_key),
+            Some(json!({
+                "dataset_id": "ds-a24g",
+                "entry_id": "k-a24g-1",
+                "to": "published",
+                "cause": "伪造目标"
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+
+        // ④ 伪造象限：llm 条目绕开机器闸走人工路径（submit-candidate）→ 拒绝
+        //    （validate_llm_boundary_gated 无闸证据=llm 条目只可 Draft）
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/entries/k-a24g-1/submit-candidate",
+            Some(&token),
+            Some(json!({ "sandbox_report_id": "forged-report" })),
+        )
+        .await;
+        assert!(
+            status.as_u16() >= 400,
+            "人工路径放行 llm 条目应被拒绝: {status} {body}"
+        );
+        // 条目仍 Draft（零状态变化）
+        let (status, body) = send(
+            app.clone(),
+            "GET",
+            "/v1/entries/k-a24g-1",
+            Some(&token),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["status"], "Draft");
     }
 
     #[tokio::test]

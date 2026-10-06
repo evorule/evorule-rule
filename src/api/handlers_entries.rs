@@ -327,7 +327,7 @@ pub struct MachineGatePromoteReq {
 
 /// 现场跑机器闸执行器（不信任客户端「检查通过」声明：store 探针采集 M2-M6 事实，
 /// gate 模块纯函数出报告——同输入同结论，可回放可复算）
-fn run_machine_gate(
+pub(crate) fn run_machine_gate(
     state: &AppState,
     dataset_id: &str,
     entry: AnyEntry,
