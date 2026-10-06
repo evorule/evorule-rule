@@ -44,9 +44,10 @@ pub async fn create(
     if scope != "pull"
         && scope != crate::api::handlers_datasets::API_KEY_SCOPE_PROPOSE
         && scope != crate::api::handlers_datasets::API_KEY_SCOPE_TRANSITION
+        && scope != crate::api::handlers_writeback::API_KEY_SCOPE_WRITEBACK
     {
         return Err(ApiError::bad_request(
-            "scope 仅支持 pull、entries:propose 或 entries:transition",
+            "scope 仅支持 pull、entries:propose、entries:transition 或 writeback:rule_failure",
         ));
     }
     let (key_id, plain) = generate_key();

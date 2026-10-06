@@ -539,6 +539,21 @@ impl RuleStore {
             CREATE INDEX IF NOT EXISTS idx_audit_op_time
                 ON llm_op_audit(operation, created_at);
 
+            -- 回写通道收件队列（P1-2/RS-1：T1 追认队列形态——收件即入队，
+            -- 补丁动作等数据说话，首版只收不触发；事件原文单源 RuleFailureEvent）
+            CREATE TABLE IF NOT EXISTS writeback_events (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                tenant_id    TEXT NOT NULL,
+                dataset_id   TEXT NOT NULL,
+                entry_id     TEXT NOT NULL,
+                version_used TEXT NOT NULL,
+                failure_type TEXT,
+                event        TEXT NOT NULL,                  -- RuleFailureEvent 原文 JSON
+                received_at  TEXT NOT NULL                   -- ISO-8601 UTC
+            );
+            CREATE INDEX IF NOT EXISTS idx_writeback_tenant
+                ON writeback_events(tenant_id, received_at);
+
             -- 认证与用户身份（正交 A，MVP 单租户实例）
             CREATE TABLE IF NOT EXISTS tenants (
                 tenant_id    TEXT PRIMARY KEY,
@@ -2206,6 +2221,84 @@ impl RuleStore {
         )?;
         let mut rows = stmt.query_map(params![request_id], row_to_audit)?;
         rows.next().transpose().map_err(Into::into)
+    }
+
+    /// 回写事件收件（P1-2/RS-1）：单事务落两笔——writeback_events 队列行 +
+    /// llm_op_audit 审计面行（operation=writeback_rule_failure，request_id=wb-{id}）。
+    /// 收件即入队（T1 追认队列形态）；补丁动作后置。
+    #[allow(clippy::too_many_arguments)]
+    pub fn record_writeback_event(
+        &self,
+        tenant_id: &str,
+        dataset_id: &str,
+        entry_id: &str,
+        version_used: &str,
+        failure_type: Option<&str>,
+        event_json: &str,
+        received_at: &str,
+    ) -> Result<i64, StoreError> {
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction()?;
+        tx.execute(
+            "INSERT INTO writeback_events
+               (tenant_id, dataset_id, entry_id, version_used, failure_type, event, received_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![
+                tenant_id,
+                dataset_id,
+                entry_id,
+                version_used,
+                failure_type,
+                event_json,
+                received_at,
+            ],
+        )?;
+        let event_id = tx.last_insert_rowid();
+        tx.execute(
+            "INSERT INTO llm_op_audit
+               (request_id, operation, model, status, duration_ms, result_ref, error, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![
+                format!("wb-{event_id}"),
+                "writeback_rule_failure",
+                Option::<String>::None,
+                "received",
+                0i64,
+                entry_id,
+                Option::<String>::None,
+                received_at,
+            ],
+        )?;
+        tx.commit()?;
+        Ok(event_id)
+    }
+
+    /// 回写队列（T1 追认队列形态）：租户作用域，按收件时间倒序
+    pub fn list_writeback_events(
+        &self,
+        tenant_id: &str,
+        limit: usize,
+    ) -> Result<Vec<crate::model::writeback::WritebackEventRow>, StoreError> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id, tenant_id, dataset_id, entry_id, version_used, failure_type, event, received_at
+             FROM writeback_events WHERE tenant_id=?1
+             ORDER BY received_at DESC, id DESC LIMIT ?2",
+        )?;
+        let rows = stmt.query_map(params![tenant_id, limit as i64], |r| {
+            let event_raw: String = r.get(6)?;
+            Ok(crate::model::writeback::WritebackEventRow {
+                event_id: r.get(0)?,
+                tenant_id: r.get(1)?,
+                dataset_id: r.get(2)?,
+                entry_id: r.get(3)?,
+                version_used: r.get(4)?,
+                failure_type: r.get(5)?,
+                event: serde_json::from_str(&event_raw).unwrap_or(serde_json::Value::Null),
+                received_at: r.get(7)?,
+            })
+        })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
 
     /// 列出审计记录（按时间倒序，limit 上限）——`list_llm_audits_filtered` 的便捷封装

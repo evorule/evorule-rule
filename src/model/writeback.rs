@@ -61,6 +61,25 @@ pub fn validate_event(event: &RuleFailureEvent) -> Result<(), &'static str> {
     Ok(())
 }
 
+/// 回写事件收件行（P1-2/RS-1：T1 追认队列形态——收件即入队，按收件时间倒序可查；
+/// 补丁动作等数据说话，首版只收不触发）
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WritebackEventRow {
+    /// 队列序号（收件自增）
+    pub event_id: i64,
+    pub tenant_id: String,
+    pub dataset_id: String,
+    pub entry_id: String,
+    pub version_used: String,
+    /// 失效类型冗余列（verdict_mismatch | timeout | exception | ...；查询友好）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failure_type: Option<String>,
+    /// 事件原文（RuleFailureEvent JSON——schema 单源 [`RuleFailureEvent`]，此处不复制结构）
+    pub event: Value,
+    /// 收件时间（ISO-8601 UTC）
+    pub received_at: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

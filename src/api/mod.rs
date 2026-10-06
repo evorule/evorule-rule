@@ -36,6 +36,7 @@ pub mod handlers_llm;
 pub mod handlers_orgs;
 pub mod handlers_search;
 pub mod handlers_services;
+pub mod handlers_writeback;
 
 /// 活跃存储后端（历史批次1 配置化双后端 · 最小接线）
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -556,6 +557,13 @@ pub fn router(state: AppState) -> Router {
             post(handlers_datasets::transition_entry),
         );
 
+    // 回写通道收件（P1-2/RS-1）：执行侧 RuleFailureEvent 收件，handler 自管
+    // X-Api-Key(scope=writeback:rule_failure) 认证（同 invoke 先例）；首版只收不触发
+    let writeback = Router::new().route(
+        "/writeback/rule_failure",
+        post(handlers_writeback::receive_rule_failure),
+    );
+
     let protected = Router::new()
         .route("/me", get(handlers_auth::me))
         .route("/admin/backend", get(admin_backend))
@@ -572,6 +580,11 @@ pub fn router(state: AppState) -> Router {
         .route("/audits/auth", get(handlers_auth::audits))
         .route("/audits/lifecycle", get(handlers_auth::lifecycle_audits))
         .route("/audits/llm", get(handlers_llm::list_llm_audits))
+        // 回写队列查看（P1-2/RS-1：T1 追认队列形态，租户作用域；审批者及以上）
+        .route(
+            "/writeback/rule_failure",
+            get(handlers_writeback::list_rule_failure_queue),
+        )
         .route(
             "/datasets",
             get(handlers_datasets::list_datasets).post(handlers_datasets::create_dataset),
@@ -722,6 +735,7 @@ pub fn router(state: AppState) -> Router {
         .nest("/v1", protected)
         .nest("/v1", bundle)
         .nest("/v1", invoke)
+        .nest("/v1", writeback)
         // 存活探针独立挂载于 /v1/health:不经过 require_auth 中间件(protected 已挂),
         // 保证进程级 liveness 在认证体系异常时仍可探测
         .nest("/v1", Router::new().route("/health", get(health)))

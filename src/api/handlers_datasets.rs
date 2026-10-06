@@ -1135,7 +1135,7 @@ pub async fn transition_entry(
     // 1) 服务级 X-Api-Key（scope 收敛：仅 entries:transition 可用）
     let k = api_key_from_header(&headers)
         .ok_or_else(|| ApiError::unauthorized("缺少认证：需 X-Api-Key"))?;
-    let hash = sha256_hex(&k);
+    let hash = sha256_hex(k);
     let key = state
         .store
         .get_api_key_by_hash(&hash)?

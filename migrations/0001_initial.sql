@@ -176,6 +176,20 @@ CREATE TABLE IF NOT EXISTS llm_op_audit (
 );
 CREATE INDEX IF NOT EXISTS idx_audit_op_time ON llm_op_audit(operation, created_at);
 
+-- 回写通道收件队列（P1-2/RS-1：T1 追认队列形态——收件即入队，
+-- 补丁动作等数据说话，首版只收不触发；事件原文单源 RuleFailureEvent）
+CREATE TABLE IF NOT EXISTS writeback_events (
+    id           BIGSERIAL PRIMARY KEY,
+    tenant_id    TEXT NOT NULL,
+    dataset_id   TEXT NOT NULL,
+    entry_id     TEXT NOT NULL,
+    version_used TEXT NOT NULL,
+    failure_type TEXT,
+    event        TEXT NOT NULL,              -- RuleFailureEvent 原文 JSON
+    received_at  TEXT NOT NULL               -- ISO-8601 UTC
+);
+CREATE INDEX IF NOT EXISTS idx_writeback_tenant ON writeback_events(tenant_id, received_at);
+
 -- 设计文档 §2.4：配额与计量（历史批次模式：按日聚合）—— 预留，未接入查询层
 CREATE TABLE IF NOT EXISTS usage_records (
     id         SERIAL PRIMARY KEY,
