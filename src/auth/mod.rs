@@ -763,11 +763,11 @@ mod tests {
             32,
         ));
         assert!(AuthService::needs_rehash(&legacy_hash), "无前缀=待迁移");
-        assert!(svc.verify_password("old-secret-1", &salt, &legacy_hash));
-        assert!(!svc.verify_password("wrong", &salt, &legacy_hash));
+        assert!(svc.verify_password("old-secret-1", salt, &legacy_hash));
+        assert!(!svc.verify_password("wrong", salt, &legacy_hash));
         // 损坏存储值（长度不符/非法 hex）拒绝且不 panic
-        assert!(!svc.verify_password("old-secret-1", &salt, "abcd"));
-        assert!(!svc.verify_password("x", &salt, "a2$zz"));
+        assert!(!svc.verify_password("old-secret-1", salt, "abcd"));
+        assert!(!svc.verify_password("x", salt, "a2$zz"));
     }
 
     #[test]
