@@ -1,4 +1,4 @@
-//! 回写通道收件端点（P1-2/RS-1，11 号路线图）：POST /v1/writeback/rule_failure
+//! 回写通道收件端点（P1-2/RS-1，补齐路线图批次）：POST /v1/writeback/rule_failure
 //!
 //! 设计文档 §6 回写闭环的**收件下半程**：执行侧（evorule-server）→ evorule-rule。
 //! MVP **只收不触发**——收件落账两笔（writeback_events 队列 + llm_op_audit 审计面）
