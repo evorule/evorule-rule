@@ -1,9 +1,10 @@
 //! 认证与用户身份逻辑（历史批次 正交 A）
 //!
-//! MVP 定案（设计文档 §11，2026-08-22）：
-//! - 密码哈希：**PBKDF2-HMAC-SHA256**（OWASP 认可算法，离线可实现的 MVP 替代；
-//!   ⚠️历史批次定案为 Argon2id(m=19MiB,t=2,p=1)——本实现因离线环境无 `argon2` crate
-//!   采用 PBKDF2-HMAC-SHA256(600k 迭代)，生产级（历史批次1）必须换 Argon2id，接口不变）；
+//! MVP 定案（设计文档 §11，2026-08-22；Argon2id 升级见补齐路线图批次 RS-2）：
+//! - 密码哈希：**Argon2id**（OWASP 一线推荐，m=19MiB/t=2/p=1，OWASP 2023 参数）。
+//!   存储格式 `a2$<hex>`（前缀区分算法世代，裸字节恒时比较）；**存量迁移**：
+//!   legacy PBKDF2-HMAC-SHA256(600k) 哈希登录校验通过后透明重哈希落库
+//!   （同盐换算法，无强制重置）；PBKDF2 降级为 legacy 校验路径，迭代常量退役。
 //! - JWT：HS256 单密钥（access 15min / refresh 30d，设计文档 §7）＋ jti 撤销黑名单
 //!   （设计文档 §3.3：登出吊销 refresh，按 jti 拉黑至 exp，防刷新旋转续用）；
 //! - 注册/登录/刷新均落 auth_audits（设计文档 §6，only-append）；
@@ -11,6 +12,7 @@
 
 pub mod keyring;
 
+use argon2::{Algorithm, Argon2, Params, Version};
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
 use rand::RngCore;
@@ -21,7 +23,10 @@ use thiserror::Error;
 use crate::model::auth::{can, Action, AuthAudit, Role, TokenClaims, User};
 use crate::store::{RuleStore, StoreError};
 
-/// 默认 PBKDF2 迭代次数（OWASP 推荐 PBKDF2-HMAC-SHA256 ≥ 600k）
+/// Argon2id 哈希存储前缀（世代标记；无此前缀 = legacy PBKDF2，登录后透明迁移）
+pub const PASSWORD_HASH_PREFIX: &str = "a2$";
+/// legacy PBKDF2 迭代次数（OWASP 推荐 PBKDF2-HMAC-SHA256 ≥ 600k；**已退役**：
+/// 仅用于存量哈希 legacy 校验路径，新哈希一律 Argon2id）
 pub const DEFAULT_PBKDF2_ITERATIONS: u32 = 600_000;
 /// access token 有效期（秒）：15 min
 pub const ACCESS_TOKEN_TTL_SECS: i64 = 15 * 60;
@@ -111,7 +116,7 @@ impl AuthService {
     }
 
     // ------------------------------------------------------------------
-    // 密码哈希（PBKDF2-HMAC-SHA256）
+    // 密码哈希（Argon2id；legacy PBKDF2 仅存量校验）
     // ------------------------------------------------------------------
 
     /// 生成随机盐（16 字节，hex）
@@ -121,22 +126,42 @@ impl AuthService {
         hex(&bytes)
     }
 
-    /// PBKDF2-HMAC-SHA256（RFC 8018）
+    /// Argon2id 哈希（OWASP 2023 参数 m=19MiB/t=2/p=1），存储形态 `a2$<hex>`。
+    /// salt 参数语义不变（外部生成 hex 盐）；接口签名与升级前一致。
     pub fn hash_password(&self, password: &str, salt: &str) -> String {
-        let salt_bytes = unhex(salt);
-        let dk = pbkdf2_hmac_sha256(password.as_bytes(), &salt_bytes, self.pbkdf2_iterations, 32);
-        hex(&dk)
+        format!(
+            "{PASSWORD_HASH_PREFIX}{}",
+            hex(&argon2id_bytes(password.as_bytes(), &unhex(salt)))
+        )
     }
 
-    /// 常量时间校验（subtle，防时序攻击）
+    /// 常量时间校验（subtle，防时序攻击）。
+    /// 按存储前缀分流：`a2$`=Argon2id；否则 legacy PBKDF2-HMAC-SHA256（迭代数取实例配置）。
+    /// 两路径均为裸字节恒时比较。
     pub fn verify_password(&self, password: &str, salt: &str, expected: &str) -> bool {
-        let actual = self.hash_password(password, salt);
-        let expected_bytes = unhex(expected);
-        let actual_bytes = unhex(&actual);
-        if expected_bytes.len() != actual_bytes.len() {
-            return false;
+        if let Some(stripped) = expected.strip_prefix(PASSWORD_HASH_PREFIX) {
+            let actual = argon2id_bytes(password.as_bytes(), &unhex(salt));
+            let expected_bytes = unhex(stripped);
+            // 长度守卫：存储值损坏/被篡改时直接拒绝（格式公开，长度本身非秘密）
+            expected_bytes.len() == actual.len()
+                && bool::from(expected_bytes.as_slice().ct_eq(&actual[..]))
+        } else {
+            // legacy：升级前 PBKDF2 hex 存储（64 字节裸比较）
+            let actual = pbkdf2_hmac_sha256(
+                password.as_bytes(),
+                &unhex(salt),
+                self.pbkdf2_iterations,
+                32,
+            );
+            let expected_bytes = unhex(expected);
+            expected_bytes.len() == actual.len()
+                && bool::from(expected_bytes.as_slice().ct_eq(&actual[..]))
         }
-        bool::from(expected_bytes.ct_eq(&actual_bytes))
+    }
+
+    /// 存量哈希是否需迁移（非 `a2$` 前缀 = legacy PBKDF2，登录成功后透明重哈希）
+    pub fn needs_rehash(expected: &str) -> bool {
+        !expected.starts_with(PASSWORD_HASH_PREFIX)
     }
 
     // ------------------------------------------------------------------
@@ -387,6 +412,20 @@ impl AuthService {
             );
             return Err(AuthError::InvalidCredentials);
         }
+        // 存量透明迁移：legacy PBKDF2 哈希校验通过 → 就地重哈希 Argon2id 落库
+        //（同盐换算法，无强制重置；落库失败仅 warn，不掩盖登录主流程）
+        if Self::needs_rehash(&user.password_hash) {
+            let rehashed = self.hash_password(password, &user.salt);
+            let at = iso_from_unix(now);
+            match store.update_user_password_hash(&user.user_id, &rehashed, &at) {
+                Ok(()) => {
+                    tracing::info!(user_id = %user.user_id, "密码哈希透明迁移: PBKDF2 → Argon2id");
+                }
+                Err(e) => {
+                    tracing::warn!(user_id = %user.user_id, "密码哈希迁移落库失败（下次登录重试）: {e}");
+                }
+            }
+        }
         // B1：token 角色 = 该 org 的有效角色（同用户跨 org 异角色）
         let role = Self::effective_role(store, &user, tenant_id)?;
         let tokens = self.tokens_for_in(&user, tenant_id, role, now);
@@ -576,7 +615,19 @@ fn hmac_sha256(key: &[u8], data: &[u8]) -> [u8; 32] {
     outer.finalize().into()
 }
 
-/// PBKDF2-HMAC-SHA256（RFC 8018），输出 dk_len 字节
+/// Argon2id（OWASP 2023 参数 m=19MiB/t=2/p=1），输出 32 字节裸哈希。
+/// 存储层由调用方加世代前缀（`a2$`），salt 为原始字节。
+fn argon2id_bytes(password: &[u8], salt: &[u8]) -> [u8; 32] {
+    // m=19456 KiB(19 MiB), t=2, p=1, 输出 32B —— OWASP Password Storage Cheat Sheet 参数
+    let params = Params::new(19_456, 2, 1, Some(32)).expect("Argon2 参数合法");
+    let a2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
+    let mut out = [0u8; 32];
+    a2.hash_password_into(password, salt, &mut out)
+        .expect("Argon2id 哈希不应失败（参数与缓冲区已定长校验）");
+    out
+}
+
+/// PBKDF2-HMAC-SHA256（RFC 8018），输出 dk_len 字节（legacy 存量校验路径专用）
 fn pbkdf2_hmac_sha256(password: &[u8], salt: &[u8], iterations: u32, dk_len: usize) -> Vec<u8> {
     let mut dk = Vec::with_capacity(dk_len);
     let mut block_index: u32 = 1;
@@ -684,16 +735,92 @@ mod tests {
     }
 
     #[test]
-    fn test_pbkdf2_roundtrip() {
-        let svc = AuthService::with_iterations("s", 1_000); // 测试用小迭代加速
+    fn test_argon2id_roundtrip() {
+        let svc = AuthService::with_iterations("s", 1_000); // 迭代数仅影响 legacy 路径
         let salt = AuthService::generate_salt();
         let hash = svc.hash_password("secret-pass-1", &salt);
+        assert!(
+            hash.starts_with(PASSWORD_HASH_PREFIX),
+            "新哈希应带 Argon2id 世代前缀: {hash}"
+        );
         assert_ne!(hash, "secret-pass-1");
         assert!(svc.verify_password("secret-pass-1", &salt, &hash));
         assert!(!svc.verify_password("wrong-pass", &salt, &hash));
         // 不同盐 → 不同哈希
         let salt2 = AuthService::generate_salt();
         assert_ne!(svc.hash_password("secret-pass-1", &salt2), hash);
+    }
+
+    #[test]
+    fn test_legacy_pbkdf2_still_verifies() {
+        // 升级前存量形态：PBKDF2 hex 无前缀 → verify 走 legacy 路径恒时校验
+        let svc = AuthService::with_iterations("s", 1_000);
+        let salt = "00112233445566778899aabbccddeeff";
+        let legacy_hash = hex(&pbkdf2_hmac_sha256(
+            b"old-secret-1",
+            &unhex(salt),
+            1_000,
+            32,
+        ));
+        assert!(AuthService::needs_rehash(&legacy_hash), "无前缀=待迁移");
+        assert!(svc.verify_password("old-secret-1", &salt, &legacy_hash));
+        assert!(!svc.verify_password("wrong", &salt, &legacy_hash));
+        // 损坏存储值（长度不符/非法 hex）拒绝且不 panic
+        assert!(!svc.verify_password("old-secret-1", &salt, "abcd"));
+        assert!(!svc.verify_password("x", &salt, "a2$zz"));
+    }
+
+    #[test]
+    fn test_login_transparent_rehash() {
+        // 存量迁移三判据：首登自动升级落库（a2$ 前缀）→ 二次登录走新路径 → 无强制重置
+        let store = store();
+        let tenant = seeded(&store);
+        let svc = AuthService::with_iterations("s", 1_000);
+        let now = 1_700_000_000i64;
+        // 直插 legacy 用户（模拟升级前存量，不经 register）
+        let salt = AuthService::generate_salt();
+        let legacy_hash = hex(&pbkdf2_hmac_sha256(
+            b"legacy-pass-1",
+            &unhex(&salt),
+            1_000,
+            32,
+        ));
+        let user = User {
+            user_id: "usr_legacy".into(),
+            tenant_id: tenant.clone(),
+            username: "legacy".into(),
+            password_hash: legacy_hash,
+            salt,
+            role: Role::Viewer,
+            disabled: false,
+            created_at: "t".into(),
+            updated_at: "t".into(),
+        };
+        store.create_user(&user).expect("seed legacy user");
+
+        // 首登：legacy 校验通过 + 透明重哈希 Argon2id 落库
+        let tokens = svc
+            .login(&store, &tenant, "legacy", "legacy-pass-1", now)
+            .expect("legacy 首登应成功");
+        assert!(!tokens.access_token.is_empty());
+        let migrated = store
+            .get_user("usr_legacy")
+            .expect("get user")
+            .expect("user exists");
+        assert!(
+            migrated.password_hash.starts_with(PASSWORD_HASH_PREFIX),
+            "首登后落库应为 Argon2id 形态: {}",
+            migrated.password_hash
+        );
+
+        // 二次登录：走 Argon2id 路径（同密码无重置）
+        assert!(svc
+            .login(&store, &tenant, "legacy", "legacy-pass-1", now + 1)
+            .is_ok());
+        // 错误密码照常拒绝
+        assert!(svc
+            .login(&store, &tenant, "legacy", "wrong-password", now + 2)
+            .is_err());
     }
 
     #[test]

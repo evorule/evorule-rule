@@ -4550,6 +4550,21 @@ impl RuleStore {
         Ok(())
     }
 
+    /// 更新密码哈希（legacy PBKDF2 → Argon2id 登录期透明迁移专用；盐不变仅换算法世代）
+    pub fn update_user_password_hash(
+        &self,
+        user_id: &str,
+        password_hash: &str,
+        at: &str,
+    ) -> Result<(), StoreError> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "UPDATE users SET password_hash = ?1, updated_at = ?2 WHERE user_id = ?3",
+            params![password_hash, at, user_id],
+        )?;
+        Ok(())
+    }
+
     // ------------------------------------------------------------------
     // B1 双层租户：org 与成员关系（2026-08-31 用户裁定）
     // ------------------------------------------------------------------
