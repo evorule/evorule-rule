@@ -72,6 +72,10 @@ const EMBEDDED_SERVICE_FILES: &[(&str, &str)] = &[
         "indicator-services",
         include_str!("official_native_services.indicator-services.embedded.json"),
     ),
+    (
+        "template-services",
+        include_str!("official_native_services.template-services.embedded.json"),
+    ),
 ];
 
 /// 官方预置原生服务种子（声明文件化；泛化至多插件聚合）。
@@ -201,7 +205,7 @@ mod tests {
     #[test]
     fn test_embedded_native_services_snapshot() {
         /// 快照期望表（聚合序 = EMBEDDED_SERVICE_FILES 声明序：
-        /// demo-services → physics-services → indicator-services）。
+        /// demo-services → physics-services → indicator-services → template-services）。
         /// 条目 = (name, sensitive, description)，与 SSOT 声明文件逐字对应。
         const EXPECTED_SERVICES: &[(&str, bool, &str)] = &[
             // ---- demo-services ----
@@ -221,6 +225,8 @@ mod tests {
             ("indicator_ema", false, "指数移动平均 EMA(span N,pandas ewm(span=N, adjust=False) 语义,递推逐位对齐)"),
             ("indicator_macd", false, "MACD 快慢线与柱(默认 12/26/9,三组 ewm(span, adjust=False) 组合)"),
             ("indicator_rsi", false, "RSI(默认 14,Wilder 平滑 ewm(alpha=1/N, adjust=False),分类语义与参考实现逐分支对齐)"),
+            // ---- template-services ----
+            ("template_render", false, "模板渲染(上下文+模板→JSON/Markdown/纯文本,{{}} 家族语法,if/for 最小集,确定性纯函数)"),
         ];
 
         let seed = official_native_services();

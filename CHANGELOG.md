@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Added — 服务目录种子新增 template_render（template-services 插件）
+
+- 官方预置原生服务 +1：`template_render`（非敏感）——上下文 + 模板 → JSON / Markdown / 纯文本的确定性渲染（`{{}}` 家族语法，if/for 最小集）。嵌入副本 `src/model/official_native_services.template-services.embedded.json` 由 sync-native-services.ps1 从执行侧 SSOT 同步，快照期望表随动更新。
+
 ### Changed — PostgreSQL migrations 单文件拆分为增量序列
 
 - `migrations/0001_initial.sql` 回退为初始基线态，后续 schema 演进按 git 考古还原为 `0002_service_catalog` → `0008_writeback_events` 增量序列（含 org 双层租户 / 知识资产化三表 / dataset_version_snapshots / 机器闸审计列等此前 pg 迁移缺项）。
