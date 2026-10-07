@@ -775,7 +775,8 @@ impl PgStore {
         entry_id: &str,
     ) -> Result<Vec<crate::model::lifecycle::StateChange>, PgError> {
         let rows = sqlx::query(
-            "SELECT from_state, to_state, at, by, cause FROM entry_state_history
+            "SELECT from_state, to_state, at, by, cause, gate, tier, post_review_required
+             FROM entry_state_history
              WHERE dataset_id = $1 AND entry_id = $2 ORDER BY id",
         )
         .bind(dataset_id)
@@ -791,6 +792,12 @@ impl PgStore {
                 by: r.get("by"),
                 cause: r.get("cause"),
                 published_as: None,
+                // 机器闸行权通路三列（0007 增量列；存量行 NULL = human 语义）
+                gate: r.get::<Option<String>, _>("gate"),
+                tier: r.get::<Option<String>, _>("tier"),
+                post_review_required: r
+                    .get::<Option<i32>, _>("post_review_required")
+                    .map(|v| v != 0),
             });
         }
         Ok(out)

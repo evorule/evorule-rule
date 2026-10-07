@@ -1,11 +1,18 @@
--- 0001_initial.sql —— evorule-rule PostgreSQL 初始 schema（历史批次1 §2.3）
+-- 0001_initial.sql —— evorule-rule PostgreSQL 初始 schema（初始基线态）
 --
 -- 对齐 store/mod.rs 的 SQLite 建表（31/33/34/35/36/37/43/44），完整复刻全部表；
--- 含历史批次新增 dataset_versions 快照表（C 类数据集版本↔条目内容归因）。
+-- 含数据集版本↔条目内容归因快照表 dataset_versions。
 -- 生产级后续，默认构建不编译（见 Cargo.toml `postgres` feature / store/pg.rs）。
 --
 -- 注：当前为 schema 基线快照。执行侧动态迁移（sqlx migrate 版本化 + 回滚脚本）
 -- 在接入 PgStore 查询层时启用；本文件以幂等 DDL 为主，便于首次建库。
+--
+-- migrations 拆分（schema 治理批）：本文件回退为初始引入时的基线态（不含后
+-- 演进的 writeback_events——见 0008）；后续演进按 git 考古还原为 0002..0008
+-- 增量序列。版本表 = sqlx 内置 _sqlx_migrations（版本化+逐版本增量跳过，
+-- workspace 迁移器同模式）。注意：本文件内容相对旧快照有变更，已按旧版
+-- 0001 建库的存量 pg 实例需按 sqlx checksum 校验口径处置（拆分前 pg 存储
+-- 为 feature 门控未部署态，无存量实例受影响）。
 
 -- 认证与用户身份（正交 A）
 CREATE TABLE IF NOT EXISTS tenants (
@@ -175,20 +182,6 @@ CREATE TABLE IF NOT EXISTS llm_op_audit (
     created_at  TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_audit_op_time ON llm_op_audit(operation, created_at);
-
--- 回写通道收件队列（P1-2/RS-1：T1 追认队列形态——收件即入队，
--- 补丁动作等数据说话，首版只收不触发；事件原文单源 RuleFailureEvent）
-CREATE TABLE IF NOT EXISTS writeback_events (
-    id           BIGSERIAL PRIMARY KEY,
-    tenant_id    TEXT NOT NULL,
-    dataset_id   TEXT NOT NULL,
-    entry_id     TEXT NOT NULL,
-    version_used TEXT NOT NULL,
-    failure_type TEXT,
-    event        TEXT NOT NULL,              -- RuleFailureEvent 原文 JSON
-    received_at  TEXT NOT NULL               -- ISO-8601 UTC
-);
-CREATE INDEX IF NOT EXISTS idx_writeback_tenant ON writeback_events(tenant_id, received_at);
 
 -- 设计文档 §2.4：配额与计量（历史批次模式：按日聚合）—— 预留，未接入查询层
 CREATE TABLE IF NOT EXISTS usage_records (

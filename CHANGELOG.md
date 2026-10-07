@@ -4,6 +4,13 @@
 
 ## [Unreleased]
 
+### Changed — PostgreSQL migrations 单文件拆分为增量序列
+
+- `migrations/0001_initial.sql` 回退为初始基线态，后续 schema 演进按 git 考古还原为 `0002_service_catalog` → `0008_writeback_events` 增量序列（含 org 双层租户 / 知识资产化三表 / dataset_version_snapshots / 机器闸审计列等此前 pg 迁移缺项）。
+- 迁移版本表 = sqlx 内置 `_sqlx_migrations`（版本化 + 逐版本增量跳过）；真实 PostgreSQL 16 实测：全新库 8 个版本依序应用全绿，已迁移库重连校验+全跳过。
+- 注意：0001 内容相对旧快照有变更，按旧版 0001 建过库的存量 pg 实例需按 sqlx checksum 校验口径处置（修复前 pg 存储为 feature 门控未部署态，无存量实例受影响）。
+- pg 存储层同批清偿：`postgres` feature 编译修复（StateChange 初始化器随机器闸三列对齐）。
+
 ### Changed — 认证密码哈希升级 PBKDF2 → Argon2id
 
 - 新密码哈希一律 **Argon2id**（OWASP 2023 参数 m=19MiB/t=2/p=1），存储形态 `a2$<hex>`（世代前缀）。
