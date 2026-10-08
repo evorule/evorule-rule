@@ -2805,6 +2805,7 @@ impl RuleStore {
     ///
     /// `recipe_snapshot` 仅在请求版本 = 当前版本时生效（透传 [`Self::export_bundle`]）；
     /// 历史版本重建不携带策略快照——历史包内容应与历史时刻一致，不关联当前策略。
+    #[allow(clippy::too_many_arguments)] // 导出链参数各自有类型语义，合并结构徒增耦合（同 store 侧既有口径）
     pub fn export_bundle_at(
         &self,
         dataset_id: &str,

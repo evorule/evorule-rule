@@ -28,6 +28,7 @@ impl BundleExporter {
     /// - `catalog`：服务目录（name → 条目）。C3/C4/C6 服务契约 SSOT 下沉：数据集声明的
     ///   服务若缺 version/io_contract/description 从目录补齐；`sensitive` 以目录为权威
     ///   （防止声明降级敏感标记，C6）。补齐在 content_hash 计算之前完成，保证哈希覆盖最终契约。
+    #[allow(clippy::too_many_arguments)] // 导出链参数各自有类型语义（tests/catalog/快照…），合并结构徒增耦合（同 store 侧既有口径）
     pub fn export(
         dataset: &RuleDataset,
         entries: &[RuleEntry],
@@ -90,6 +91,7 @@ impl BundleExporter {
 
     /// knowledge 数据集导出（Q12 数据资产化 R5）：数据条目 → `entry_kind=Knowledge` bundle。
     /// `rule_body` 字段承载领域 payload（零转译条目体，见 evorule-bundle `EntryKind`）。
+    #[allow(clippy::too_many_arguments)] // 同 export
     pub fn export_knowledge(
         dataset: &RuleDataset,
         entries: &[crate::model::knowledge::KnowledgeEntry],
@@ -120,6 +122,7 @@ impl BundleExporter {
     ///
     /// `recipe_snapshot`：策略快照——由调用方如实附带（带证据导出链），
     /// 缺省 None 不序列化（字节兼容）；GET 历史重建链不携带（历史版本不关联当前策略）。
+    #[allow(clippy::too_many_arguments)] // 同 export
     fn finish(
         dataset: &RuleDataset,
         entries: Vec<BundleEntry>,
