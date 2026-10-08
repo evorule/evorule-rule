@@ -2010,6 +2010,101 @@ mod tests {
         );
     }
 
+    /// O-377① 批 1：recipe_snapshot 导出契约（POST 随行 / 缺省不序列化 / GET 不带）
+    #[tokio::test]
+    async fn test_export_recipe_snapshot_contract() {
+        let (app, _state) = build_app();
+        let token = register_login(&app).await;
+
+        // 建数据集 + 加条目（与既有导出测试同夹具）
+        send(
+            app.clone(),
+            "POST",
+            "/v1/datasets",
+            Some(&token),
+            Some(json!({
+                "dataset_id": "ds-tax-01",
+                "name": "税务合规规则集",
+                "domain": ["tax"],
+            })),
+        )
+        .await;
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/datasets/ds-tax-01/entries",
+            Some(&token),
+            Some(json!({
+                "entry_id": "rule-01",
+                "version": 1,
+                "domain": "tax",
+                "rule_body": { "rule_id": "tax-01", "transform": [{"type": "set", "params": {"attr": "x", "operation": "set", "value": 1}}] }
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "{body}");
+
+        // POST 带快照导出：逐字段随行（全包哈希覆盖由契约层负验证守护）
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/bundles/export",
+            Some(&token),
+            Some(json!({
+                "dataset_id": "ds-tax-01",
+                "version": "v1",
+                "tests": { "verdict": "pass", "subset": ["human:test"], "fixtures": [] },
+                "recipe_snapshot": {
+                    "recipe_version": "memory-v1.0",
+                    "recipe": { "recall": { "top_k": 5 } },
+                    "snapshot_at": "2026-10-08T00:00:00Z"
+                }
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["recipe_snapshot"]["recipe_version"], "memory-v1.0");
+        assert_eq!(body["recipe_snapshot"]["recipe"]["recall"]["top_k"], 5);
+        assert_eq!(
+            body["recipe_snapshot"]["snapshot_at"],
+            "2026-10-08T00:00:00Z"
+        );
+
+        // POST 缺省（请求体无 recipe_snapshot 键）：响应不含该字段（字节兼容）
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/bundles/export",
+            Some(&token),
+            Some(json!({
+                "dataset_id": "ds-tax-01",
+                "version": "v1",
+                "tests": { "verdict": "fail", "subset": [], "fixtures": [] }
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert!(
+            body.get("recipe_snapshot").is_none(),
+            "缺省导出不得序列化 recipe_snapshot: {body}"
+        );
+
+        // GET 导出：无请求体不携带快照（带快照走 POST /bundles/export）
+        let (status, body) = send(
+            app.clone(),
+            "GET",
+            "/v1/bundles/datasets/ds-tax-01/versions/v1",
+            Some(&token),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert!(
+            body.get("recipe_snapshot").is_none(),
+            "GET 导出不携带策略快照: {body}"
+        );
+    }
+
     /// 测试辅助：直接注册 admin 并返回 access token
     async fn admin_token(state: &AppState) -> String {
         let now = unix_now();
@@ -3007,6 +3102,7 @@ mod tests {
                 "eng",
                 "2026-08-02T00:00:00Z",
                 "inst-001",
+                None,
             )
             .unwrap();
 

@@ -951,6 +951,7 @@ async fn export_for(
         by,
         &iso_from_unix(unix_now()),
         &state.instance_id,
+        None, // 拉取路径不携带策略快照（快照随带证据导出链 POST /bundles/export）
     )?;
     Ok(Json(bundle))
 }

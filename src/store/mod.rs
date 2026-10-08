@@ -15,7 +15,7 @@ pub mod pg;
 
 use crate::bundle::{
     BundleEntry, BundleError, BundleExporter, BundleImporter, BundleTests, DatasetBundle,
-    EntryKind, ImportResult,
+    EntryKind, ImportResult, RecipeSnapshot,
 };
 use crate::model::auth::{ApiKey, AuthAudit, Org, Role, Tenant, User, UserOrg};
 use crate::model::dataset::{DatasetKind, Meta, RuleDataset, Visibility};
@@ -731,9 +731,18 @@ impl RuleStore {
             [],
         );
         // I17 追认语义：追认标记两列×两表（NULL=未追认；追认=覆写审批者+时点）
-        let _ = conn.execute("ALTER TABLE entry_state_history ADD COLUMN ratified_by TEXT", []);
-        let _ = conn.execute("ALTER TABLE entry_state_history ADD COLUMN ratified_at TEXT", []);
-        let _ = conn.execute("ALTER TABLE knowledge_state_history ADD COLUMN ratified_by TEXT", []);
+        let _ = conn.execute(
+            "ALTER TABLE entry_state_history ADD COLUMN ratified_by TEXT",
+            [],
+        );
+        let _ = conn.execute(
+            "ALTER TABLE entry_state_history ADD COLUMN ratified_at TEXT",
+            [],
+        );
+        let _ = conn.execute(
+            "ALTER TABLE knowledge_state_history ADD COLUMN ratified_by TEXT",
+            [],
+        );
         let _ = conn.execute(
             "ALTER TABLE knowledge_state_history ADD COLUMN ratified_at TEXT",
             [],
@@ -2737,6 +2746,7 @@ impl RuleStore {
     ///
     /// `tests` 为沙箱验证证据（闸门一产出），由调用方如实提供；`instance_id` 为真实发布者身份
     /// （既定设计决策 白标不掩盖）。不校验数据集状态——导出任意状态均可（消费交付由 `is_publicly_pullable` 把关）。
+    /// `recipe_snapshot`：策略快照（35 号批 1），由调用方如实附带，缺省 None 不序列化。
     pub fn export_bundle(
         &self,
         dataset_id: &str,
@@ -2744,6 +2754,7 @@ impl RuleStore {
         by: &str,
         at: &str,
         instance_id: &str,
+        recipe_snapshot: Option<RecipeSnapshot>,
     ) -> Result<DatasetBundle, StoreError> {
         let ds = self
             .get_dataset(dataset_id)?
@@ -2766,6 +2777,7 @@ impl RuleStore {
                     at,
                     instance_id,
                     &catalog,
+                    recipe_snapshot,
                 ))
             }
             DatasetKind::Knowledge => {
@@ -2778,6 +2790,7 @@ impl RuleStore {
                     at,
                     instance_id,
                     &catalog,
+                    recipe_snapshot,
                 ))
             }
         }
@@ -2789,6 +2802,9 @@ impl RuleStore {
     /// - 历史版本 → `dataset_version_snapshots` 全量快照重建（升版时刻留档，与当时内容一致）；
     /// - 版本不在链中 → `DatasetNotFound` 语义不适用，走 `VersionSnapshotMissing` 前先校验链；
     /// - 历史版本无快照（启用前升版的存量库）→ `VersionSnapshotMissing` 显式拒绝，不伪造。
+    ///
+    /// `recipe_snapshot` 仅在请求版本 = 当前版本时生效（透传 [`Self::export_bundle`]）；
+    /// 历史版本重建不携带策略快照——历史包内容应与历史时刻一致，不关联当前策略（35 号批 1）。
     pub fn export_bundle_at(
         &self,
         dataset_id: &str,
@@ -2797,6 +2813,7 @@ impl RuleStore {
         by: &str,
         at: &str,
         instance_id: &str,
+        recipe_snapshot: Option<RecipeSnapshot>,
     ) -> Result<DatasetBundle, StoreError> {
         let ds = self
             .get_dataset(dataset_id)?
@@ -2808,7 +2825,7 @@ impl RuleStore {
             });
         }
         if ds.versioning.current == version {
-            return self.export_bundle(dataset_id, tests, by, at, instance_id);
+            return self.export_bundle(dataset_id, tests, by, at, instance_id, recipe_snapshot);
         }
         let mut rules = Vec::new();
         let mut knowledges = Vec::new();
@@ -2853,7 +2870,7 @@ impl RuleStore {
             .collect();
         Ok(match ds_hist.dataset_kind {
             DatasetKind::RuleSet => {
-                BundleExporter::export(&ds_hist, &rules, tests, by, at, instance_id, &catalog)
+                BundleExporter::export(&ds_hist, &rules, tests, by, at, instance_id, &catalog, None)
             }
             DatasetKind::Knowledge => BundleExporter::export_knowledge(
                 &ds_hist,
@@ -2863,6 +2880,7 @@ impl RuleStore {
                 at,
                 instance_id,
                 &catalog,
+                None,
             ),
         })
     }
@@ -5309,10 +5327,7 @@ mod tests {
         let err = store
             .publish_dataset("ds-tax-2024", "publisher", "t", "org")
             .unwrap_err();
-        assert!(
-            err.to_string().contains("I17"),
-            "未追认必须拒绝发布: {err}"
-        );
+        assert!(err.to_string().contains("I17"), "未追认必须拒绝发布: {err}");
         // 仅入一次:重复查询不产生重复行;队列仍 1
         assert_eq!(store.machine_gate_post_review_queue(100).unwrap().len(), 1);
         // 追认:覆写 1 行→队列退出
@@ -5320,7 +5335,10 @@ mod tests {
             .ratify_post_review("ds-tax-2024", "tax-001", "human-r1", "t2")
             .unwrap();
         assert_eq!(n, 1, "恰覆写 Active 行");
-        assert!(store.machine_gate_post_review_queue(100).unwrap().is_empty());
+        assert!(store
+            .machine_gate_post_review_queue(100)
+            .unwrap()
+            .is_empty());
         // 追认后发布通过
         store
             .publish_dataset("ds-tax-2024", "publisher", "t", "org")
@@ -5330,7 +5348,8 @@ mod tests {
             .get_entry_state_history("ds-tax-2024", "tax-001")
             .unwrap();
         assert!(
-            hist.iter().any(|h| h.ratified_by.as_deref() == Some("human-r1")),
+            hist.iter()
+                .any(|h| h.ratified_by.as_deref() == Some("human-r1")),
             "追认留痕在历史行"
         );
     }
@@ -5722,7 +5741,14 @@ mod tests {
             verdict: TestVerdict::Pass,
         };
         let bundle = store
-            .export_bundle("ds-tax-2024", &tests, "publisher-01", "t2", "org-evorule")
+            .export_bundle(
+                "ds-tax-2024",
+                &tests,
+                "publisher-01",
+                "t2",
+                "org-evorule",
+                None,
+            )
             .unwrap();
 
         // 注入失败源：新条目 INSERT 即 ABORT（DELETE/UPDATE 不受影响——
@@ -5792,7 +5818,14 @@ mod tests {
             verdict: TestVerdict::Pass,
         };
         let bundle = store
-            .export_bundle("ds-tax-2024", &tests, "publisher-01", "t2", "org-evorule")
+            .export_bundle(
+                "ds-tax-2024",
+                &tests,
+                "publisher-01",
+                "t2",
+                "org-evorule",
+                None,
+            )
             .unwrap();
 
         // 注入失败源：数据集行 UPDATE 即 ABORT（发生在删旧条目之后——
@@ -6792,6 +6825,7 @@ mod tests {
                 "publisher-01",
                 "2026-08-21T12:00:00Z",
                 "org-evorule",
+                None,
             )
             .unwrap();
         assert_eq!(bundle.audit.source_version, "v1");
@@ -6804,7 +6838,7 @@ mod tests {
         assert_eq!(r.verdict, TestVerdict::Pass);
         // 缺失数据集
         let err = store
-            .export_bundle("nope", &tests, "x", "t", "org")
+            .export_bundle("nope", &tests, "x", "t", "org", None)
             .unwrap_err();
         assert!(matches!(err, StoreError::DatasetNotFound(_)));
     }
@@ -6854,6 +6888,7 @@ mod tests {
                 "publisher-01",
                 "2026-08-31T12:00:00Z",
                 "org-evorule",
+                None,
             )
             .unwrap();
         assert_eq!(bundle.dataset.event_schemas.len(), 1);
@@ -6972,7 +7007,14 @@ mod tests {
         store.add_entry(&entry).unwrap();
         // 当前版本（v1）活条目导出基线
         let live = store
-            .export_bundle("ds-tax-2024", &BundleTests::unverified(), "u", "t", "inst")
+            .export_bundle(
+                "ds-tax-2024",
+                &BundleTests::unverified(),
+                "u",
+                "t",
+                "inst",
+                None,
+            )
             .unwrap();
         // 升版 v1 → v2：v1 内容留档
         store
@@ -7022,6 +7064,7 @@ mod tests {
                 "u",
                 "t",
                 "inst",
+                None,
             )
             .unwrap();
         assert_eq!(hist.dataset.versioning.current, "v1");
@@ -7040,9 +7083,101 @@ mod tests {
                 "u",
                 "t",
                 "inst",
+                None,
             )
             .unwrap();
         assert_eq!(cur.entries.len(), 2);
+    }
+
+    // ==================================================================
+    // O-377① 批 1：recipe_snapshot 导出链（当前版本随行 / 历史重建不带）
+    // ==================================================================
+
+    #[test]
+    fn test_recipe_snapshot_current_export_and_historical_absent() {
+        use crate::bundle::{BundleTests, RecipeSnapshot};
+
+        fn sample_snapshot() -> RecipeSnapshot {
+            RecipeSnapshot {
+                recipe_version: "memory-v1.0".into(),
+                recipe: serde_json::json!({"recall": {"top_k": 5}}),
+                snapshot_at: "2026-10-08T00:00:00Z".into(),
+            }
+        }
+
+        let store = RuleStore::in_memory().unwrap();
+        store.create_dataset(&tax_dataset()).unwrap();
+        store.add_entry(&draft_entry()).unwrap();
+
+        // 当前版本导出随行快照：值逐字段一致
+        let with_snap = store
+            .export_bundle(
+                "ds-tax-2024",
+                &BundleTests::unverified(),
+                "u",
+                "t",
+                "inst",
+                Some(sample_snapshot()),
+            )
+            .unwrap();
+        assert_eq!(with_snap.recipe_snapshot.as_ref(), Some(&sample_snapshot()));
+        // 序列化产物含该字段（哈希覆盖由契约层负验证守护，此处断言字段在场）
+        let json_text = serde_json::to_string(&with_snap).unwrap();
+        assert!(json_text.contains("recipe_snapshot"));
+
+        // 缺省导出：None 不序列化（字节兼容，旧读取方可解析）
+        let no_snap = store
+            .export_bundle(
+                "ds-tax-2024",
+                &BundleTests::unverified(),
+                "u",
+                "t",
+                "inst",
+                None,
+            )
+            .unwrap();
+        assert!(no_snap.recipe_snapshot.is_none());
+        let json_text = serde_json::to_string(&no_snap).unwrap();
+        assert!(
+            !json_text.contains("recipe_snapshot"),
+            "None 不得出现在序列化产物（skip_serializing_if 契约）"
+        );
+
+        // 升版制造历史版本 v1
+        store
+            .create_dataset_version("ds-tax-2024", BumpKind::Major, "eng", "t")
+            .unwrap();
+
+        // 历史版本重建：即使调用方传入快照也被忽略（历史包不关联当前策略）
+        let hist = store
+            .export_bundle_at(
+                "ds-tax-2024",
+                "v1",
+                &BundleTests::unverified(),
+                "u",
+                "t",
+                "inst",
+                Some(sample_snapshot()),
+            )
+            .unwrap();
+        assert!(
+            hist.recipe_snapshot.is_none(),
+            "历史版本导出不得携带当前策略快照"
+        );
+
+        // 当前版本经 _at 路径导出：快照如实随行
+        let cur = store
+            .export_bundle_at(
+                "ds-tax-2024",
+                "v2",
+                &BundleTests::unverified(),
+                "u",
+                "t",
+                "inst",
+                Some(sample_snapshot()),
+            )
+            .unwrap();
+        assert_eq!(cur.recipe_snapshot.as_ref(), Some(&sample_snapshot()));
     }
 
     #[test]
@@ -7072,6 +7207,7 @@ mod tests {
                 "u",
                 "t",
                 "inst",
+                None,
             )
             .unwrap_err();
         assert!(
@@ -7087,6 +7223,7 @@ mod tests {
                 "u",
                 "t",
                 "inst",
+                None,
             )
             .unwrap_err();
         assert!(matches!(err, StoreError::VersionSnapshotMissing { .. }));
@@ -7597,6 +7734,8 @@ mod tests {
                 fixtures: vec![],
                 verdict: crate::bundle::TestVerdict::Pass,
             },
+            // 外部造包 fixture 无策略快照（None 不序列化）
+            recipe_snapshot: None,
             audit: crate::bundle::BundleAudit {
                 exported_at: "t1".into(),
                 exported_by: "partner-x".into(),

@@ -9,7 +9,7 @@
 pub use evorule_bundle::{
     BundleAudit, BundleDatasetMeta, BundleEntry, BundleError, BundleImporter, BundleTests,
     BundleTrimmer, DatasetBundle, DomainSchemaResolver, EntryFilter, EntryKind, ImportResult,
-    TestVerdict, ViewRef, BUNDLE_SCHEMA_VERSION,
+    RecipeSnapshot, TestVerdict, ViewRef, BUNDLE_SCHEMA_VERSION,
 };
 
 use crate::model::dataset::RuleDataset;
@@ -36,9 +36,19 @@ impl BundleExporter {
         at: &str,
         instance_id: &str,
         catalog: &std::collections::BTreeMap<String, ServiceCatalogEntry>,
+        recipe_snapshot: Option<RecipeSnapshot>,
     ) -> DatasetBundle {
         let bundle_entries = entries.iter().map(Self::rule_entry_to_bundle).collect();
-        Self::finish(dataset, bundle_entries, tests, by, at, instance_id, catalog)
+        Self::finish(
+            dataset,
+            bundle_entries,
+            tests,
+            by,
+            at,
+            instance_id,
+            catalog,
+            recipe_snapshot,
+        )
     }
 
     /// RuleEntry → BundleEntry 映射（导出与 B3 条目查询过滤共用同一视图，防口径漂移）
@@ -88,15 +98,28 @@ impl BundleExporter {
         at: &str,
         instance_id: &str,
         catalog: &std::collections::BTreeMap<String, ServiceCatalogEntry>,
+        recipe_snapshot: Option<RecipeSnapshot>,
     ) -> DatasetBundle {
         let bundle_entries = entries
             .iter()
             .map(Self::knowledge_entry_to_bundle)
             .collect();
-        Self::finish(dataset, bundle_entries, tests, by, at, instance_id, catalog)
+        Self::finish(
+            dataset,
+            bundle_entries,
+            tests,
+            by,
+            at,
+            instance_id,
+            catalog,
+            recipe_snapshot,
+        )
     }
 
     /// 公共收尾：服务契约下沉补齐 + 哈希覆盖（规则/数据导出共用，防逻辑漂移）
+    ///
+    /// `recipe_snapshot`：策略快照（35 号批 1）——由调用方如实附带（带证据导出链），
+    /// 缺省 None 不序列化（字节兼容）；GET 历史重建链不携带（历史版本不关联当前策略）。
     fn finish(
         dataset: &RuleDataset,
         entries: Vec<BundleEntry>,
@@ -105,6 +128,7 @@ impl BundleExporter {
         at: &str,
         instance_id: &str,
         catalog: &std::collections::BTreeMap<String, ServiceCatalogEntry>,
+        recipe_snapshot: Option<RecipeSnapshot>,
     ) -> DatasetBundle {
         let source_version = dataset.versioning.current.clone();
         // C3/C4/C6：服务契约 SSOT 下沉（见 doc 注释）
@@ -146,6 +170,7 @@ impl BundleExporter {
                 event_schemas: dataset.event_schemas.clone(),
             },
             entries,
+            recipe_snapshot,
             data_dependencies: enriched_deps,
             tests: tests.clone(),
             audit: BundleAudit {

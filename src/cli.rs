@@ -426,6 +426,8 @@ pub fn build_bundle_from_dir(
         // 闸门一：缺省"未验证"证据（verdict=fail）——服务端如实拒绝，CLI 提示走测试工作台；
         // 绝不默认 Pass（T0 纪律）
         tests: BundleTests::unverified(),
+        // CLI 目录组装无策略资产语境，不带快照（None 不序列化，字节兼容）
+        recipe_snapshot: None,
         audit: evorule_bundle::BundleAudit {
             exported_at: iso_now(),
             exported_by: "cli-bulk-import".into(),

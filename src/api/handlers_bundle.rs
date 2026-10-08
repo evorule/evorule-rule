@@ -13,7 +13,7 @@ use serde_json::Value;
 
 use crate::api::{unix_now, ApiError, AppState, AuthContext};
 use crate::auth::iso_from_unix;
-use crate::bundle::{BundleImporter, BundleTests, DatasetBundle, TestVerdict};
+use crate::bundle::{BundleImporter, BundleTests, DatasetBundle, RecipeSnapshot, TestVerdict};
 use crate::model::auth::is_org_admin;
 use crate::store::StoreError;
 
@@ -54,6 +54,7 @@ pub async fn export_version(
         &ctx.user_id,
         &iso_from_unix(unix_now()),
         &state.instance_id,
+        None, // GET 无请求体不携带策略快照（带快照导出走 POST /bundles/export）
     )?;
     match query.subset {
         Some(spec) => trim(&bundle, &spec, &ctx.user_id),
@@ -72,6 +73,11 @@ pub struct ExportReq {
     /// 裁剪视图语法（可选）：`tag:core` / `domain:tax` / `ids:id1,id2`（多段以 ; 分隔，交集）
     #[serde(default)]
     pub subset: Option<String>,
+    /// 策略快照（可选，35 号批 1）：调用方策略资产在打包时刻的固化副本，随全包哈希链
+    /// 防篡改；由调用方如实附带（与 tests 同哲学），缺省 None 不序列化（字节兼容）。
+    /// 历史版本请求忽略此参数（历史包不关联当前策略）。契约层视为 opaque 载荷。
+    #[serde(default)]
+    pub recipe_snapshot: Option<RecipeSnapshot>,
 }
 
 /// POST /bundles/export —— 带真实闸门一证据的导出（决策 2026-08-24）
@@ -122,6 +128,7 @@ pub async fn export_with_tests(
         &ctx.user_id,
         &iso_from_unix(unix_now()),
         &state.instance_id,
+        req.recipe_snapshot, // 历史版本请求由 store 忽略（历史包不关联当前策略）
     )?;
     match req.subset {
         Some(spec) => trim(&bundle, &spec, &ctx.user_id),
