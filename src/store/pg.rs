@@ -798,6 +798,10 @@ impl PgStore {
                 post_review_required: r
                     .get::<Option<i32>, _>("post_review_required")
                     .map(|v| v != 0),
+                // I17 追认留痕字段：pg 读取面未随 I17 扩展（无追认读写通路），读为 None；
+                // sqlite 读取面已带列读取——两存储面差异随 postgres 特性批次再对齐
+                ratified_by: None,
+                ratified_at: None,
             });
         }
         Ok(out)
