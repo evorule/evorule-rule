@@ -315,6 +315,86 @@ impl Validator {
 
 #[cfg(test)]
 mod tests {
+    // ===== I15 机器闸可复算演练：闸裁决矩阵双跑一致 =====
+
+    #[test]
+    fn i15_gate_verdict_matrix_double_run_identical() {
+        use crate::model::lifecycle::LifecycleStatus;
+        // 输入矩阵:is_llm × 状态 × 闸证据形态(全枚举)
+        let statuses = [
+            LifecycleStatus::Draft,
+            LifecycleStatus::Candidate,
+            LifecycleStatus::Active,
+            LifecycleStatus::Published,
+            LifecycleStatus::Rejected,
+        ];
+        let gates: Vec<Option<MachineGateContext>> = vec![
+            None,
+            Some(MachineGateContext {
+                tier: "T0".into(),
+                checks_passed: true,
+                state_change_id: "sc-1".into(),
+            }),
+            Some(MachineGateContext {
+                tier: "T1".into(),
+                checks_passed: true,
+                state_change_id: "sc-2".into(),
+            }),
+            Some(MachineGateContext {
+                tier: "T1".into(),
+                checks_passed: false,
+                state_change_id: "sc-3".into(),
+            }),
+            Some(MachineGateContext {
+                tier: "T2".into(),
+                checks_passed: true,
+                state_change_id: "sc-4".into(),
+            }),
+        ];
+        let verdict =
+            |is_llm: bool, status: &LifecycleStatus, gate: Option<&MachineGateContext>| {
+                Validator::validate_llm_boundary_gated(is_llm, "e1", status, gate).is_ok()
+            };
+        // 双跑全矩阵:逐格一致(可复算),并把预期语义钉死(非快照漂移)
+        for run in 1..=2 {
+            for is_llm in [true, false] {
+                for status in &statuses {
+                    for gate in &gates {
+                        let v = verdict(is_llm, status, gate.as_ref());
+                        let v2 = verdict(is_llm, status, gate.as_ref());
+                        assert_eq!(v, v2, "双跑必须一致(run={run})");
+                        // 语义钉死:Published 永拒(llm);非 Draft 无有效机器证据即拒
+                        if is_llm && *status == LifecycleStatus::Published {
+                            assert!(!v, "llm 条目 Published 永拒");
+                        }
+                        if is_llm
+                            && *status != LifecycleStatus::Draft
+                            && gate
+                                .as_ref()
+                                .map(|g| !g.is_valid_machine_evidence())
+                                .unwrap_or(true)
+                        {
+                            assert!(!v, "无有效机器证据的非 Draft llm 迁移必拒");
+                        }
+                    }
+                }
+            }
+        }
+        // 证据权重边界:checks_passed=false 或 T2 梯位=无效证据(与纯函数口径一致)
+        assert!(!MachineGateContext {
+            tier: "T1".into(),
+            checks_passed: false,
+            state_change_id: "x".into()
+        }
+        .is_valid_machine_evidence());
+        assert!(!MachineGateContext {
+            tier: "T2".into(),
+            checks_passed: true,
+            state_change_id: "x".into()
+        }
+        .is_valid_machine_evidence());
+    }
+
     use super::*;
     use crate::model::{Governance, LifecycleStatus, LlmGenerated, Provenance, SourceBinding};
 

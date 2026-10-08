@@ -646,6 +646,8 @@ impl RuleStore {
                 gate       TEXT,
                 tier       TEXT,
                 post_review_required INTEGER,
+                ratified_by TEXT,
+                ratified_at TEXT,
                 FOREIGN KEY (dataset_id, entry_id, version)
                     REFERENCES entries(dataset_id, entry_id, version)
             );
@@ -728,6 +730,14 @@ impl RuleStore {
             "ALTER TABLE knowledge_state_history ADD COLUMN post_review_required INTEGER",
             [],
         );
+        // I17 追认语义：追认标记两列×两表（NULL=未追认；追认=覆写审批者+时点）
+        let _ = conn.execute("ALTER TABLE entry_state_history ADD COLUMN ratified_by TEXT", []);
+        let _ = conn.execute("ALTER TABLE entry_state_history ADD COLUMN ratified_at TEXT", []);
+        let _ = conn.execute("ALTER TABLE knowledge_state_history ADD COLUMN ratified_by TEXT", []);
+        let _ = conn.execute(
+            "ALTER TABLE knowledge_state_history ADD COLUMN ratified_at TEXT",
+            [],
+        );
         // Q12 数据资产化 R3：knowledge 条目平行表（方案 D 定案：rule 查询热路径零扰动）
         conn.execute_batch(
             r#"
@@ -764,6 +774,8 @@ impl RuleStore {
                 gate       TEXT,
                 tier       TEXT,
                 post_review_required INTEGER,
+                ratified_by TEXT,
+                ratified_at TEXT,
                 FOREIGN KEY (dataset_id, entry_id, version)
                     REFERENCES knowledge_entries(dataset_id, entry_id, version)
             );
@@ -1169,6 +1181,8 @@ impl RuleStore {
             gate: None,
             tier: None,
             post_review_required: None,
+            ratified_by: None,
+            ratified_at: None,
         });
         // 元数据更新时间
         ds.meta.updated_at = Some(at.into());
@@ -1887,7 +1901,7 @@ impl RuleStore {
     ) -> Result<Vec<StateChange>, StoreError> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT from_state, to_state, at, by, cause, gate, tier, post_review_required
+            "SELECT from_state, to_state, at, by, cause, gate, tier, post_review_required, ratified_by, ratified_at
              FROM knowledge_state_history
              WHERE dataset_id=?1 AND entry_id=?2 ORDER BY id",
         )?;
@@ -1902,6 +1916,8 @@ impl RuleStore {
                 gate: r.get(5)?,
                 tier: r.get(6)?,
                 post_review_required: r.get::<_, Option<i64>>(7)?.map(|v| v != 0),
+                ratified_by: r.get(8)?,
+                ratified_at: r.get(9)?,
             })
         })?;
         rows.collect::<Result<_, _>>().map_err(Into::into)
@@ -2508,6 +2524,8 @@ impl RuleStore {
             gate: None,
             tier: None,
             post_review_required: None,
+            ratified_by: None,
+            ratified_at: None,
         });
         let conn = self.conn.lock().unwrap();
         conn.execute(
@@ -2573,6 +2591,14 @@ impl RuleStore {
                     },
                 ));
             }
+            // I17 追认闸：机器 T1 放行且未追认 → 拒绝发布（rule 面执行点——
+            // 双保险只拦 llm 旗标，非 llm 机器放行条目的未追认面在此收口）
+            if self.has_pending_post_review(dataset_id, &entry.entry_id)? {
+                return Err(StoreError::Validation(ValidationError::Message(format!(
+                    "I17: entry {}/{} 有未追认的机器闸放行（T1 事后追认未完成），禁止发布",
+                    dataset_id, entry.entry_id
+                ))));
+            }
         }
         for entry in self.list_knowledge_entries(dataset_id, None)? {
             if entry.is_llm_generated() {
@@ -2581,6 +2607,12 @@ impl RuleStore {
                         entry: format!("{}/{}", dataset_id, entry.entry_id),
                     },
                 ));
+            }
+            if self.has_pending_post_review(dataset_id, &entry.entry_id)? {
+                return Err(StoreError::Validation(ValidationError::Message(format!(
+                    "I17: entry {}/{} 有未追认的机器闸放行（T1 事后追认未完成），禁止发布",
+                    dataset_id, entry.entry_id
+                ))));
             }
         }
         let published_as = format!("{}@{}", ds.dataset_id, ds.versioning.current);
@@ -2595,6 +2627,8 @@ impl RuleStore {
             gate: None,
             tier: None,
             post_review_required: None,
+            ratified_by: None,
+            ratified_at: None,
         });
         let conn = self.conn.lock().unwrap();
         conn.execute(
@@ -2670,6 +2704,8 @@ impl RuleStore {
             gate: None,
             tier: None,
             post_review_required: None,
+            ratified_by: None,
+            ratified_at: None,
         });
         ds.meta.updated_at = Some(at.into());
         ds.meta.updated_by = Some(by.into());
@@ -2962,7 +2998,7 @@ impl RuleStore {
     ) -> Result<Vec<StateChange>, StoreError> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT from_state, to_state, at, by, cause, gate, tier, post_review_required
+            "SELECT from_state, to_state, at, by, cause, gate, tier, post_review_required, ratified_by, ratified_at
              FROM entry_state_history
              WHERE dataset_id=?1 AND entry_id=?2 ORDER BY id",
         )?;
@@ -2977,6 +3013,8 @@ impl RuleStore {
                 gate: r.get(5)?,
                 tier: r.get(6)?,
                 post_review_required: r.get::<_, Option<i64>>(7)?.map(|v| v != 0),
+                ratified_by: r.get(8)?,
+                ratified_at: r.get(9)?,
             })
         })?;
         rows.collect::<Result<_, _>>().map_err(Into::into)
@@ -3182,8 +3220,9 @@ impl RuleStore {
         Ok(())
     }
 
-    /// 机器闸 T1 事后追认队列（最小版）：两审计表 UNION
-    /// `to_state='Active' AND tier='T1' AND post_review_required=1`，按 at DESC；
+    /// 机器闸 T1 事后追认队列（待追认面）：两审计表 UNION
+    /// `to_state='Active' AND tier='T1' AND post_review_required=1 AND 未追认`，
+    /// 按 at DESC；追认后行退出队列（留痕于 ratified_by/at，审计面可查）；
     /// 排序精化（影响面×运行表现）随机器闸演进。
     pub fn machine_gate_post_review_queue(
         &self,
@@ -3194,10 +3233,12 @@ impl RuleStore {
             "SELECT dataset_id, entry_id, version, from_state, to_state, at, by, cause, tier
              FROM entry_state_history
              WHERE to_state='Active' AND tier='T1' AND post_review_required=1
+               AND ratified_by IS NULL
              UNION ALL
              SELECT dataset_id, entry_id, version, from_state, to_state, at, by, cause, tier
              FROM knowledge_state_history
              WHERE to_state='Active' AND tier='T1' AND post_review_required=1
+               AND ratified_by IS NULL
              ORDER BY at DESC LIMIT ?1",
         )?;
         let rows = stmt.query_map(params![limit as i64], |r| {
@@ -3214,6 +3255,56 @@ impl RuleStore {
             })
         })?;
         rows.collect::<Result<_, _>>().map_err(Into::into)
+    }
+
+    /// 追认（I17）：覆写该条目全部未追认 T1 Active 机器放行行的审批者+时点。
+    /// 返回覆写行数（0=无待追认项——调用方如实上抛，不静默成功）。
+    pub fn ratify_post_review(
+        &self,
+        dataset_id: &str,
+        entry_id: &str,
+        by: &str,
+        at: &str,
+    ) -> Result<usize, StoreError> {
+        let conn = self.conn.lock().unwrap();
+        let mut n = 0;
+        for table in ["entry_state_history", "knowledge_state_history"] {
+            n += conn.execute(
+                &format!(
+                    "UPDATE {table}
+                     SET ratified_by=?1, ratified_at=?2
+                     WHERE dataset_id=?3 AND entry_id=?4
+                       AND to_state='Active' AND tier='T1'
+                       AND post_review_required=1 AND ratified_by IS NULL"
+                ),
+                params![by, at, dataset_id, entry_id],
+            )?;
+        }
+        Ok(n)
+    }
+
+    /// 未追认判定（I17 发布闸面）：该条目是否存在未追认的 T1 Active 机器放行行。
+    pub fn has_pending_post_review(
+        &self,
+        dataset_id: &str,
+        entry_id: &str,
+    ) -> Result<bool, StoreError> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT COUNT(*) FROM entry_state_history
+             WHERE dataset_id=?1 AND entry_id=?2
+               AND to_state='Active' AND tier='T1' AND post_review_required=1
+               AND ratified_by IS NULL",
+        )?;
+        let n: i64 = stmt.query_row(params![dataset_id, entry_id], |r| r.get(0))?;
+        let mut stmt2 = conn.prepare(
+            "SELECT COUNT(*) FROM knowledge_state_history
+             WHERE dataset_id=?1 AND entry_id=?2
+               AND to_state='Active' AND tier='T1' AND post_review_required=1
+               AND ratified_by IS NULL",
+        )?;
+        let n2: i64 = stmt2.query_row(params![dataset_id, entry_id], |r| r.get(0))?;
+        Ok(n + n2 > 0)
     }
 
     /// 机器闸执行器输入探针（rule 条目）：现场采集 M2-M6 所需事实，
@@ -4140,6 +4231,8 @@ impl RuleStore {
                     gate: None,
                     tier: None,
                     post_review_required: None,
+                    ratified_by: None,
+                    ratified_at: None,
                 });
                 e.meta.updated_at = Some(at.into());
                 e.meta.updated_by = Some(by.into());
@@ -4176,6 +4269,8 @@ impl RuleStore {
                             gate: None,
                             tier: None,
                             post_review_required: None,
+                            ratified_by: None,
+                            ratified_at: None,
                         }],
                     },
                     versioning: bundle.dataset.versioning.clone(),
@@ -5165,6 +5260,79 @@ mod tests {
         assert_eq!(queue[0].entry_id, "tax-001");
         assert_eq!(queue[0].to_state, "Active");
         assert_eq!(queue[0].tier, "T1");
+    }
+
+    #[test]
+    fn test_i17_ratification_gates_publish() {
+        // I17 全链:机器 T1 放行→队列必入→发布拒(未追认)→追认→队列退→发布过
+        let store = RuleStore::in_memory().unwrap();
+        store.create_dataset(&tax_dataset()).unwrap();
+        // 非 llm rule 条目(双保险不拦的面——I17 闸的收口对象)
+        let mut entry = llm_entry();
+        entry.governance = None; // 去 llm 旗标 → rule 面普通条目
+        entry.status = Some(LifecycleStatus::Draft);
+        store.add_entry(&entry).unwrap();
+        // 状态面自检:入账后 Draft(显式,防夹具 status=None 漂移)
+        assert_eq!(
+            store
+                .get_latest_entry("ds-tax-2024", "tax-001")
+                .unwrap()
+                .unwrap()
+                .status,
+            Some(LifecycleStatus::Draft)
+        );
+
+        // 机器 T1 放行 Draft→Candidate→Active(两跳,post_review_required=1)
+        for to in [LifecycleStatus::Candidate, LifecycleStatus::Active] {
+            store
+                .transition_entry_status_machine(
+                    "ds-tax-2024",
+                    "tax-001",
+                    to,
+                    "machine",
+                    "t",
+                    "机器闸放行",
+                    "T1",
+                )
+                .unwrap();
+        }
+        // 必入:队列恰 1 条(两跳同版本?——每跳独立行,Active 行入队,Candidate 行不入)
+        let queue = store.machine_gate_post_review_queue(100).unwrap();
+        assert_eq!(queue.len(), 1, "仅 Active 行入追认队列");
+        assert_eq!(queue[0].entry_id, "tax-001");
+        // 未追认禁 Published(数据集先走合法路径至 Active:Candidate→Active)
+        for to in [LifecycleStatus::Candidate, LifecycleStatus::Active] {
+            store
+                .transition_dataset_status("ds-tax-2024", to, "eng", "t", "t")
+                .unwrap();
+        }
+        let err = store
+            .publish_dataset("ds-tax-2024", "publisher", "t", "org")
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("I17"),
+            "未追认必须拒绝发布: {err}"
+        );
+        // 仅入一次:重复查询不产生重复行;队列仍 1
+        assert_eq!(store.machine_gate_post_review_queue(100).unwrap().len(), 1);
+        // 追认:覆写 1 行→队列退出
+        let n = store
+            .ratify_post_review("ds-tax-2024", "tax-001", "human-r1", "t2")
+            .unwrap();
+        assert_eq!(n, 1, "恰覆写 Active 行");
+        assert!(store.machine_gate_post_review_queue(100).unwrap().is_empty());
+        // 追认后发布通过
+        store
+            .publish_dataset("ds-tax-2024", "publisher", "t", "org")
+            .unwrap();
+        // 追认留痕审计:ratified_by 在案
+        let hist = store
+            .get_entry_state_history("ds-tax-2024", "tax-001")
+            .unwrap();
+        assert!(
+            hist.iter().any(|h| h.ratified_by.as_deref() == Some("human-r1")),
+            "追认留痕在历史行"
+        );
     }
 
     #[test]

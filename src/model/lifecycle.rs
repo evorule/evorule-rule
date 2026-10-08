@@ -44,6 +44,11 @@ pub struct StateChange {
     /// 事后追认标记（T1 档：Active 可用+入追认队列）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub post_review_required: Option<bool>,
+    /// I17 追认留痕：覆写该机器放行行的审批者/时点（None=未追认）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ratified_by: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ratified_at: Option<String>,
 }
 
 /// 机器闸 T1 事后追认队列项（机器闸行权通路最小版）：待人工追认的 Active 变更事实
