@@ -118,7 +118,7 @@ impl BundleExporter {
 
     /// 公共收尾：服务契约下沉补齐 + 哈希覆盖（规则/数据导出共用，防逻辑漂移）
     ///
-    /// `recipe_snapshot`：策略快照（35 号批 1）——由调用方如实附带（带证据导出链），
+    /// `recipe_snapshot`：策略快照——由调用方如实附带（带证据导出链），
     /// 缺省 None 不序列化（字节兼容）；GET 历史重建链不携带（历史版本不关联当前策略）。
     fn finish(
         dataset: &RuleDataset,

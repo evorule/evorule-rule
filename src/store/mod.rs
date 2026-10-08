@@ -2746,7 +2746,7 @@ impl RuleStore {
     ///
     /// `tests` 为沙箱验证证据（闸门一产出），由调用方如实提供；`instance_id` 为真实发布者身份
     /// （既定设计决策 白标不掩盖）。不校验数据集状态——导出任意状态均可（消费交付由 `is_publicly_pullable` 把关）。
-    /// `recipe_snapshot`：策略快照（35 号批 1），由调用方如实附带，缺省 None 不序列化。
+    /// `recipe_snapshot`：策略快照（随包固化，全包哈希覆盖），由调用方如实附带，缺省 None 不序列化。
     pub fn export_bundle(
         &self,
         dataset_id: &str,
@@ -2804,7 +2804,7 @@ impl RuleStore {
     /// - 历史版本无快照（启用前升版的存量库）→ `VersionSnapshotMissing` 显式拒绝，不伪造。
     ///
     /// `recipe_snapshot` 仅在请求版本 = 当前版本时生效（透传 [`Self::export_bundle`]）；
-    /// 历史版本重建不携带策略快照——历史包内容应与历史时刻一致，不关联当前策略（35 号批 1）。
+    /// 历史版本重建不携带策略快照——历史包内容应与历史时刻一致，不关联当前策略。
     pub fn export_bundle_at(
         &self,
         dataset_id: &str,

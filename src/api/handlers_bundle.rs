@@ -73,7 +73,7 @@ pub struct ExportReq {
     /// 裁剪视图语法（可选）：`tag:core` / `domain:tax` / `ids:id1,id2`（多段以 ; 分隔，交集）
     #[serde(default)]
     pub subset: Option<String>,
-    /// 策略快照（可选，35 号批 1）：调用方策略资产在打包时刻的固化副本，随全包哈希链
+    /// 策略快照（可选）：调用方策略资产在打包时刻的固化副本，随全包哈希链
     /// 防篡改；由调用方如实附带（与 tests 同哲学），缺省 None 不序列化（字节兼容）。
     /// 历史版本请求忽略此参数（历史包不关联当前策略）。契约层视为 opaque 载荷。
     #[serde(default)]

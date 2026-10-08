@@ -19,9 +19,10 @@ subtle = "2"
 # 共享快照包校验（跨仓集成契约；T1：版本/依赖/溯源/符号提取 + 6 项校验链 SSOT = evorule-bundle）
 # 0.4.0：知识资产化批次 A——BundleEntry 增 knowledge_kind/trust_level/license_ref/execution_contract
 # （Option 兼容字段，旧 bundle 字节不变；ExecutionContract 类型随行）
-# 0.5.1：O-377① 批 1——DatasetBundle 增可选 recipe_snapshot（策略快照随包固化，
-# 全包哈希覆盖；可选字段不 bump BUNDLE_SCHEMA_VERSION）；0.5.1 修根部 re-export
-evorule-bundle = { version = "0.5.1" }
+# 0.5.2：O-377① 批 1——DatasetBundle 增可选 recipe_snapshot（策略快照随包固化，
+# 全包哈希覆盖；可选字段不 bump BUNDLE_SCHEMA_VERSION）；0.5.1 修根部 re-export，
+# 0.5.2 公开面注释清洗版
+evorule-bundle = { version = "0.5.2" }
 rand = "0.8"
 base64 = "0.22"
 # 0.32：与 evorule-server workspace（evorule-workspace 0.32）对齐——libsqlite3-sys
