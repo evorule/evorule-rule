@@ -247,8 +247,9 @@ impl Validator {
     ///   （**Published 永远人工**，机器闸行权上限=Active，结构性立宪不松动）；
     /// - 有有效机器闸证据（gate 上下文：T0/T1 且六检通过）且目标 ∈
     ///   {Draft, Candidate, Active} → 放行；
-    /// - 其余（无闸上下文）→ [`ValidationError::LlmGeneratedNotDraft`]
-    ///   （历史行为逐字节保持，向后兼容）。
+    /// - 目标 `Rejected`（降权终态，人工终审 reject 腿）→ 放行（无需闸证据）；
+    /// - 其余（无闸上下文的晋升向）→ [`ValidationError::LlmGeneratedNotDraft`]
+    ///   （历史行为保持，向后兼容）。
     pub fn validate_llm_boundary_gated(
         is_llm: bool,
         entry_id: &str,
@@ -264,7 +265,13 @@ impl Validator {
             });
         }
         let machine_allowed = gate.map(|g| g.is_valid_machine_evidence()).unwrap_or(false);
-        if machine_allowed || *status == LifecycleStatus::Draft {
+        // Rejected 为降权终态（人工终审 reject 腿）：无闸证据亦放行——反升级立宪
+        // 只约束晋升向（Candidate/Active 需机器闸证据）与 Published（永远人工），
+        // 拒绝向放行不削弱既有保护（llm 候选的 T2 终审须 approve/reject 双腿齐备）。
+        if machine_allowed
+            || *status == LifecycleStatus::Draft
+            || *status == LifecycleStatus::Rejected
+        {
             return Ok(());
         }
         Err(ValidationError::LlmGeneratedNotDraft {
@@ -363,12 +370,14 @@ mod tests {
                         let v = verdict(is_llm, status, gate.as_ref());
                         let v2 = verdict(is_llm, status, gate.as_ref());
                         assert_eq!(v, v2, "双跑必须一致(run={run})");
-                        // 语义钉死:Published 永拒(llm);非 Draft 无有效机器证据即拒
+                        // 语义钉死:Published 永拒(llm);晋升向无有效机器证据即拒;
+                        // Rejected 例外(降权终态,人工终审 reject 腿,无需闸证据)
                         if is_llm && *status == LifecycleStatus::Published {
                             assert!(!v, "llm 条目 Published 永拒");
                         }
                         if is_llm
                             && *status != LifecycleStatus::Draft
+                            && *status != LifecycleStatus::Rejected
                             && gate
                                 .as_ref()
                                 .map(|g| !g.is_valid_machine_evidence())

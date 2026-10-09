@@ -5214,6 +5214,45 @@ mod tests {
     }
 
     #[test]
+    fn test_llm_boundary_allows_manual_reject_only() {
+        let store = RuleStore::in_memory().unwrap();
+        store.create_dataset(&tax_dataset()).unwrap();
+
+        // llm 条目人工路径 Draft→Rejected 放行（终审 reject 腿，降权终态无需闸证据）
+        let e = llm_entry();
+        store.add_entry(&e).unwrap();
+        store
+            .transition_entry_status(
+                "ds-tax-2024",
+                &e.entry_id,
+                LifecycleStatus::Rejected,
+                "approver",
+                "t",
+                "终审拒绝",
+            )
+            .unwrap();
+
+        // llm 条目人工路径 Draft→Candidate 仍硬拒（反升级立宪不动）
+        let mut e2 = llm_entry();
+        e2.entry_id = "llm-rej-2".into();
+        store.add_entry(&e2).unwrap();
+        let err = store
+            .transition_entry_status(
+                "ds-tax-2024",
+                &e2.entry_id,
+                LifecycleStatus::Candidate,
+                "eng",
+                "t",
+                "提交",
+            )
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            StoreError::Validation(ValidationError::LlmGeneratedNotDraft { .. })
+        ));
+    }
+
+    #[test]
     fn test_machine_gate_promotion_pathway() {
         let store = RuleStore::in_memory().unwrap();
         store.create_dataset(&tax_dataset()).unwrap();
