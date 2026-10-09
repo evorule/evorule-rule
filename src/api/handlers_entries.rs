@@ -283,6 +283,52 @@ pub async fn approve(
     Ok(Json(updated.to_json()))
 }
 
+/// POST /entries/{id}/reject —— 人工拒绝（终审 reject 腿，Approve 角色）：
+/// Draft/Candidate → Rejected（store 状态机合法迁移，机器行权端点不覆盖此路径——
+/// 拒绝永远人工）。治理闭环语义：拒绝也留痕——条目保留在数据集内不删除，
+/// 案由必填非空并落入状态迁移审计（only-append history 可回查）。
+#[derive(Deserialize)]
+pub struct RejectReq {
+    /// 拒绝案由（必填非空，落入状态迁移审计）
+    pub cause: String,
+}
+
+pub async fn reject(
+    State(state): State<AppState>,
+    Extension(ctx): Extension<AuthContext>,
+    Path(entry_id): Path<String>,
+    Query(scope): Query<EntryScopeQuery>,
+    Json(req): Json<RejectReq>,
+) -> Result<Json<Value>, ApiError> {
+    if !can(ctx.role, Action::Approve) {
+        return Err(ApiError::forbidden("拒绝为终审动作，需审批者及以上角色"));
+    }
+    if req.cause.trim().is_empty() {
+        return Err(ApiError::bad_request("拒绝必须携带非空案由（cause）"));
+    }
+    let (dataset_id, _) = locate_entry(
+        &state,
+        &ctx.tenant_id,
+        &entry_id,
+        scope.dataset_id.as_deref(),
+    )?;
+    transition_any(
+        &state,
+        &dataset_id,
+        &entry_id,
+        LifecycleStatus::Rejected,
+        &ctx.user_id,
+        &req.cause,
+    )?;
+    let (_, updated) = locate_entry(
+        &state,
+        &ctx.tenant_id,
+        &entry_id,
+        scope.dataset_id.as_deref(),
+    )?;
+    Ok(Json(updated.to_json()))
+}
+
 /// GET /entries/{id}/history —— 条目状态迁移历史（only-append）
 pub async fn history(
     State(state): State<AppState>,

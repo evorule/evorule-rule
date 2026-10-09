@@ -646,6 +646,7 @@ pub fn router(state: AppState) -> Router {
             post(handlers_entries::submit_candidate),
         )
         .route("/entries/{id}/approve", post(handlers_entries::approve))
+        .route("/entries/{id}/reject", post(handlers_entries::reject))
         .route(
             "/entries/{id}/machine-gate-promote",
             post(handlers_entries::machine_gate_promote),
@@ -2238,6 +2239,64 @@ mod tests {
         .await;
         assert_eq!(status, StatusCode::OK, "{body}");
         assert_eq!(body.as_array().map(|a| a.len()).unwrap_or(0), 1);
+    }
+
+    /// 人工 reject 通路（终审 reject 腿）：Draft→Rejected，Approve 角色门槛、
+    /// 空案由 400、成功后状态 Rejected 且案由落 history。
+    #[tokio::test]
+    async fn test_entry_reject_manual_with_cause() {
+        let (app, state) = build_app();
+        let engineer = register_login(&app).await; // rule_engineer：无终审权
+        seed_dataset(&app, &engineer, "ds-rej").await; // 含 Draft 条目 rule-01
+        let admin = admin_token(&state).await;
+
+        // 工程师无权 reject
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/entries/rule-01/reject?dataset_id=ds-rej",
+            Some(&engineer),
+            Some(json!({ "cause": "越权尝试" })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+
+        // 空案由 400
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/entries/rule-01/reject?dataset_id=ds-rej",
+            Some(&admin),
+            Some(json!({ "cause": "   " })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+
+        // 审批者 reject 成功：状态 Rejected + 案由落 history
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/entries/rule-01/reject?dataset_id=ds-rej",
+            Some(&admin),
+            Some(json!({ "cause": "泛化过度，退回重提" })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["status"], "Rejected");
+
+        let (status, body) = send(
+            app.clone(),
+            "GET",
+            "/v1/entries/rule-01/history?dataset_id=ds-rej",
+            Some(&admin),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert!(
+            body.as_array().map(|a| a.len()).unwrap_or(0) >= 1,
+            "history 应有迁移记录: {body}"
+        );
     }
 
     /// 顶层 `/entries/{id}` 的 `?dataset_id=` 消歧：同 entry_id 存在于同租户多个
