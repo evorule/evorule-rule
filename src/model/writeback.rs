@@ -61,6 +61,53 @@ pub fn validate_event(event: &RuleFailureEvent) -> Result<(), &'static str> {
     Ok(())
 }
 
+/// 消费器失败分类（K3 writeback 消费器，36 号批）：S-4 四类语义跨仓复用
+/// （语义单源 = evo-agent `replan.rs` NodeFailureClass；跨仓不共享代码，
+/// 枚举值序列化形态对齐其 serde rename_all = "snake_case"）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FailureClass {
+    /// 粒失败：执行本身失败（超时/异常）
+    Granule,
+    /// 接口失败：产出违反契约面（规则=机器可执行契约，enforce 拦截归此）
+    Interface,
+    /// 漂移：产出偏离期望语义（verdict 与预期不符）
+    Drift,
+    /// 能力缺口：重切预算耗尽（发送端已标注，直通）
+    CapabilityGap,
+}
+
+impl FailureClass {
+    /// 序列化标签（snake_case，与 S-4 四类 serde 形态一致）
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            FailureClass::Granule => "granule",
+            FailureClass::Interface => "interface",
+            FailureClass::Drift => "drift",
+            FailureClass::CapabilityGap => "capability_gap",
+        }
+    }
+}
+
+/// 失败分类映射（纯函数表驱动；同输入必同输出——K3 对表判据 J-K3-1 的 SSOT）
+///
+/// 映射口径（36 号档 §二.2，数据积累后校准）：
+/// - `capability_gap` → CapabilityGap（agent S-4 直发自带标签，直通）；
+/// - `enforce_violation` → Interface（规则=机器可执行契约，Violation=产出违反
+///   契约面；S-4 四类中最贴——替代观点：视为治理合规类不入 S-4，待数据说话）；
+/// - `verdict_mismatch` → Drift（产出偏离期望语义）；
+/// - `timeout` / `exception` → Granule（执行本身失败）；
+/// - 未知/缺 failure → Granule（保守缺省，调用方 warn 留痕）。
+pub fn classify_failure(failure_type: Option<&str>) -> FailureClass {
+    match failure_type {
+        Some("capability_gap") => FailureClass::CapabilityGap,
+        Some("enforce_violation") => FailureClass::Interface,
+        Some("verdict_mismatch") => FailureClass::Drift,
+        Some("timeout") | Some("exception") => FailureClass::Granule,
+        _ => FailureClass::Granule,
+    }
+}
+
 /// 回写事件收件行（P1-2/RS-1：T1 追认队列形态——收件即入队，按收件时间倒序可查；
 /// 补丁动作等数据说话，首版只收不触发）
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -78,11 +125,53 @@ pub struct WritebackEventRow {
     pub event: Value,
     /// 收件时间（ISO-8601 UTC）
     pub received_at: String,
+    /// K3 消费器（36 号批）：失败分类（S-4 四类 snake_case；NULL=旗标关未分类）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub classified_class: Option<String>,
+    /// 消费完成时点（ISO-8601 UTC；NULL=提议未成功，行保持未消费态可查）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub consumed_at: Option<String>,
+    /// 治理侧提议回执锚（entry_id@dataset；NULL=未提议）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proposed_ref: Option<String>,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_classify_failure_mapping_table() {
+        // J-K3-1：failure.type 全族×预期四类（映射表 36 号档 §二.2 表驱动 SSOT）
+        use FailureClass::*;
+        assert_eq!(classify_failure(Some("capability_gap")), CapabilityGap);
+        assert_eq!(classify_failure(Some("enforce_violation")), Interface);
+        assert_eq!(classify_failure(Some("verdict_mismatch")), Drift);
+        assert_eq!(classify_failure(Some("timeout")), Granule);
+        assert_eq!(classify_failure(Some("exception")), Granule);
+        // 未知类型 / 缺 failure → 保守缺省 Granule（调用方 warn 留痕）
+        assert_eq!(classify_failure(Some("unknown_kind")), Granule);
+        assert_eq!(classify_failure(None), Granule);
+
+        // serde 形态对齐 S-4 四类（evo-agent replan.rs rename_all="snake_case"）
+        assert_eq!(
+            serde_json::to_value(FailureClass::CapabilityGap).unwrap(),
+            serde_json::json!("capability_gap")
+        );
+        assert_eq!(
+            serde_json::to_value(FailureClass::Interface).unwrap(),
+            serde_json::json!("interface")
+        );
+        assert_eq!(
+            serde_json::to_value(FailureClass::Drift).unwrap(),
+            serde_json::json!("drift")
+        );
+        assert_eq!(
+            serde_json::to_value(FailureClass::Granule).unwrap(),
+            serde_json::json!("granule")
+        );
+        assert_eq!(FailureClass::CapabilityGap.as_str(), "capability_gap");
+    }
 
     #[test]
     fn test_rule_failure_schema_roundtrip() {

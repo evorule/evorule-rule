@@ -549,7 +549,10 @@ impl RuleStore {
                 version_used TEXT NOT NULL,
                 failure_type TEXT,
                 event        TEXT NOT NULL,                  -- RuleFailureEvent 原文 JSON
-                received_at  TEXT NOT NULL                   -- ISO-8601 UTC
+                received_at  TEXT NOT NULL,                  -- ISO-8601 UTC
+                classified_class TEXT,                       -- K3 消费器：S-4 四类（NULL=旗标关）
+                consumed_at  TEXT,                           -- 消费完成时点（NULL=未消费）
+                proposed_ref TEXT                            -- 治理提议回执锚（NULL=未提议）
             );
             CREATE INDEX IF NOT EXISTS idx_writeback_tenant
                 ON writeback_events(tenant_id, received_at);
@@ -745,6 +748,20 @@ impl RuleStore {
         );
         let _ = conn.execute(
             "ALTER TABLE knowledge_state_history ADD COLUMN ratified_at TEXT",
+            [],
+        );
+        // K3 writeback 消费器（36 号批）：writeback_events 补消费三列
+        // （NULL=未消费/旗标关；ALTER 幂等沿同区先例）
+        let _ = conn.execute(
+            "ALTER TABLE writeback_events ADD COLUMN classified_class TEXT",
+            [],
+        );
+        let _ = conn.execute(
+            "ALTER TABLE writeback_events ADD COLUMN consumed_at TEXT",
+            [],
+        );
+        let _ = conn.execute(
+            "ALTER TABLE writeback_events ADD COLUMN proposed_ref TEXT",
             [],
         );
         // Q12 数据资产化 R3：knowledge 条目平行表（方案 D 定案：rule 查询热路径零扰动）
@@ -2251,6 +2268,7 @@ impl RuleStore {
     /// 回写事件收件（P1-2/RS-1）：单事务落两笔——writeback_events 队列行 +
     /// llm_op_audit 审计面行（operation=writeback_rule_failure，request_id=wb-{id}）。
     /// 收件即入队（T1 追认队列形态）；补丁动作后置。
+    /// `classified_class`：K3 消费器同步分类结果（S-4 四类 snake_case；None=旗标关）。
     #[allow(clippy::too_many_arguments)]
     pub fn record_writeback_event(
         &self,
@@ -2261,13 +2279,14 @@ impl RuleStore {
         failure_type: Option<&str>,
         event_json: &str,
         received_at: &str,
+        classified_class: Option<&str>,
     ) -> Result<i64, StoreError> {
         let mut conn = self.conn.lock().unwrap();
         let tx = conn.transaction()?;
         tx.execute(
             "INSERT INTO writeback_events
-               (tenant_id, dataset_id, entry_id, version_used, failure_type, event, received_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+               (tenant_id, dataset_id, entry_id, version_used, failure_type, event, received_at, classified_class)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             params![
                 tenant_id,
                 dataset_id,
@@ -2276,6 +2295,7 @@ impl RuleStore {
                 failure_type,
                 event_json,
                 received_at,
+                classified_class,
             ],
         )?;
         let event_id = tx.last_insert_rowid();
@@ -2306,7 +2326,8 @@ impl RuleStore {
     ) -> Result<Vec<crate::model::writeback::WritebackEventRow>, StoreError> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, tenant_id, dataset_id, entry_id, version_used, failure_type, event, received_at
+            "SELECT id, tenant_id, dataset_id, entry_id, version_used, failure_type, event, received_at,
+                    classified_class, consumed_at, proposed_ref
              FROM writeback_events WHERE tenant_id=?1
              ORDER BY received_at DESC, id DESC LIMIT ?2",
         )?;
@@ -2321,9 +2342,31 @@ impl RuleStore {
                 failure_type: r.get(5)?,
                 event: serde_json::from_str(&event_raw).unwrap_or(serde_json::Value::Null),
                 received_at: r.get(7)?,
+                classified_class: r.get(8)?,
+                consumed_at: r.get(9)?,
+                proposed_ref: r.get(10)?,
             })
         })?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    /// K3 消费器落账（36 号批）：治理提议成功后补 consumption 两列
+    /// （classified_class 收件时已落）。幂等：consumed_at 非空不覆写
+    /// （首提议锚定，重复回调不冲账）；返回是否实际落账。
+    pub fn mark_writeback_consumed(
+        &self,
+        event_id: i64,
+        proposed_ref: &str,
+        consumed_at: &str,
+    ) -> Result<bool, StoreError> {
+        let conn = self.conn.lock().unwrap();
+        let n = conn.execute(
+            "UPDATE writeback_events
+             SET consumed_at=?2, proposed_ref=?3
+             WHERE id=?1 AND consumed_at IS NULL",
+            params![event_id, consumed_at, proposed_ref],
+        )?;
+        Ok(n > 0)
     }
 
     /// 列出审计记录（按时间倒序，limit 上限）——`list_llm_audits_filtered` 的便捷封装
