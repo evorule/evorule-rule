@@ -44,8 +44,17 @@ impl KnowledgeEntry {
     }
 }
 
-/// 知识 kind 谱系合法值（知识资产化批次 A；总纲 §3.1 五分法 + `custom:{name}` 扩展位）
-pub const KNOWLEDGE_KINDS: [&str; 5] = ["fact", "procedure", "heuristic", "narrative", "model"];
+/// 知识 kind 谱系合法值（知识资产化批次 A；总纲 §3.1 五分法 + `custom:{name}` 扩展位；
+/// 2026-10-11 增补第六谱系 `verdict`：LLM 判定事实条目，载荷结构权威=
+/// evorule-system-rules `_shared/v1.0#/$defs/llm_verdict`，内置壳 builtin:knowledge/verdict）
+pub const KNOWLEDGE_KINDS: [&str; 6] = [
+    "fact",
+    "procedure",
+    "heuristic",
+    "narrative",
+    "model",
+    "verdict",
+];
 
 /// trust_level 合法前缀：`human` | `llm` | `external:{source}`
 pub fn is_valid_trust_level(level: &str) -> bool {
@@ -130,6 +139,11 @@ impl KnowledgeEntry {
                 || kind.strip_prefix("custom:").is_some_and(|n| !n.is_empty());
             if !known {
                 return Err(format!("unknown knowledge_kind: {kind}"));
+            }
+            // verdict 谱系组合闸（2026-10-11）：判定事实必为 LLM 产出——trust_level
+            // 必须显式声明为 "llm"（与载荷 origin:"llm" 双标记互证；未声明 = 契约不完整）。
+            if kind == "verdict" && self.trust_level.as_deref() != Some("llm") {
+                return Err("knowledge_kind=verdict requires trust_level=\"llm\"".into());
             }
             // builtin schema_ref 一致性闸（A1-1b）：schema_ref 指向内置知识壳时，
             // 后缀必须与 kind 一致（防 fact 条目挂 model 壳的错配入账）；
@@ -317,6 +331,49 @@ mod tests {
         assert!(e.is_frozen());
         e.status = Some(LifecycleStatus::Draft);
         assert!(!e.is_frozen());
+    }
+
+    #[test]
+    fn test_verdict_kind_ingest_contract() {
+        // verdict 谱系（2026-10-11）：合法判定事实条目 = llm_verdict 载荷 +
+        // trust_level="llm"（组合闸）+ builtin:knowledge/verdict 壳（一致性闸）
+        let verdict_payload = serde_json::json!({
+            "kind": "llm_verdict",
+            "key": "content.safety",
+            "verdict": true,
+            "evidence": "输入内容经安全准则逐条比对",
+            "prompt_hash": format!("blake3:{}", "a".repeat(64)),
+            "model": "MiniMax-M2.5",
+            "origin": "llm"
+        });
+        let mut e = sample();
+        e.knowledge_kind = Some("verdict".into());
+        e.trust_level = Some("llm".into());
+        e.schema_ref = "builtin:knowledge/verdict".into();
+        e.payload = verdict_payload.clone();
+        assert!(e.validate_ingest_contract().is_ok());
+        // 组合闸：trust_level 未声明 / 声明 human → 拒绝
+        e.trust_level = None;
+        let err = e.validate_ingest_contract().unwrap_err();
+        assert!(err.contains("requires trust_level"), "err={err}");
+        e.trust_level = Some("human".into());
+        assert!(e.validate_ingest_contract().is_err());
+        // 一致性闸：verdict 条目挂 fact 壳 → 错配拒绝
+        e.trust_level = Some("llm".into());
+        e.schema_ref = "builtin:knowledge/fact".into();
+        let err = e.validate_ingest_contract().unwrap_err();
+        assert!(err.contains("mismatches"), "err={err}");
+        e.schema_ref = "builtin:knowledge/verdict".into();
+        assert!(e.validate_ingest_contract().is_ok());
+        // 载荷缺 origin（壳 required 六字段之一）→ 壳校验层拒绝；
+        // 契约闸只管治理元数据，载荷结构由 resolver 壳/权威 def 把守——此处仅证契约闸放行
+        let mut missing = e.clone();
+        missing.payload = serde_json::json!({
+            "kind": "llm_verdict", "key": "x", "verdict": true,
+            "prompt_hash": format!("blake3:{}", "b".repeat(64)), "model": "m"
+        });
+        assert!(missing.validate_ingest_contract().is_ok());
+        let _ = verdict_payload; // 载荷基线留存
     }
 
     #[test]

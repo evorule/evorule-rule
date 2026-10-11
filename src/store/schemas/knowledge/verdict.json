@@ -1,0 +1,17 @@
+{
+  "$id": "builtin:knowledge/verdict",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "knowledge/verdict builtin shell",
+  "description": "builtin base shell (runtime domain_schemas/ override wins on same $id). LLM verdict fact minimal gate: authoritative structure = evorule-system-rules _shared/v1.0#/$defs/llm_verdict (mother repo commit 0049665); this shell enforces only the minimal required shape, strict validation (additionalProperties:false, confidence bounds, conditional value) belongs to the authoritative def and the consuming governance side.",
+  "type": "object",
+  "properties": {
+    "kind": { "const": "llm_verdict" },
+    "key": { "type": "string", "pattern": "^[a-z0-9_][a-z0-9_.\\-]*$" },
+    "verdict": { "type": ["boolean", "string"] },
+    "prompt_hash": { "type": "string", "pattern": "^blake3:[0-9a-f]{64}$" },
+    "model": { "type": "string", "minLength": 1 },
+    "origin": { "const": "llm" }
+  },
+  "required": ["kind", "key", "verdict", "prompt_hash", "model", "origin"],
+  "additionalProperties": true
+}
