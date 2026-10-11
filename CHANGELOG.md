@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 
+### Added — 第六知识谱系 verdict（LLM 判定事实治理登记面）
+
+- `knowledge_kind` 谱系五分法扩为六分法：新增 `verdict`（LLM 判定事实条目）。载荷结构权威=`evorule-system-rules` `_shared/v1.0` `$defs/llm_verdict`（九字段判定事实契约：kind/key/verdict/value/confidence/evidence/prompt_hash/model/origin）。
+- 内置知识壳第六件 `builtin:knowledge/verdict`：最小结构门禁（required 六字段 + key/prompt_hash pattern）；严格校验（additionalProperties:false、confidence 边界、verdict="value" 条件必填 value）归权威 def 与运行时 domain_schemas/ 覆写——沿用五件壳哲学，双权威绑定不复制漂移。
+- 入账契约组合闸：`knowledge_kind=verdict` 必须携带 `trust_level="llm"`（与载荷 `origin:"llm"` 双标记互证，未声明 = 契约不完整只可 Draft）；A1-1b 壳↔kind 一致性闸自动覆盖新谱系。
+- 治理链零新增机制：生命周期 5 态 / LLM 产出只到 Draft / 机器闸梯位（T0 直通 / T1 事后追认 / T2 人工）全部复用；Active 消费语义经 `execution_contract.pathway="injection"` 声明（payload 注入消费面）。零模型/零迁移变更。
+- 测试：verdict 谱系入账契约矩阵（组合闸/一致性闸/载荷结构边界）。
+
 ### Added — 服务目录种子新增 template_render（template-services 插件）
 
 - 官方预置原生服务 +1：`template_render`（非敏感）——上下文 + 模板 → JSON / Markdown / 纯文本的确定性渲染（`{{}}` 家族语法，if/for 最小集）。嵌入副本 `src/model/official_native_services.template-services.embedded.json` 由 sync-native-services.ps1 从执行侧 SSOT 同步，快照期望表随动更新。
