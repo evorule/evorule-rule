@@ -61,7 +61,7 @@ pub fn validate_event(event: &RuleFailureEvent) -> Result<(), &'static str> {
     Ok(())
 }
 
-/// 消费器失败分类（K3 writeback 消费器，36 号批）：S-4 四类语义跨仓复用
+/// 消费器失败分类（K3 writeback 消费器，回写消费接线批）：S-4 四类语义跨仓复用
 /// （语义单源 = evo-agent `replan.rs` NodeFailureClass；跨仓不共享代码，
 /// 枚举值序列化形态对齐其 serde rename_all = "snake_case"）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -91,7 +91,7 @@ impl FailureClass {
 
 /// 失败分类映射（纯函数表驱动；同输入必同输出——K3 对表判据 J-K3-1 的 SSOT）
 ///
-/// 映射口径（36 号档 §二.2，数据积累后校准）：
+/// 映射口径（K3 设计档 §二.2，数据积累后校准）：
 /// - `capability_gap` → CapabilityGap（agent S-4 直发自带标签，直通）；
 /// - `enforce_violation` → Interface（规则=机器可执行契约，Violation=产出违反
 ///   契约面；S-4 四类中最贴——替代观点：视为治理合规类不入 S-4，待数据说话）；
@@ -125,7 +125,7 @@ pub struct WritebackEventRow {
     pub event: Value,
     /// 收件时间（ISO-8601 UTC）
     pub received_at: String,
-    /// K3 消费器（36 号批）：失败分类（S-4 四类 snake_case；NULL=旗标关未分类）
+    /// K3 消费器（回写消费接线批）：失败分类（S-4 四类 snake_case；NULL=旗标关未分类）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub classified_class: Option<String>,
     /// 消费完成时点（ISO-8601 UTC；NULL=提议未成功，行保持未消费态可查）
@@ -142,7 +142,7 @@ mod tests {
 
     #[test]
     fn test_classify_failure_mapping_table() {
-        // J-K3-1：failure.type 全族×预期四类（映射表 36 号档 §二.2 表驱动 SSOT）
+        // J-K3-1：failure.type 全族×预期四类（映射表 K3 设计档 §二.2 表驱动 SSOT）
         use FailureClass::*;
         assert_eq!(classify_failure(Some("capability_gap")), CapabilityGap);
         assert_eq!(classify_failure(Some("enforce_violation")), Interface);

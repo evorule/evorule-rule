@@ -23,7 +23,7 @@ use axum::extract::Extension;
 /// 服务级回写 scope：仅限本端点消费（执行侧 → evorule-rule 单向收件）
 pub const API_KEY_SCOPE_WRITEBACK: &str = "writeback:rule_failure";
 
-/// K3 writeback 消费器配置（36 号批）：治理 propose 出口三要素。
+/// K3 writeback 消费器配置（回写消费接线批）：治理 propose 出口三要素。
 /// 凭据仅 env 不落盘（沿发送端 EVORULE_WRITEBACK_* 惯例）。
 #[derive(Debug, Clone)]
 pub struct K3ProposeConfig {
@@ -70,9 +70,9 @@ fn k3_propose_entry_id(tenant_id: &str, dataset_id: &str, event_id: i64) -> Stri
     format!("kc-{:016x}", h)
 }
 
-/// 候选 entry payload（36 号档 §二.3）：kind=fact（builtin 壳 required=
+/// 候选 entry payload（K3 设计档 §二.3）：kind=fact（builtin 壳 required=
 /// ["statement"]，失败事实归 fact 类知识）；tags 三段定位（消费器/分类/原始类型）；
-/// confidence=0.6 规则驱动缺省。statement 36 号档定式：规则 {entry_id} 于
+/// confidence=0.6 规则驱动缺省。statement K3 设计档定式：规则 {entry_id} 于
 /// {version_used} {failure_type}：{detail}。
 fn k3_candidate_entry(
     event: &RuleFailureEvent,
@@ -108,7 +108,7 @@ fn k3_candidate_entry(
 /// 分类已同步落账（classified_class 列），此处完成治理 propose——ureq 同步客户端
 /// 走 spawn_blocking；成功补 consumption 两列（幂等），治理拒绝/网络失败 warn 留痕
 /// 行保持未消费（fail-soft 红线：绝不影响收件 201 与审计落账）。
-/// 治理语义红线：只 propose 入 Draft，不做 auto_transition（沿 35 号批）。
+/// 治理语义红线：只 propose 入 Draft，不做 auto_transition（沿 S-5 自动化提议通道批）。
 fn spawn_k3_propose(
     store: &std::sync::Arc<crate::store::RuleStore>,
     event_id: i64,
@@ -135,12 +135,15 @@ fn spawn_k3_propose(
         let url = format!("{}/api/services/knowledge-propose/invoke", cfg.base_url);
         let dataset = cfg.dataset.clone();
         let api_key = cfg.api_key.clone();
+        // Err 载荷 Box 化：ureq::Error ≥272B，spawn_blocking 闭包返回值
+        // 受 clippy result_large_err 约束（-D warnings 下恒红），Box 后仅指针宽
         let outcome = tokio::task::spawn_blocking(move || {
             ureq::post(&url)
                 .timeout(Duration::from_secs(5))
                 .set("X-Api-Key", &api_key)
                 .send_json(body)
                 .map(|r| r.status())
+                .map_err(Box::new)
         })
         .await;
         match outcome {
@@ -168,22 +171,24 @@ fn spawn_k3_propose(
                     }
                 }
             }
-            Ok(Err(ureq::Error::Status(code, _))) => {
-                tracing::warn!(
-                    target: "evorule::writeback",
-                    event_id,
-                    status = code,
-                    "K3 消费：治理 propose 被拒（fail-soft，行保持未消费态可查）"
-                );
-            }
-            Ok(Err(e)) => {
-                tracing::warn!(
-                    target: "evorule::writeback",
-                    error = %e,
-                    event_id,
-                    "K3 消费：治理 propose 网络失败（fail-soft，行保持未消费态可查）"
-                );
-            }
+            Ok(Err(e)) => match *e {
+                ureq::Error::Status(code, _) => {
+                    tracing::warn!(
+                        target: "evorule::writeback",
+                        event_id,
+                        status = code,
+                        "K3 消费：治理 propose 被拒（fail-soft，行保持未消费态可查）"
+                    );
+                }
+                other => {
+                    tracing::warn!(
+                        target: "evorule::writeback",
+                        error = %other,
+                        event_id,
+                        "K3 消费：治理 propose 网络失败（fail-soft，行保持未消费态可查）"
+                    );
+                }
+            },
             Err(e) => {
                 tracing::warn!(
                     target: "evorule::writeback",
@@ -238,7 +243,7 @@ pub async fn receive_rule_failure(
     if event.tenant_id != key.tenant_id {
         return Err(ApiError::forbidden("事件 tenant_id 与 API Key 租户不匹配"));
     }
-    // 4) K3 消费分类（36 号批）：旗标 off = 零分类零列写零外呼（行为与现状
+    // 4) K3 消费分类（回写消费接线批）：旗标 off = 零分类零列写零外呼（行为与现状
     //    逐字节一致）；on = 同步分类落账 + spawn 异步治理 propose
     let failure_type = event.failure.as_ref().map(|f| f.r#type.clone());
     let k3 = state.k3_propose.clone();
@@ -553,7 +558,7 @@ mod tests {
         assert_eq!(queue.as_array().expect("queue").len(), 1);
     }
 
-    /// K3 测试底座（36 号批）：in-memory store + 租户/组织 + Admin + writeback
+    /// K3 测试底座（回写消费接线批）：in-memory store + 租户/组织 + Admin + writeback
     /// scoped key。返回 (app, state, admin_token, plain_key)。
     async fn setup_app_with_writeback_key() -> (axum::Router, AppState, String, String) {
         let store = RuleStore::in_memory().expect("store");

@@ -69,7 +69,7 @@ pub struct AppState {
     pub backend: BackendKind,
     /// PG 启动自检结果描述（SQLite 下为 None；PG 模式如实报告，不伪造）
     pub pg_smoke: Option<String>,
-    /// K3 writeback 消费器配置（36 号批）：new 时 env 一次读取（测试可直改）。
+    /// K3 writeback 消费器配置（回写消费接线批）：new 时 env 一次读取（测试可直改）。
     /// None=off——收件行为与消费器上线前逐字节一致。
     pub k3_propose: Option<crate::api::handlers_writeback::K3ProposeConfig>,
     /// Idempotency-Key 幂等缓存（设计文档 §14 / 历史批次 P1-B4，单实例内存版）

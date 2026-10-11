@@ -28,7 +28,7 @@ base64 = "0.22"
 # 0.32：与 evorule-server workspace（evorule-workspace 0.32）对齐——libsqlite3-sys
 # 的 links = "sqlite3" 不允许同图双版本，跨仓 dev 依赖（Q12 端到端验收）要求同源
 rusqlite = { version = "0.32", features = ["bundled"] }
-# K3 消费器治理 propose 出口（36 号批）：同步客户端 + json feature
+# K3 消费器治理 propose 出口（回写消费接线批）：同步客户端 + json feature
 ureq = { version = "2", features = ["json"] }
 axum = "0.8"
 tokio = { version = "1", features = ["full"] }

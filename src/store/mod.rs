@@ -751,7 +751,7 @@ impl RuleStore {
             "ALTER TABLE knowledge_state_history ADD COLUMN ratified_at TEXT",
             [],
         );
-        // K3 writeback 消费器（36 号批）：writeback_events 补消费三列
+        // K3 writeback 消费器（回写消费接线批）：writeback_events 补消费三列
         // （NULL=未消费/旗标关；ALTER 幂等沿同区先例）
         let _ = conn.execute(
             "ALTER TABLE writeback_events ADD COLUMN classified_class TEXT",
@@ -2351,7 +2351,7 @@ impl RuleStore {
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
 
-    /// K3 消费器落账（36 号批）：治理提议成功后补 consumption 两列
+    /// K3 消费器落账（回写消费接线批）：治理提议成功后补 consumption 两列
     /// （classified_class 收件时已落）。幂等：consumed_at 非空不覆写
     /// （首提议锚定，重复回调不冲账）；返回是否实际落账。
     pub fn mark_writeback_consumed(
