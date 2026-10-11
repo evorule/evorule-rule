@@ -625,6 +625,10 @@ pub fn router(state: AppState) -> Router {
             "/datasets/{id}/entries",
             get(handlers_datasets::list_entries).post(handlers_datasets::add_entry),
         )
+        .route(
+            "/datasets/{id}/entries/{entry_id}",
+            get(handlers_datasets::get_dataset_entry),
+        )
         // 治理侧外部导入（知识资产化 A3-1）：外部 bundle → 既有 knowledge 数据集，
         // Draft 落账 + 强制 external:{source} 打标；dry-run 与正式导入同一实现仅零写入
         .route(
@@ -4526,5 +4530,158 @@ mod tests {
         .await;
         assert_eq!(status, StatusCode::CREATED, "{body}");
         assert!(body["governance"].is_null(), "{body}");
+    }
+
+    /// O-421 回归：数据集作用域单条目 GET（鉴权/谱系分流对齐列表端点，404 语义明确）
+    #[tokio::test]
+    async fn test_dataset_scoped_single_entry_get() {
+        let (app, _state) = build_app();
+        let token = register_login(&app).await;
+
+        // knowledge 数据集 + 条目入账
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/datasets",
+            Some(&token),
+            Some(json!({
+                "dataset_id": "ds-o421",
+                "name": "单条目 GET 验收集",
+                "domain": ["tax"],
+                "dataset_kind": "knowledge"
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "{body}");
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/datasets/ds-o421/entries",
+            Some(&token),
+            Some(json!({
+                "entry_id": "k-o421-1",
+                "version": 1,
+                "payload": { "statement": "O-421 验证条目" },
+                "schema_ref": "builtin:knowledge/fact"
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "{body}");
+
+        // 正向：单条目详情与列表单项形态一致（payload/schema_ref/status）
+        let (status, body) = send(
+            app.clone(),
+            "GET",
+            "/v1/datasets/ds-o421/entries/k-o421-1",
+            Some(&token),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["entry_id"], "k-o421-1");
+        assert_eq!(body["dataset_id"], "ds-o421");
+        assert_eq!(body["status"], "Draft");
+        assert_eq!(body["payload"]["statement"], "O-421 验证条目");
+
+        // 条目不存在 → 404
+        let (status, _) = send(
+            app.clone(),
+            "GET",
+            "/v1/datasets/ds-o421/entries/k-missing",
+            Some(&token),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+
+        // 数据集不存在 → 404（不泄露存在性）
+        let (status, _) = send(
+            app.clone(),
+            "GET",
+            "/v1/datasets/ds-nope/entries/k-o421-1",
+            Some(&token),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+    }
+
+    /// O-422 回归：/audits/lifecycle 支持 dataset_id 过滤（缺省全量，指定仅返回该数据集事件）
+    #[tokio::test]
+    async fn test_lifecycle_audits_dataset_filter() {
+        let (app, state) = build_app();
+        let token = register_login(&app).await;
+
+        // 两个数据集各产生一条生命周期事件（Draft→Candidate）
+        for ds in ["ds-o422-a", "ds-o422-b"] {
+            let (status, body) = send(
+                app.clone(),
+                "POST",
+                "/v1/datasets",
+                Some(&token),
+                Some(json!({
+                    "dataset_id": ds,
+                    "name": ds,
+                    "domain": ["tax"],
+                    "visibility": "private"
+                })),
+            )
+            .await;
+            assert_eq!(status, StatusCode::CREATED, "{body}");
+            let (status, body) = send(
+                app.clone(),
+                "PATCH",
+                &format!("/v1/datasets/{ds}/lifecycle"),
+                Some(&token),
+                Some(json!({ "to": "candidate" })),
+            )
+            .await;
+            assert_eq!(status, StatusCode::OK, "{body}");
+        }
+
+        let admin = admin_token(&state).await;
+
+        // 过滤生效：指定 ds-a 仅返回该数据集事件
+        let (status, body) = send(
+            app.clone(),
+            "GET",
+            "/v1/audits/lifecycle?dataset_id=ds-o422-a",
+            Some(&admin),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        let items = body.as_array().expect("array");
+        assert!(!items.is_empty(), "过滤后应有 ds-a 事件");
+        assert!(
+            items.iter().all(|e| e["dataset_id"] == "ds-o422-a"),
+            "不得混入其他数据集事件: {body}"
+        );
+
+        // 缺省全量：包含两个数据集的事件
+        let (status, body) = send(
+            app.clone(),
+            "GET",
+            "/v1/audits/lifecycle",
+            Some(&admin),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        let items = body.as_array().expect("array");
+        assert!(items.iter().any(|e| e["dataset_id"] == "ds-o422-a"));
+        assert!(items.iter().any(|e| e["dataset_id"] == "ds-o422-b"));
+
+        // 不存在的 dataset_id → 空数组（而非全量）
+        let (status, body) = send(
+            app.clone(),
+            "GET",
+            "/v1/audits/lifecycle?dataset_id=ds-nope",
+            Some(&admin),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body.as_array().map(|a| a.len()), Some(0));
     }
 }

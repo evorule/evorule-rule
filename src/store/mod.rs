@@ -4188,13 +4188,20 @@ impl RuleStore {
         Ok(rows.into_iter().collect())
     }
 
-    /// 生命周期审计（设计文档 §11 `GET /audits/lifecycle`）：租户内数据集 state_history 扁平输出
+    /// 生命周期审计（设计文档 §11 `GET /audits/lifecycle`）：租户内数据集 state_history 扁平输出；
+    /// `dataset_id` 可选过滤（O-422：缺省 None=全量，指定时仅输出该数据集事件）
     pub fn list_lifecycle_audits(
         &self,
         tenant_id: &str,
+        dataset_id: Option<&str>,
     ) -> Result<Vec<serde_json::Value>, StoreError> {
         let mut out = Vec::new();
         for ds in self.list_datasets(tenant_id)? {
+            if let Some(want) = dataset_id {
+                if ds.dataset_id != want {
+                    continue;
+                }
+            }
             for sc in &ds.lifecycle.state_history {
                 out.push(serde_json::json!({
                     "dataset_id": ds.dataset_id,

@@ -1,6 +1,6 @@
 //! 认证端点（设计文档 §7）：register / login / refresh / me / audits
 
-use axum::extract::{Extension, State};
+use axum::extract::{Extension, Query, State};
 use axum::http::StatusCode;
 use axum::Json;
 use serde::{Deserialize, Serialize};
@@ -192,15 +192,26 @@ pub async fn audits(
     Ok(Json(audits))
 }
 
-/// 生命周期审计列表（设计文档 §11 `GET /audits/lifecycle`，admin；历史批次 state_history 扁平输出）
+/// 生命周期审计查询参数（O-422：dataset_id 可选过滤，缺省全量）
+#[derive(Deserialize, Default)]
+pub struct LifecycleAuditQuery {
+    #[serde(default)]
+    pub dataset_id: Option<String>,
+}
+
+/// 生命周期审计列表（设计文档 §11 `GET /audits/lifecycle`，admin；历史批次 state_history 扁平输出；
+/// 支持 `?dataset_id=` 过滤——缺省全量，指定时仅返回该数据集事件）
 pub async fn lifecycle_audits(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
+    Query(q): Query<LifecycleAuditQuery>,
 ) -> Result<Json<Vec<serde_json::Value>>, ApiError> {
     if !is_org_admin(ctx.role) {
         return Err(ApiError::forbidden("仅管理员可查看生命周期审计"));
     }
-    let audits = state.store.list_lifecycle_audits(&ctx.tenant_id)?;
+    let audits = state
+        .store
+        .list_lifecycle_audits(&ctx.tenant_id, q.dataset_id.as_deref())?;
     Ok(Json(audits))
 }
 

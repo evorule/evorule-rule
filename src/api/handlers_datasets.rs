@@ -682,6 +682,35 @@ pub struct ListEntriesFilter {
     pub filter: Option<String>,
 }
 
+/// GET /datasets/{id}/entries/{entry_id} —— 数据集作用域单条目详情（O-421）：
+/// 鉴权与谱系分流对齐列表端点（数据集存在+租户匹配；rule_set/knowledge 按 dataset_kind 分流），
+/// 返回当前版本（最新）条目，载荷形态与列表端点单项一致；条目不存在 404。
+pub async fn get_dataset_entry(
+    State(state): State<AppState>,
+    Extension(ctx): Extension<AuthContext>,
+    Path((id, entry_id)): Path<(String, String)>,
+) -> Result<Json<Value>, ApiError> {
+    let ds = state
+        .store
+        .get_dataset(&id)?
+        .ok_or_else(|| ApiError::not_found("数据集不存在"))?;
+    if ds.tenant_id != ctx.tenant_id {
+        return Err(ApiError::not_found("数据集不存在"));
+    }
+    let raw = match ds.dataset_kind {
+        DatasetKind::RuleSet => state
+            .store
+            .get_latest_entry(&id, &entry_id)?
+            .map(|e| serde_json::to_value(e).unwrap_or(Value::Null)),
+        DatasetKind::Knowledge => state
+            .store
+            .get_latest_knowledge_entry(&id, &entry_id)?
+            .map(|e| serde_json::to_value(e).unwrap_or(Value::Null)),
+    };
+    raw.map(Json)
+        .ok_or_else(|| ApiError::not_found("条目不存在"))
+}
+
 pub async fn add_entry(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
