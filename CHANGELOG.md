@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+### Added — 数据集作用域单条目 GET 与生命周期审计过滤
+
+- 新增 `GET /v1/datasets/{id}/entries/{entry_id}`：数据集作用域单条目详情——鉴权（数据集存在+租户匹配，越权/不存在一律 404 不泄露存在性）与谱系分流（rule_set/knowledge 按 dataset_kind 取当前最新版本）对齐列表端点，载荷形态与列表单项一致。
+- `GET /v1/audits/lifecycle` 支持 `?dataset_id=` 过滤：指定时仅返回该数据集的生命周期事件，缺省全量（此前过滤参数不生效、恒返回全量，多数据集实例存在混入其他数据集事件的误读风险）。
+- 测试：单条目 GET 正向/条目 404/数据集 404；生命周期审计过滤三态（过滤生效/缺省全量/不存在 id 返回空数组）。
+
 ### Added — 第六知识谱系 verdict（LLM 判定事实治理登记面）
 
 - `knowledge_kind` 谱系五分法扩为六分法：新增 `verdict`（LLM 判定事实条目）。载荷结构权威=`evorule-system-rules` `_shared/v1.0` `$defs/llm_verdict`（九字段判定事实契约：kind/key/verdict/value/confidence/evidence/prompt_hash/model/origin）。
