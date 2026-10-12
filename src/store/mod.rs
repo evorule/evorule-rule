@@ -15,7 +15,7 @@ pub mod pg;
 
 use crate::bundle::{
     BundleEntry, BundleError, BundleExporter, BundleImporter, BundleTests, DatasetBundle,
-    EntryKind, ImportResult, RecipeSnapshot,
+    EntryKind, ImportResult, RecipeSnapshot, TestVerdict,
 };
 use crate::model::auth::{ApiKey, AuthAudit, Org, Role, Tenant, User, UserOrg};
 use crate::model::dataset::{DatasetKind, Meta, RuleDataset, Visibility};
@@ -144,6 +144,11 @@ pub enum StoreError {
 
     #[error("快照包 `{0}` 混含规则条目与数据条目：MVP 数据集类型单一（rule_set 或 knowledge 二选一），混合包请拆分")]
     MixedBundleKinds(String),
+
+    /// 导入侧测试证据缺口（与导出端点 handlers_bundle::export 同口径）：
+    /// verdict=pass 的包导入必须携带可追溯标记。见 `Store::validate_test_evidence`。
+    #[error("测试证据校验失败: verdict=pass 的导入必须携带可追溯标记（tests.subset 每项须为 sandbox:<沙盒ID> 或 human:<操作者>）。机器背书请从治理域测试工作台导出，人工背书请显式标注 human:<操作者>；verdict=fail 无此要求")]
+    UntraceableTestEvidence(String),
 
     #[error("数据条目 `{entry}` 的 schema_ref 缺失或为空")]
     KnowledgeMissingSchemaRef { entry: String },
@@ -4221,6 +4226,36 @@ impl RuleStore {
     // 快照包导入（设计文档 §6 bundles/import；历史批次 5 步校验链）
     // ------------------------------------------------------------------
 
+    /// 导入侧测试证据闸：verdict=pass 的快照包必须携带可追溯背书标记。
+    ///
+    /// 与导出端点（`handlers_bundle::export`）及执行侧（evorule-server
+    /// `AppState::import_bundle` ①.5 步）三面同口径：
+    /// - `tests.subset` 非空且每项以 `sandbox:<沙盒ID>` 或 `human:<操作者>` 开头；
+    /// - 机器背书（sandbox:）由测试工作台产出，人工降级背书（human:）显式声明；
+    /// - verdict=fail 无此要求（fail 本身即「未验证」的如实标注）。
+    ///
+    /// 挂 store 层理由：CLI/定时同步等非 HTTP 调用方同样过闸，与执行侧
+    /// server 的挂点深度一致；防「治理侧导出端点管住自己、外部包经 import
+    /// 直入绕过」的单侧缺口（B-3 移植线实测发现：ale2bundle 外部工具产物
+    /// 裸变体名 subset 在治理侧入库成功、执行侧拒收——两侧门禁不同源）。
+    fn validate_test_evidence(bundle: &DatasetBundle) -> Result<(), StoreError> {
+        if bundle.tests.verdict != TestVerdict::Pass {
+            return Ok(()); // 非 pass 无要求（fail = 如实未验证）
+        }
+        let traceable = !bundle.tests.subset.is_empty()
+            && bundle
+                .tests
+                .subset
+                .iter()
+                .all(|s| s.starts_with("sandbox:") || s.starts_with("human:"));
+        if !traceable {
+            return Err(StoreError::UntraceableTestEvidence(
+                bundle.bundle_id.clone(),
+            ));
+        }
+        Ok(())
+    }
+
     /// 导入快照包：`BundleImporter::validate`（schema→防篡改→符号三方一致/数据条目 D3→版本解析→闸门一）通过后落库。
     ///
     /// - 数据集：不存在则新建（tenant=导入方），已存在则覆盖其版本链/依赖/锚；
@@ -4241,6 +4276,13 @@ impl RuleStore {
     ) -> Result<ImportResult, StoreError> {
         let resolver = |uri: &str| self.lookup_domain_schema(uri);
         let result = BundleImporter::validate(bundle, &resolver)?;
+        // 导入侧测试证据闸（与导出端点 handlers_bundle::export 同口径，防绕过
+        // console 的工作台纪律）：verdict=pass 须可追溯（sandbox:/human: 背书）。
+        // 校验挂在 store 层而非 handler 层——与执行侧 evorule-server
+        // AppState::import_bundle 同深度，CLI 等非 HTTP 调用方同样受保护。
+        // sandbox:<id> 的 workspace 存在性深度校验执行侧独有（依赖 workspace_db，
+        // 治理侧无此设施）；本层保持纯格式校验，与 export 端点一致。
+        Self::validate_test_evidence(bundle)?;
         // Q12 R5：混合 kind 拒绝（数据集类型单一）
         let has_rule = bundle
             .entries
@@ -4469,6 +4511,9 @@ impl RuleStore {
         // 全链口径（导入设计 D6）：六项校验链全跑，与 import_bundle 同一 SSOT 一字不减
         let resolver = |uri: &str| self.lookup_domain_schema(uri);
         BundleImporter::validate(bundle, &resolver)?;
+        // 导入侧测试证据闸（同 import_bundle：与导出端点同口径，外部包直入
+        // 亦须可追溯背书；dry_run 同校验——预检与入库无旁路）
+        Self::validate_test_evidence(bundle)?;
         // schema 预热：包内全部 schema_ref 显式解析（锁外，持锁期间零 FS I/O）
         for be in &bundle.entries {
             if let Some(sr) = &be.schema_ref {
@@ -5806,6 +5851,76 @@ mod tests {
             .unwrap();
     }
 
+    /// 导入侧测试证据闸：verdict=pass 裸 subset（无背书）必被拒；
+    /// human 背书放行；verdict=fail 无要求。
+    /// 防回归：B-3 移植线实测发现治理侧 import 链缺此闸（外部工具产物
+    /// 裸变体名 subset 入库成功而执行侧 server 拒收——两侧门禁不同源）。
+    #[test]
+    fn test_import_bundle_rejects_untraceable_pass_evidence() {
+        use crate::bundle::{BundleTests, TestVerdict};
+        let store = RuleStore::in_memory().unwrap();
+        reg094_seed_covered_dataset(&store);
+
+        let make_bundle = |tests: BundleTests| {
+            store
+                .export_bundle("ds-tax-2024", &tests, "eng", "t", "org-evorule", None)
+                .unwrap()
+        };
+
+        // ① 裸 pass + 空 subset → 拒（UntraceableTestEvidence）
+        let bare = make_bundle(BundleTests {
+            subset: vec![],
+            fixtures: vec![],
+            verdict: TestVerdict::Pass,
+        });
+        let err = store
+            .import_bundle(&bare, "org-x", "u", "t", "inst")
+            .unwrap_err();
+        assert!(
+            matches!(err, StoreError::UntraceableTestEvidence(_)),
+            "裸 pass 空_subset 应被拒: {err}"
+        );
+
+        // ② 裸 pass + 无前缀变体名 → 拒
+        let named = make_bundle(BundleTests {
+            subset: vec!["rule-01".into()],
+            fixtures: vec![],
+            verdict: TestVerdict::Pass,
+        });
+        let err = store
+            .import_bundle(&named, "org-x", "u", "t", "inst")
+            .unwrap_err();
+        assert!(
+            matches!(err, StoreError::UntraceableTestEvidence(_)),
+            "无前缀变体名应被拒: {err}"
+        );
+
+        // ③ human 背书 → 过闸
+        let human = make_bundle(BundleTests {
+            subset: vec!["human:eng-01".into()],
+            fixtures: vec![],
+            verdict: TestVerdict::Pass,
+        });
+        store
+            .import_bundle(&human, "org-x", "u", "t", "inst")
+            .expect("human 背书应过闸");
+
+        // ④ verdict=fail + 裸 subset → 无证据要求（fail 即如实未验证，
+        // 由闸门一 TestsNotPassed 拦，不归本闸管）
+        let failed = make_bundle(BundleTests {
+            subset: vec![],
+            fixtures: vec![],
+            verdict: TestVerdict::Fail,
+        });
+        let err = store
+            .import_bundle(&failed, "org-x", "u", "t", "inst")
+            .unwrap_err();
+        assert!(
+            !err.to_string().contains("可追溯"),
+            "fail 包不应触发测试证据闸: {err}"
+        );
+    }
+
     /// 覆盖导入在条目插入段失败 → 整体回滚（修复前：删旧已提交+插新失败=数据丢失半状态）
     #[test]
     fn test_import_bundle_atomic_rollback_on_entry_insert_failure() {
@@ -5825,9 +5940,9 @@ mod tests {
         let ds_before = store.get_dataset("ds-tax-2024").unwrap().unwrap();
         let history_len_before = ds_before.lifecycle.state_history.len();
 
-        // 导出真包（同数据集 → 走覆盖导入路径）
+        // 导出真包（同数据集 → 走覆盖导入路径）；human 背书满足导入侧测试证据闸
         let tests = BundleTests {
-            subset: vec![],
+            subset: vec!["human:test-op".into()],
             fixtures: vec![],
             verdict: TestVerdict::Pass,
         };
@@ -5904,7 +6019,8 @@ mod tests {
         assert!(entries >= 2 && history >= 1 && snaps >= 1 && versions >= 1 && version_snaps >= 1);
 
         let tests = BundleTests {
-            subset: vec![],
+            // human 背书满足导入侧测试证据闸
+            subset: vec!["human:test-op".into()],
             fixtures: vec![],
             verdict: TestVerdict::Pass,
         };
@@ -6903,9 +7019,9 @@ mod tests {
         });
         store.create_dataset(&ds).unwrap();
         store.add_entry(&draft_entry()).unwrap();
-        // 导出：数据集当前版本 + 条目
+        // 导出：数据集当前版本 + 条目；human 背书满足导入侧测试证据闸
         let tests = BundleTests {
-            subset: vec![],
+            subset: vec!["human:test-op".into()],
             fixtures: vec![],
             verdict: TestVerdict::Pass,
         };
@@ -6972,7 +7088,7 @@ mod tests {
             .export_bundle(
                 "ds-tax-2024",
                 &BundleTests {
-                    subset: vec![],
+                    subset: vec!["human:test-op".into()],
                     fixtures: vec![],
                     verdict: TestVerdict::Pass,
                 },
@@ -7821,7 +7937,8 @@ mod tests {
             }],
             data_dependencies: None,
             tests: crate::bundle::BundleTests {
-                subset: vec![],
+                // human 背书满足导入侧测试证据闸（store::validate_test_evidence）
+                subset: vec!["human:partner-test".into()],
                 fixtures: vec![],
                 verdict: crate::bundle::TestVerdict::Pass,
             },

@@ -869,7 +869,7 @@ mod tests {
                 "trust_level": trust_level,
                 "license_ref": license_ref
             }],
-            "tests": { "verdict": "pass" },
+            "tests": { "verdict": "pass", "subset": ["human:partner-test"] },
             "audit": {
                 "exported_at": "t1",
                 "exported_by": "partner-x",
@@ -3165,7 +3165,12 @@ mod tests {
             .store
             .export_bundle(
                 "ds-pay-01",
-                &crate::bundle::BundleTests::default(),
+                // human 背书满足导入侧测试证据闸（BundleTests::default() =
+                // pass+空 subset，会被 store::validate_test_evidence 拒收）
+                &crate::bundle::BundleTests {
+                    subset: vec!["human:test-op".into()],
+                    ..Default::default()
+                },
                 "eng",
                 "2026-08-02T00:00:00Z",
                 "inst-001",
