@@ -869,7 +869,7 @@ mod tests {
                 "trust_level": trust_level,
                 "license_ref": license_ref
             }],
-            "tests": { "verdict": "pass", "subset": ["human:partner-test"] },
+            "tests": { "verdict": "pass", "subset": ["sandbox:partner-test"] },
             "audit": {
                 "exported_at": "t1",
                 "exported_by": "partner-x",
@@ -1951,7 +1951,7 @@ mod tests {
             Some(json!({
                 "dataset_id": "ds-tax-01",
                 "version": "v1",
-                "tests": { "verdict": "pass", "subset": ["human:test"], "fixtures": [] }
+                "tests": { "verdict": "pass", "subset": ["sandbox:test"], "fixtures": [] }
             })),
         )
         .await;
@@ -2062,7 +2062,7 @@ mod tests {
             Some(json!({
                 "dataset_id": "ds-tax-01",
                 "version": "v1",
-                "tests": { "verdict": "pass", "subset": ["human:test"], "fixtures": [] },
+                "tests": { "verdict": "pass", "subset": ["sandbox:test"], "fixtures": [] },
                 "recipe_snapshot": {
                     "recipe_version": "memory-v1.0",
                     "recipe": { "recall": { "top_k": 5 } },
@@ -3073,7 +3073,7 @@ mod tests {
             Some(json!({
                 "dataset_id": "ds-tax-01",
                 "version": "v1",
-                "tests": { "verdict": "pass", "subset": ["human:test"], "fixtures": [] }
+                "tests": { "verdict": "pass", "subset": ["sandbox:test"], "fixtures": [] }
             })),
         )
         .await;
@@ -3165,10 +3165,10 @@ mod tests {
             .store
             .export_bundle(
                 "ds-pay-01",
-                // human 背书满足导入侧测试证据闸（BundleTests::default() =
+                // sandbox 背书满足导入侧测试证据闸（BundleTests::default() =
                 // pass+空 subset，会被 store::validate_test_evidence 拒收）
                 &crate::bundle::BundleTests {
-                    subset: vec!["human:test-op".into()],
+                    subset: vec!["sandbox:test-op".into()],
                     ..Default::default()
                 },
                 "eng",

@@ -147,7 +147,7 @@ pub enum StoreError {
 
     /// 导入侧测试证据缺口（与导出端点 handlers_bundle::export 同口径）：
     /// verdict=pass 的包导入必须携带可追溯标记。见 `Store::validate_test_evidence`。
-    #[error("测试证据校验失败: verdict=pass 的导入必须携带可追溯标记（tests.subset 每项须为 sandbox:<沙盒ID> 或 human:<操作者>）。机器背书请从治理域测试工作台导出，人工背书请显式标注 human:<操作者>；verdict=fail 无此要求")]
+    #[error("测试证据校验失败: verdict=pass 的导入必须携带可追溯标记（tests.subset 每项须为 sandbox:<沙盒ID>）。机器背书请从治理域测试工作台导出并携带沙盒报告引用；verdict=fail 无此要求")]
     UntraceableTestEvidence(String),
 
     #[error("数据条目 `{entry}` 的 schema_ref 缺失或为空")]
@@ -4230,8 +4230,7 @@ impl RuleStore {
     ///
     /// 与导出端点（`handlers_bundle::export`）及执行侧（evorule-server
     /// `AppState::import_bundle` ①.5 步）三面同口径：
-    /// - `tests.subset` 非空且每项以 `sandbox:<沙盒ID>` 或 `human:<操作者>` 开头；
-    /// - 机器背书（sandbox:）由测试工作台产出，人工降级背书（human:）显式声明；
+    /// - `tests.subset` 非空且每项以 `sandbox:<沙盒ID>` 开头（机器背书，测试工作台产出）；
     /// - verdict=fail 无此要求（fail 本身即「未验证」的如实标注）。
     ///
     /// 挂 store 层理由：CLI/定时同步等非 HTTP 调用方同样过闸，与执行侧
@@ -4247,7 +4246,7 @@ impl RuleStore {
                 .tests
                 .subset
                 .iter()
-                .all(|s| s.starts_with("sandbox:") || s.starts_with("human:"));
+                .all(|s| s.starts_with("sandbox:"));
         if !traceable {
             return Err(StoreError::UntraceableTestEvidence(
                 bundle.bundle_id.clone(),
@@ -4277,7 +4276,7 @@ impl RuleStore {
         let resolver = |uri: &str| self.lookup_domain_schema(uri);
         let result = BundleImporter::validate(bundle, &resolver)?;
         // 导入侧测试证据闸（与导出端点 handlers_bundle::export 同口径，防绕过
-        // console 的工作台纪律）：verdict=pass 须可追溯（sandbox:/human: 背书）。
+        // console 的工作台纪律）：verdict=pass 须可追溯（sandbox: 机器背书）。
         // 校验挂在 store 层而非 handler 层——与执行侧 evorule-server
         // AppState::import_bundle 同深度，CLI 等非 HTTP 调用方同样受保护。
         // sandbox:<id> 的 workspace 存在性深度校验执行侧独有（依赖 workspace_db，
@@ -5852,7 +5851,7 @@ mod tests {
     }
 
     /// 导入侧测试证据闸：verdict=pass 裸 subset（无背书）必被拒；
-    /// human 背书放行；verdict=fail 无要求。
+    /// sandbox: 机器背书放行；verdict=fail 无要求。
     /// 防回归：B-3 移植线实测发现治理侧 import 链缺此闸（外部工具产物
     /// 裸变体名 subset 入库成功而执行侧 server 拒收——两侧门禁不同源）。
     #[test]
@@ -5895,15 +5894,15 @@ mod tests {
             "无前缀变体名应被拒: {err}"
         );
 
-        // ③ human 背书 → 过闸
-        let human = make_bundle(BundleTests {
-            subset: vec!["human:eng-01".into()],
+        // ③ sandbox: 机器背书 → 过闸
+        let sandboxed = make_bundle(BundleTests {
+            subset: vec!["sandbox:eng-01".into()],
             fixtures: vec![],
             verdict: TestVerdict::Pass,
         });
         store
-            .import_bundle(&human, "org-x", "u", "t", "inst")
-            .expect("human 背书应过闸");
+            .import_bundle(&sandboxed, "org-x", "u", "t", "inst")
+            .expect("sandbox 背书应过闸");
 
         // ④ verdict=fail + 裸 subset → 无证据要求（fail 即如实未验证，
         // 由闸门一 TestsNotPassed 拦，不归本闸管）
@@ -5940,9 +5939,9 @@ mod tests {
         let ds_before = store.get_dataset("ds-tax-2024").unwrap().unwrap();
         let history_len_before = ds_before.lifecycle.state_history.len();
 
-        // 导出真包（同数据集 → 走覆盖导入路径）；human 背书满足导入侧测试证据闸
+        // 导出真包（同数据集 → 走覆盖导入路径）；sandbox 背书满足导入侧测试证据闸
         let tests = BundleTests {
-            subset: vec!["human:test-op".into()],
+            subset: vec!["sandbox:test-op".into()],
             fixtures: vec![],
             verdict: TestVerdict::Pass,
         };
@@ -6019,8 +6018,8 @@ mod tests {
         assert!(entries >= 2 && history >= 1 && snaps >= 1 && versions >= 1 && version_snaps >= 1);
 
         let tests = BundleTests {
-            // human 背书满足导入侧测试证据闸
-            subset: vec!["human:test-op".into()],
+            // sandbox 背书满足导入侧测试证据闸
+            subset: vec!["sandbox:test-op".into()],
             fixtures: vec![],
             verdict: TestVerdict::Pass,
         };
@@ -7019,9 +7018,9 @@ mod tests {
         });
         store.create_dataset(&ds).unwrap();
         store.add_entry(&draft_entry()).unwrap();
-        // 导出：数据集当前版本 + 条目；human 背书满足导入侧测试证据闸
+        // 导出：数据集当前版本 + 条目；sandbox 背书满足导入侧测试证据闸
         let tests = BundleTests {
-            subset: vec!["human:test-op".into()],
+            subset: vec!["sandbox:test-op".into()],
             fixtures: vec![],
             verdict: TestVerdict::Pass,
         };
@@ -7088,7 +7087,7 @@ mod tests {
             .export_bundle(
                 "ds-tax-2024",
                 &BundleTests {
-                    subset: vec!["human:test-op".into()],
+                    subset: vec!["sandbox:test-op".into()],
                     fixtures: vec![],
                     verdict: TestVerdict::Pass,
                 },
@@ -7937,8 +7936,8 @@ mod tests {
             }],
             data_dependencies: None,
             tests: crate::bundle::BundleTests {
-                // human 背书满足导入侧测试证据闸（store::validate_test_evidence）
-                subset: vec!["human:partner-test".into()],
+                // sandbox 背书满足导入侧测试证据闸（store::validate_test_evidence）
+                subset: vec!["sandbox:partner-test".into()],
                 fixtures: vec![],
                 verdict: crate::bundle::TestVerdict::Pass,
             },
