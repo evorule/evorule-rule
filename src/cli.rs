@@ -719,10 +719,15 @@ mod tests {
         assert!(err.0.contains("沙箱验证未通过"), "{err}");
 
         // 5. bulk-import 携带证据（测试工作台产出形态）→ 导入成功
+        // human 背书满足导入侧测试证据闸（裸 pass+空 subset 会被拒收）
         let tmp = std::env::temp_dir().join(format!("cli-e2e-{}", std::process::id()));
         std::fs::create_dir_all(&tmp).unwrap();
         let tests_file = tmp.join("tests.json");
-        std::fs::write(&tests_file, json!({"verdict": "pass"}).to_string()).unwrap();
+        std::fs::write(
+            &tests_file,
+            json!({"verdict": "pass", "subset": ["human:cli-e2e"]}).to_string(),
+        )
+        .unwrap();
         run_blocking(
             &base,
             &token,
