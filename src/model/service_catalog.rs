@@ -76,6 +76,10 @@ const EMBEDDED_SERVICE_FILES: &[(&str, &str)] = &[
         "template-services",
         include_str!("official_native_services.template-services.embedded.json"),
     ),
+    (
+        "inference-services",
+        include_str!("official_native_services.inference-services.embedded.json"),
+    ),
 ];
 
 /// 官方预置原生服务种子（声明文件化；泛化至多插件聚合）。
@@ -205,7 +209,8 @@ mod tests {
     #[test]
     fn test_embedded_native_services_snapshot() {
         /// 快照期望表（聚合序 = EMBEDDED_SERVICE_FILES 声明序：
-        /// demo-services → physics-services → indicator-services → template-services）。
+        /// demo-services → physics-services → indicator-services → template-services
+        /// → inference-services）。
         /// 条目 = (name, sensitive, description)，与 SSOT 声明文件逐字对应。
         const EXPECTED_SERVICES: &[(&str, bool, &str)] = &[
             // ---- demo-services ----
@@ -227,6 +232,10 @@ mod tests {
             ("indicator_rsi", false, "RSI(默认 14,Wilder 平滑 ewm(alpha=1/N, adjust=False),分类语义与参考实现逐分支对齐)"),
             // ---- template-services ----
             ("template_render", false, "模板渲染(上下文+模板→JSON/Markdown/纯文本,{{}} 家族语法,if/for 最小集,确定性纯函数)"),
+            // ---- inference-services ----
+            ("inference_dimension_from_unit", false, "SI 单位字符串解析为七分量量纲向量([L,M,T,I,Θ,N,J],确定性)"),
+            ("inference_dimension_compare_units", false, "两 SI 单位量纲等价性比较(七分量向量逐位相等判定,确定性)"),
+            ("inference_dimension_verify_formula", false, "物理公式量纲一致性验证(已知变量量纲推导四则与幂表达式,确定性)"),
         ];
 
         let seed = official_native_services();
