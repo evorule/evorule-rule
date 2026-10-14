@@ -1,0 +1,16 @@
+{
+  "$id": "https://evorule.org/schemas/eval/test/v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ALE 对拍变体集（eval.test.v1 entry）",
+  "type": "object",
+  "properties": {
+    "variants": {
+      "type": "array",
+      "minItems": 1
+    }
+  },
+  "required": [
+    "variants"
+  ],
+  "additionalProperties": true
+}

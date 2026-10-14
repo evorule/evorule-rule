@@ -1,0 +1,50 @@
+{
+  "$id": "https://evorule.org/schemas/northstar/anchor/v1.0.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Northstar Goal Anchor v1.0",
+  "description": "北极星目标锚领域 schema（设计/11 §2.1）：目标锚=project 标识 + goal 目标陈述 + milestone_seq 里程碑序列（设计/10 §2.1 接口）+ milestone_defs 逐项定义 + immutable 只读声明。锚经治理链入库后 Active/Published 冻结（不可变机制保证），检索方只读。",
+  "type": "object",
+  "properties": {
+    "project": {
+      "type": "string",
+      "description": "项目标识（锚检索主键语素）"
+    },
+    "goal": {
+      "type": "string",
+      "description": "目标陈述（自然语言，LLM 对齐基准）"
+    },
+    "milestone_seq": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "description": "里程碑序列（赛前配置；无人值守缺省单元素；与驱动 run config milestone_target 同源）"
+    },
+    "milestone_defs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "no": { "type": "string", "description": "里程碑号（与 milestone_seq 元素一一对应）" },
+          "desc": { "type": "string", "description": "里程碑描述" },
+          "verify": { "type": "string", "description": "验证方式（机器可断言口径优先）" },
+          "owner": { "type": ["string", "null"], "description": "负责人（方案B 人审链字段；方案A 置 null）" },
+          "effective": { "type": ["string", "null"], "description": "生效期（方案B 字段；方案A 置 null）" }
+        },
+        "required": ["no", "desc", "verify"],
+        "additionalProperties": false
+      },
+      "description": "里程碑逐项定义"
+    },
+    "immutable": {
+      "type": "boolean",
+      "const": true,
+      "description": "锚不可变声明位（恒 true）"
+    },
+    "guide": {
+      "type": "string",
+      "description": "检索引导语（设计/11 §2.2② 说明并入数据条目：rule 侧治理 add_entry API 仅收 payload+schema_ref 数据条目形态，content 文档条目形态无治理 API 通路——2026-10-01 实施裁断留痕）"
+    }
+  },
+  "required": ["project", "goal", "milestone_seq", "milestone_defs", "immutable"],
+  "additionalProperties": false
+}

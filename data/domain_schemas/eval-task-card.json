@@ -1,0 +1,16 @@
+{
+  "$id": "https://evorule.org/schemas/eval/task-card/v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ALE task card（eval.task.v1 任务卡 entry）",
+  "type": "object",
+  "properties": {
+    "task_id": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "required": [
+    "task_id"
+  ],
+  "additionalProperties": true
+}

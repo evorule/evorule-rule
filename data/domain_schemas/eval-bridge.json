@@ -1,0 +1,33 @@
+{
+  "$id": "https://evorule.org/schemas/eval/bridge/v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ALE bridge 存证（eval.bridge.v1 entry，哈希存证不物理携带）",
+  "type": "object",
+  "properties": {
+    "language": {
+      "type": "string",
+      "enum": [
+        "python"
+      ]
+    },
+    "source_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source_blake3": {
+      "type": "string",
+      "pattern": "^blake3:[0-9a-f]{64}$"
+    },
+    "entry_function": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "required": [
+    "language",
+    "source_ref",
+    "source_blake3",
+    "entry_function"
+  ],
+  "additionalProperties": true
+}

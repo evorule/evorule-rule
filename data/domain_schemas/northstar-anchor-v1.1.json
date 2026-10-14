@@ -1,0 +1,67 @@
+{
+  "$id": "https://evorule.org/schemas/northstar/anchor/v1.1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Northstar Goal Anchor v1.1",
+  "description": "北极星目标锚领域 schema v1.1（设计/15 §6.1）：v1.0 字段全量保留原语义 + 四个可选扩展字段（legislator 立法者会话标识 / status 生命周期状态位 / created_at 立法时间 / void_reason 作废理由）。向后兼容：四字段缺省=回退 v1.0 语义，v1.0 消费方零改动。自立法通路：goal 与里程碑序列/定义由运行中 agent LLM 提案（立法者），机器闸通过后由驱动侧机器执行入库（LLM 提案、机器落笔）； Published 快照不可变，生命周期演进=新版本条目（快照只增不改），作废/销毁全程 anchor-rulings.jsonl 记账留痕。",
+  "type": "object",
+  "properties": {
+    "project": {
+      "type": "string",
+      "description": "项目标识（锚检索主键语素；驱动侧权威供给）"
+    },
+    "goal": {
+      "type": "string",
+      "description": "目标陈述（自然语言，LLM 对齐基准；自立法通路=立法 LLM 产出）"
+    },
+    "milestone_seq": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "description": "里程碑序列（自立法通路=立法 LLM 产出；R3 比对与 R6 推进的权威序列）"
+    },
+    "milestone_defs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "no": { "type": "string", "description": "里程碑号（与 milestone_seq 元素一一对应）" },
+          "desc": { "type": "string", "description": "里程碑描述" },
+          "verify": { "type": "string", "description": "验证方式（判据自写原则：由立法 LLM 自行撰写，落定后机器按锁定锚裁决；流程执行+赛后审计核对）" },
+          "owner": { "type": ["string", "null"], "description": "负责人（方案B 人审链字段；方案A 置 null）" },
+          "effective": { "type": ["string", "null"], "description": "生效期（方案B 字段；方案A 置 null）" }
+        },
+        "required": ["no", "desc", "verify"],
+        "additionalProperties": false
+      },
+      "description": "里程碑逐项定义"
+    },
+    "immutable": {
+      "type": "boolean",
+      "const": true,
+      "description": "锚不可变声明位（恒 true）"
+    },
+    "guide": {
+      "type": "string",
+      "description": "检索引导语（设计/11 §2.2② 说明并入数据条目：rule 侧治理 add_entry API 仅收 payload+schema_ref 数据条目形态，content 文档条目形态无治理 API 通路——2026-10-01 实施裁断留痕）"
+    },
+    "legislator": {
+      "type": "string",
+      "description": "立法者标识（自立法通路：运行中 agent LLM 会话标识，立法证据锚；缺省=回退 v1.0 语义）"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["locked", "voided", "destroyed"],
+      "description": "生命周期状态位（记账式，快照不删：locked=锁定运行中 / voided=已公开作废 / destroyed=已销毁；缺省=locked）"
+    },
+    "created_at": {
+      "type": "string",
+      "description": "立法时间（ISO8601，驱动侧落笔时盖戳）"
+    },
+    "void_reason": {
+      "type": "string",
+      "description": "作废理由（重立法公开作废时必填，非静默改锚）"
+    }
+  },
+  "required": ["project", "goal", "milestone_seq", "milestone_defs", "immutable"],
+  "additionalProperties": false
+}

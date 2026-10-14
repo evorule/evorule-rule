@@ -1,0 +1,40 @@
+{
+  "$id": "https://evorule.org/schemas/eval/ruleset/v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ALE 判卷规则集（eval.ruleset.v1 entry）",
+  "description": "判卷规则集壳形态契约（[CON-X-004]/SR-14 对齐）：ruleset 数组内判卷规则取用例数据一律读 __exec__.instruction.facts.*（或 .params.*），禁止读 __exec__.payload.facts.*——payload 层为父会话状态快照、非当步数据源。层语义正本=宪法仓 evorule-system-rules schemas/_shared/v1.0.json 的 exec_context $def（SSOT commit 9e495e0），本档为该契约在判卷域的引用面，非第二正本。",
+  "type": "object",
+  "properties": {
+    "ruleset": {
+      "type": "array",
+      "minItems": 1
+    },
+    "scoring_shape": {
+      "type": "string",
+      "enum": [
+        "exact_match",
+        "weighted_recompute",
+        "tolerance_gate",
+        "gated_components"
+      ]
+    },
+    "normalization": {
+      "type": "string",
+      "enum": [
+        "none",
+        "integer_bps"
+      ]
+    },
+    "score_max": {
+      "type": "integer",
+      "minimum": 1
+    }
+  },
+  "required": [
+    "ruleset",
+    "scoring_shape",
+    "normalization",
+    "score_max"
+  ],
+  "additionalProperties": true
+}

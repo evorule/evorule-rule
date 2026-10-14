@@ -1,0 +1,9 @@
+{
+  "$id": "https://evorule.org/schemas/knowledge/e2e/v1.json",
+  "title": "A1-1 收口 E2E 域 schema（首轮从宽：结构完整性级）",
+  "type": "object",
+  "required": ["rule_text"],
+  "properties": {
+    "rule_text": { "type": "string", "minLength": 1 }
+  }
+}
