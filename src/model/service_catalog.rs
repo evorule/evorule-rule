@@ -243,6 +243,9 @@ mod tests {
             ("inference_backward_plan", false, "后向链规划(目标路径反推生产者规则链,复用读写集提取,静态可达性,确定性)"),
             ("inference_effect_predict", false, "规则效果预测(影响分级+动态/IO诚实警告,基于读写集提取薄层,确定性)"),
             ("inference_convergence_check", false, "收敛检测(自修改/环复用/步数上界,静态可判定子集,undetermined显式,确定性)"),
+            ("inference_counterfactual_analyze", false, "反事实差异分析(双前向仿真+终态可观测面diff,控制面单列,确定性解释,确定性)"),
+            ("inference_equivalence_probe", false, "等价探针(结构比较+有限探针行为证据,probe_equivalent为证据语义非数学证明,确定性)"),
+            ("inference_differential_diff", false, "规则集差分(读写集结构化diff,写异必不同/读异可能不同的保守方向,确定性)"),
         ];
 
         let seed = official_native_services();
