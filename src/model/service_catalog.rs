@@ -236,6 +236,9 @@ mod tests {
             ("inference_dimension_from_unit", false, "SI 单位字符串解析为七分量量纲向量([L,M,T,I,Θ,N,J],确定性)"),
             ("inference_dimension_compare_units", false, "两 SI 单位量纲等价性比较(七分量向量逐位相等判定,确定性)"),
             ("inference_dimension_verify_formula", false, "物理公式量纲一致性验证(已知变量量纲推导四则与幂表达式,确定性)"),
+            ("inference_rw_extract", false, "规则读写集静态提取(规范化路径+I/O出边+动态标注,纯函数确定性)"),
+            ("inference_cycle_detect", false, "规则集内环路检测(Kahn拓扑+环路径提取,静态/保守分层,确定性)"),
+            ("inference_conflict_detect", false, "规则集内冲突检测(六类型学:常量矛盾/顺序遮蔽/写竞争/互补域/循环写/IO串台,只报告不拦截)"),
         ];
 
         let seed = official_native_services();
