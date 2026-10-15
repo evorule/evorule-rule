@@ -1,0 +1,749 @@
+{
+  "schema_version": 1,
+  "generated": "2026-10-15",
+  "generator": "RG-1 批次A 件A1（一次性生成脚本，仓外临时）",
+  "source": "尽调正本《evorule-rule-回合2尽调-资产清册与宪法保护-20261015.md》§1.2 八批次/§1.3 敏感定性/§1.4 库量级",
+  "counting": {
+    "total_entries": 91,
+    "existing_assets": 90,
+    "self_registered": 1,
+    "top_level": 83,
+    "domain_schemas": 7,
+    "note": "尽调正本口径=顶层 83 件；本清单全量登记含 domain_schemas 7 件（O-461 已入 git 半保护面），另自登记清单本体 1 件，合计 91 条目"
+  },
+  "legend": {
+    "strict": "时点快照件：文件消失或改名=红灯（内容不比对）",
+    "live": "活体件：只查存在性+只读试连，不比对内容与尺寸（活库正常增删行）",
+    "sensitive": "敏感件：只查存在性，校验器永不读内容"
+  },
+  "assets": [
+    {
+      "path": "ASSET-INVENTORY.json",
+      "guard": "strict",
+      "kind": "governance",
+      "batch": "RG-1守护补齐批",
+      "consumers": "宪法仓 verify-all 第十三步/check_data_assets.py",
+      "note": "清单自登记（git-tracked 白名单）"
+    },
+    {
+      "path": "admin-credentials.local.txt",
+      "guard": "sensitive",
+      "kind": "credential",
+      "batch": "未考（源头待对账）",
+      "consumers": "30+ 施工脚本（硬编码登录依赖）",
+      "note": "引导凭据依赖件非废料（尽调§1.3）；校验器只查存在性，永不读内容（本清单亦只登记元数据）"
+    },
+    {
+      "path": "ae-templates.bundle.json",
+      "guard": "strict",
+      "kind": "bundle",
+      "batch": "AE模板治理链+e1污染修复",
+      "consumers": "server 导入链/console 治理页（入役链正本）",
+      "note": "BLAKE3 全包哈希自守护；bundle 6 件之一（尽调§1.2）"
+    },
+    {
+      "path": "ae-templates.bundle.v2.json",
+      "guard": "strict",
+      "kind": "bundle",
+      "batch": "AE模板治理链+e1污染修复",
+      "consumers": "server 导入链/console 治理页（入役链正本）",
+      "note": "BLAKE3 全包哈希自守护；bundle 6 件之一（尽调§1.2）"
+    },
+    {
+      "path": "check_gate_entries.out",
+      "guard": "strict",
+      "kind": "output",
+      "batch": "未考（源头待对账）",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "check_gate_entries.py 配对输出"
+    },
+    {
+      "path": "check_gate_entries.py",
+      "guard": "strict",
+      "kind": "script",
+      "batch": "未考（源头待对账）",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "门禁条目核验（疑 T2 背书/O-424 复验线，源头待考）"
+    },
+    {
+      "path": "chk-exp.txt",
+      "guard": "strict",
+      "kind": "output",
+      "batch": "AE模板治理链+e1污染修复",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "配对脚本 t3_check_export.py 输出（尽调 35/35 对账成立）"
+    },
+    {
+      "path": "chk2.txt",
+      "guard": "strict",
+      "kind": "output",
+      "batch": "AE模板治理链+e1污染修复",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "配对脚本 t3_check_e1.py 输出（尽调 35/35 对账成立）"
+    },
+    {
+      "path": "cli-export.bundle.json",
+      "guard": "strict",
+      "kind": "bundle",
+      "batch": "AE模板治理链+e1污染修复",
+      "consumers": "server 导入链/console 治理页（入役链正本）",
+      "note": "BLAKE3 全包哈希自守护；bundle 6 件之一（尽调§1.2）"
+    },
+    {
+      "path": "domain_schemas/e2e-knowledge-v1.json",
+      "guard": "strict",
+      "kind": "schema",
+      "batch": "北极星/A1-1知识资产化",
+      "consumers": "e2e 种子/evorule-rule-b2 试验仓引用（工作级）",
+      "note": "git-tracked（O-461 半保护面）；$id 挂宪法本域待批次B 迁移"
+    },
+    {
+      "path": "domain_schemas/eval-bridge.json",
+      "guard": "strict",
+      "kind": "schema",
+      "batch": "ALE/SR-14线",
+      "consumers": "e2e 种子/evorule-rule-b2 试验仓引用（工作级）",
+      "note": "git-tracked（O-461 半保护面）；$id 挂宪法本域待批次B 迁移"
+    },
+    {
+      "path": "domain_schemas/eval-ruleset.json",
+      "guard": "strict",
+      "kind": "schema",
+      "batch": "ALE/SR-14线",
+      "consumers": "e2e 种子/evorule-rule-b2 试验仓引用（工作级）",
+      "note": "git-tracked（O-461 半保护面）；$id 挂宪法本域待批次B 迁移；eval-ruleset 为 ALE 线更新件"
+    },
+    {
+      "path": "domain_schemas/eval-task-card.json",
+      "guard": "strict",
+      "kind": "schema",
+      "batch": "ALE/SR-14线",
+      "consumers": "e2e 种子/evorule-rule-b2 试验仓引用（工作级）",
+      "note": "git-tracked（O-461 半保护面）；$id 挂宪法本域待批次B 迁移"
+    },
+    {
+      "path": "domain_schemas/eval-test.json",
+      "guard": "strict",
+      "kind": "schema",
+      "batch": "ALE/SR-14线",
+      "consumers": "e2e 种子/evorule-rule-b2 试验仓引用（工作级）",
+      "note": "git-tracked（O-461 半保护面）；$id 挂宪法本域待批次B 迁移"
+    },
+    {
+      "path": "domain_schemas/northstar-anchor-v1.0.json",
+      "guard": "strict",
+      "kind": "schema",
+      "batch": "北极星/A1-1知识资产化",
+      "consumers": "e2e 种子/evorule-rule-b2 试验仓引用（工作级）",
+      "note": "git-tracked（O-461 半保护面）；$id 挂宪法本域待批次B 迁移"
+    },
+    {
+      "path": "domain_schemas/northstar-anchor-v1.1.json",
+      "guard": "strict",
+      "kind": "schema",
+      "batch": "北极星/A1-1知识资产化",
+      "consumers": "e2e 种子/evorule-rule-b2 试验仓引用（工作级）",
+      "note": "git-tracked（O-461 半保护面）；$id 挂宪法本域待批次B 迁移"
+    },
+    {
+      "path": "dryrun-resp.txt",
+      "guard": "strict",
+      "kind": "output",
+      "batch": "AE模板治理链+e1污染修复",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "配对脚本 t3_export_dryrun.py 输出（尽调 35/35 对账成立）"
+    },
+    {
+      "path": "dryrun-resp2.txt",
+      "guard": "strict",
+      "kind": "output",
+      "batch": "AE模板治理链+e1污染修复",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "配对脚本 t3_export_dryrun.py 输出（尽调 35/35 对账成立）"
+    },
+    {
+      "path": "entries-extracted.json",
+      "guard": "strict",
+      "kind": "bundle",
+      "batch": "AE模板治理链+e1污染修复",
+      "consumers": "server 导入链/console 治理页（入役链正本）",
+      "note": "BLAKE3 全包哈希自守护；bundle 6 件之一（尽调§1.2）"
+    },
+    {
+      "path": "extract_entries.py",
+      "guard": "strict",
+      "kind": "script",
+      "batch": "AE模板治理链+e1污染修复",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "entries-extracted.json 生成器（家族推断）"
+    },
+    {
+      "path": "fix-e1.txt",
+      "guard": "strict",
+      "kind": "output",
+      "batch": "AE模板治理链+e1污染修复",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "配对脚本 t3_fix_e1.py 输出（尽调 35/35 对账成立）"
+    },
+    {
+      "path": "fix2.txt",
+      "guard": "strict",
+      "kind": "output",
+      "batch": "AE模板治理链+e1污染修复",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "配对脚本 t3_fix_e1_v2.py 输出（尽调 35/35 对账成立）"
+    },
+    {
+      "path": "fullchain.txt",
+      "guard": "strict",
+      "kind": "output",
+      "batch": "AE模板治理链+e1污染修复",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "配对脚本 t3_full_chain.py 输出（尽调 35/35 对账成立）"
+    },
+    {
+      "path": "import-req.json",
+      "guard": "strict",
+      "kind": "bundle",
+      "batch": "AE模板治理链+e1污染修复",
+      "consumers": "server 导入链/console 治理页（入役链正本）",
+      "note": "BLAKE3 全包哈希自守护；bundle 6 件之一（尽调§1.2）"
+    },
+    {
+      "path": "import-req2.json",
+      "guard": "strict",
+      "kind": "bundle",
+      "batch": "AE模板治理链+e1污染修复",
+      "consumers": "server 导入链/console 治理页（入役链正本）",
+      "note": "BLAKE3 全包哈希自守护；bundle 6 件之一（尽调§1.2）"
+    },
+    {
+      "path": "ins-def.txt",
+      "guard": "strict",
+      "kind": "output",
+      "batch": "AE模板治理链+e1污染修复",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "定义快照检视输出（t3 链证据留痕，配对细节待考）"
+    },
+    {
+      "path": "insp-e1.txt",
+      "guard": "strict",
+      "kind": "output",
+      "batch": "AE模板治理链+e1污染修复",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "配对脚本 t3_inspect_e1.py 输出（尽调 35/35 对账成立）"
+    },
+    {
+      "path": "jwt_secret.key",
+      "guard": "sensitive",
+      "kind": "credential",
+      "batch": "未考（源头待对账）",
+      "consumers": "rule serve（密钥加载正本，serve-18081.log:4 实证）",
+      "note": "服务重启 token 保持密钥正本；校验器只查存在性，永不读内容（本清单亦只登记元数据）"
+    },
+    {
+      "path": "li-out.txt",
+      "guard": "strict",
+      "kind": "output",
+      "batch": "AE模板治理链+e1污染修复",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "配对脚本 t3_login_import.py 输出（尽调 35/35 对账成立）"
+    },
+    {
+      "path": "p01_live_e2e.py",
+      "guard": "strict",
+      "kind": "script",
+      "batch": "P0-1 live E2E",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "dev 栈全链复现脚本（依赖 rule.db+18081 在线，P0-1 尽调§1.2 点名）"
+    },
+    {
+      "path": "probe_datasets.py",
+      "guard": "strict",
+      "kind": "script",
+      "batch": "未考（源头待对账）",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "datasets 探查脚本"
+    },
+    {
+      "path": "raw-import-out.txt",
+      "guard": "strict",
+      "kind": "output",
+      "batch": "AE模板治理链+e1污染修复",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "配对脚本 t3_raw_import.py 输出（尽调 35/35 对账成立）"
+    },
+    {
+      "path": "reimp.txt",
+      "guard": "strict",
+      "kind": "output",
+      "batch": "AE模板治理链+e1污染修复",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "配对脚本 t3_reimport.py 输出（尽调 35/35 对账成立）"
+    },
+    {
+      "path": "rule.db",
+      "guard": "live",
+      "kind": "database",
+      "batch": "O-424清洗批18081重建",
+      "consumers": "console-cloud dev 栈/evo-agent 知识桥/rule serve/p01 复现脚本（共同依赖正本）",
+      "note": "dev 栈活体正本：27 表/827 行，datasets 31、auth_audits 278 等（尽调§1.4）；守护=存在性+只读试连（mode=ro），不比对内容与尺寸"
+    },
+    {
+      "path": "scan-poll.txt",
+      "guard": "strict",
+      "kind": "output",
+      "batch": "AE模板治理链+e1污染修复",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "配对脚本 t3_scan_pollution.py 输出（尽调 35/35 对账成立）"
+    },
+    {
+      "path": "serve-18081.err.log",
+      "guard": "strict",
+      "kind": "log",
+      "batch": "O-424清洗批18081重建",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "18081 服务错误日志（O-424 清洗批重建期）"
+    },
+    {
+      "path": "serve-18081.log",
+      "guard": "strict",
+      "kind": "log",
+      "batch": "O-424清洗批18081重建",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "18081 服务运行日志（O-424 清洗批重建期）"
+    },
+    {
+      "path": "show_ins.py",
+      "guard": "strict",
+      "kind": "script",
+      "batch": "未考（源头待对账）",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "实例检视脚本（源头待考）"
+    },
+    {
+      "path": "smoke.db",
+      "guard": "strict",
+      "kind": "database",
+      "batch": "未考（源头待对账）",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "旧 13 表 schema 演化证据件（08-24 期），非废料（尽调§1.4）"
+    },
+    {
+      "path": "step-log.txt",
+      "guard": "strict",
+      "kind": "output",
+      "batch": "AE模板治理链+e1污染修复",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "配对脚本 t3_step_delete.py 输出（尽调 35/35 对账成立）"
+    },
+    {
+      "path": "svc-def.txt",
+      "guard": "strict",
+      "kind": "output",
+      "batch": "AE模板治理链+e1污染修复",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "定义快照检视输出（t3 链证据留痕，配对细节待考）"
+    },
+    {
+      "path": "t0_clean.out",
+      "guard": "strict",
+      "kind": "output",
+      "batch": "T0'全链复验",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "t0 系配对输出（尽调 35 输出件对账成立）"
+    },
+    {
+      "path": "t0_clean.py",
+      "guard": "strict",
+      "kind": "script",
+      "batch": "T0'全链复验",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "ae-t0-cases 数据集施工源（T0' 全链复验）"
+    },
+    {
+      "path": "t0_clean2.out",
+      "guard": "strict",
+      "kind": "output",
+      "batch": "T0'全链复验",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "t0 系配对输出（尽调 35 输出件对账成立）"
+    },
+    {
+      "path": "t0_probe.out",
+      "guard": "strict",
+      "kind": "output",
+      "batch": "T0'全链复验",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "t0 系配对输出（尽调 35 输出件对账成立）"
+    },
+    {
+      "path": "t0_probe.py",
+      "guard": "strict",
+      "kind": "script",
+      "batch": "T0'全链复验",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "ae-t0-cases 数据集施工源（T0' 全链复验）"
+    },
+    {
+      "path": "t0a.out",
+      "guard": "strict",
+      "kind": "output",
+      "batch": "T0'全链复验",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "t0 系配对输出（尽调 35 输出件对账成立）"
+    },
+    {
+      "path": "t0a2.out",
+      "guard": "strict",
+      "kind": "output",
+      "batch": "T0'全链复验",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "t0 系配对输出（尽调 35 输出件对账成立）"
+    },
+    {
+      "path": "t0a3.out",
+      "guard": "strict",
+      "kind": "output",
+      "batch": "T0'全链复验",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "t0 系配对输出（尽调 35 输出件对账成立）"
+    },
+    {
+      "path": "t0a_create_publish.py",
+      "guard": "strict",
+      "kind": "script",
+      "batch": "T0'全链复验",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "ae-t0-cases 数据集施工源（T0' 全链复验）"
+    },
+    {
+      "path": "t0b.out",
+      "guard": "strict",
+      "kind": "output",
+      "batch": "T0'全链复验",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "t0 系配对输出（尽调 35 输出件对账成立）"
+    },
+    {
+      "path": "t0b_deploy_run.py",
+      "guard": "strict",
+      "kind": "script",
+      "batch": "T0'全链复验",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "ae-t0-cases 数据集施工源（T0' 全链复验）"
+    },
+    {
+      "path": "t0c.out",
+      "guard": "strict",
+      "kind": "output",
+      "batch": "T0'全链复验",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "t0 系配对输出（尽调 35 输出件对账成立）"
+    },
+    {
+      "path": "t0c_audit_check.py",
+      "guard": "strict",
+      "kind": "script",
+      "batch": "T0'全链复验",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "ae-t0-cases 数据集施工源（T0' 全链复验）"
+    },
+    {
+      "path": "t0d.out",
+      "guard": "strict",
+      "kind": "output",
+      "batch": "T0'全链复验",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "t0 系配对输出（尽调 35 输出件对账成立）"
+    },
+    {
+      "path": "t0d_strengthen.py",
+      "guard": "strict",
+      "kind": "script",
+      "batch": "T0'全链复验",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "ae-t0-cases 数据集施工源（T0' 全链复验）"
+    },
+    {
+      "path": "t3_chain_v5.py",
+      "guard": "strict",
+      "kind": "script",
+      "batch": "AE模板治理链+e1污染修复",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "t3 系施工脚本（AE 模板治理链+e1 污染修复）"
+    },
+    {
+      "path": "t3_check_e1.py",
+      "guard": "strict",
+      "kind": "script",
+      "batch": "AE模板治理链+e1污染修复",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "t3 系施工脚本（AE 模板治理链+e1 污染修复）"
+    },
+    {
+      "path": "t3_check_export.py",
+      "guard": "strict",
+      "kind": "script",
+      "batch": "AE模板治理链+e1污染修复",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "t3 系施工脚本（AE 模板治理链+e1 污染修复）"
+    },
+    {
+      "path": "t3_e9.out",
+      "guard": "strict",
+      "kind": "output",
+      "batch": "AE模板治理链+e1污染修复",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "t3 系输出/证据留痕（含错误内容正是资产价值）"
+    },
+    {
+      "path": "t3_e9b.out",
+      "guard": "strict",
+      "kind": "output",
+      "batch": "AE模板治理链+e1污染修复",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "t3 系输出/证据留痕（含错误内容正是资产价值）"
+    },
+    {
+      "path": "t3_evidence_import.py",
+      "guard": "strict",
+      "kind": "script",
+      "batch": "AE模板治理链+e1污染修复",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "t3 系施工脚本（AE 模板治理链+e1 污染修复）"
+    },
+    {
+      "path": "t3_export_dryrun.py",
+      "guard": "strict",
+      "kind": "script",
+      "batch": "AE模板治理链+e1污染修复",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "t3 系施工脚本（AE 模板治理链+e1 污染修复）"
+    },
+    {
+      "path": "t3_fix_e1.py",
+      "guard": "strict",
+      "kind": "script",
+      "batch": "AE模板治理链+e1污染修复",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "t3 系施工脚本（AE 模板治理链+e1 污染修复）"
+    },
+    {
+      "path": "t3_fix_e1_v2.py",
+      "guard": "strict",
+      "kind": "script",
+      "batch": "AE模板治理链+e1污染修复",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "t3 系施工脚本（AE 模板治理链+e1 污染修复）"
+    },
+    {
+      "path": "t3_full_chain.py",
+      "guard": "strict",
+      "kind": "script",
+      "batch": "AE模板治理链+e1污染修复",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "t3 系施工脚本（AE 模板治理链+e1 污染修复）"
+    },
+    {
+      "path": "t3_inspect_e1.py",
+      "guard": "strict",
+      "kind": "script",
+      "batch": "AE模板治理链+e1污染修复",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "t3 系施工脚本（AE 模板治理链+e1 污染修复）"
+    },
+    {
+      "path": "t3_login_import.py",
+      "guard": "strict",
+      "kind": "script",
+      "batch": "AE模板治理链+e1污染修复",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "t3 系施工脚本（AE 模板治理链+e1 污染修复）"
+    },
+    {
+      "path": "t3_raw_import.py",
+      "guard": "strict",
+      "kind": "script",
+      "batch": "AE模板治理链+e1污染修复",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "t3 系施工脚本（AE 模板治理链+e1 污染修复）"
+    },
+    {
+      "path": "t3_reimport.py",
+      "guard": "strict",
+      "kind": "script",
+      "batch": "AE模板治理链+e1污染修复",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "t3 系施工脚本（AE 模板治理链+e1 污染修复）"
+    },
+    {
+      "path": "t3_sandbox_chain.py",
+      "guard": "strict",
+      "kind": "script",
+      "batch": "AE模板治理链+e1污染修复",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "t3 系施工脚本（AE 模板治理链+e1 污染修复）"
+    },
+    {
+      "path": "t3_scan_pollution.py",
+      "guard": "strict",
+      "kind": "script",
+      "batch": "AE模板治理链+e1污染修复",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "t3 系施工脚本（AE 模板治理链+e1 污染修复）"
+    },
+    {
+      "path": "t3_step_delete.py",
+      "guard": "strict",
+      "kind": "script",
+      "batch": "AE模板治理链+e1污染修复",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "t3 系施工脚本（AE 模板治理链+e1 污染修复）"
+    },
+    {
+      "path": "t4.txt",
+      "guard": "strict",
+      "kind": "output",
+      "batch": "未考（源头待对账）",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "t4 族输出/证据留痕（源头待考）"
+    },
+    {
+      "path": "t4_audit_export.py",
+      "guard": "strict",
+      "kind": "script",
+      "batch": "未考（源头待对账）",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "t4 族脚本（尽调八批次未点名，源头待考）"
+    },
+    {
+      "path": "t4_e9.out",
+      "guard": "strict",
+      "kind": "output",
+      "batch": "未考（源头待对账）",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "t4 族输出/证据留痕（源头待考）"
+    },
+    {
+      "path": "t4_execute.py",
+      "guard": "strict",
+      "kind": "script",
+      "batch": "未考（源头待对账）",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "t4 族脚本（尽调八批次未点名，源头待考）"
+    },
+    {
+      "path": "t4_execute_v2.py",
+      "guard": "strict",
+      "kind": "script",
+      "batch": "未考（源头待对账）",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "t4 族脚本（尽调八批次未点名，源头待考）"
+    },
+    {
+      "path": "t4_global.py",
+      "guard": "strict",
+      "kind": "script",
+      "batch": "未考（源头待对账）",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "t4 族脚本（尽调八批次未点名，源头待考）"
+    },
+    {
+      "path": "t4_ws_session.py",
+      "guard": "strict",
+      "kind": "script",
+      "batch": "未考（源头待对账）",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "t4 族脚本（尽调八批次未点名，源头待考）"
+    },
+    {
+      "path": "t4ae.txt",
+      "guard": "strict",
+      "kind": "output",
+      "batch": "未考（源头待对账）",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "t4 族输出/证据留痕（源头待考）"
+    },
+    {
+      "path": "t4g.txt",
+      "guard": "strict",
+      "kind": "output",
+      "batch": "未考（源头待对账）",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "t4 族输出/证据留痕（源头待考）"
+    },
+    {
+      "path": "t4v2.txt",
+      "guard": "strict",
+      "kind": "output",
+      "batch": "未考（源头待对账）",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "t4 族输出/证据留痕（源头待考）"
+    },
+    {
+      "path": "t4ws.txt",
+      "guard": "strict",
+      "kind": "output",
+      "batch": "未考（源头待对账）",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "t4 族输出/证据留痕（源头待考）"
+    },
+    {
+      "path": "tb-gate-v1-bundle.json",
+      "guard": "strict",
+      "kind": "bundle",
+      "batch": "统帅T2背书批",
+      "consumers": "server 导入链/console 治理页（入役链正本）",
+      "note": "human 背书时代唯一留证（O-431 后该形态已收紧）；核销档已补记 20261015"
+    },
+    {
+      "path": "token.txt",
+      "guard": "sensitive",
+      "kind": "token",
+      "batch": "未考（源头待对账）",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "测试期 JWT 快照证据（chk-exp.txt 记录其 401 过期）；校验器只查存在性，永不读内容（本清单亦只登记元数据）"
+    },
+    {
+      "path": "v5.txt",
+      "guard": "strict",
+      "kind": "output",
+      "batch": "AE模板治理链+e1污染修复",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "配对脚本 t3_chain_v5.py 输出（尽调 35/35 对账成立）"
+    },
+    {
+      "path": "validate_e1.py",
+      "guard": "strict",
+      "kind": "script",
+      "batch": "AE模板治理链+e1污染修复",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "e1 校验（AE 链 e1 修复家族推断）"
+    },
+    {
+      "path": "verify_cleanup.py",
+      "guard": "strict",
+      "kind": "script",
+      "batch": "H14回收链",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "H14 回收链（尽调§1.2 点名）"
+    },
+    {
+      "path": "verify_gate.out",
+      "guard": "strict",
+      "kind": "output",
+      "batch": "未考（源头待对账）",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "verify_gate.py 配对输出"
+    },
+    {
+      "path": "verify_gate.py",
+      "guard": "strict",
+      "kind": "script",
+      "batch": "未考（源头待对账）",
+      "consumers": "施工复现链/审计证据（无生产消费方）",
+      "note": "门禁核验（疑 T2 背书/O-424 复验线，源头待考）"
+    }
+  ]
+}
