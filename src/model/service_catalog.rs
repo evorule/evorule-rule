@@ -239,6 +239,10 @@ mod tests {
             ("inference_rw_extract", false, "规则读写集静态提取(规范化路径+I/O出边+动态标注,纯函数确定性)"),
             ("inference_cycle_detect", false, "规则集内环路检测(Kahn拓扑+环路径提取,静态/保守分层,确定性)"),
             ("inference_conflict_detect", false, "规则集内冲突检测(六类型学:常量矛盾/顺序遮蔽/写竞争/互补域/循环写/IO串台,只报告不拦截)"),
+            ("inference_forward_simulate", false, "前向链仿真(合成__exec__文档迭代到不动点,enforce前置门对齐,io诚实断流,确定性)"),
+            ("inference_backward_plan", false, "后向链规划(目标路径反推生产者规则链,复用读写集提取,静态可达性,确定性)"),
+            ("inference_effect_predict", false, "规则效果预测(影响分级+动态/IO诚实警告,基于读写集提取薄层,确定性)"),
+            ("inference_convergence_check", false, "收敛检测(自修改/环复用/步数上界,静态可判定子集,undetermined显式,确定性)"),
         ];
 
         let seed = official_native_services();
