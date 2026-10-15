@@ -225,17 +225,19 @@ type DomainSchemaCache = Option<(
     Option<std::time::SystemTime>,
 )>;
 
-/// 领域 schema 目录装载报告（批次C C1 fail-visible）：每次重扫重建缓存时填充，
-/// 记录装载计数与坏件明细——read/parse 失败不再静默跳过，坏件可见可查。
-/// 语义边界：坏件仍不参与解析（不 fail-fast），builtin 兜底语义不变。
+/// 领域 schema 目录装载报告（批次C C1 fail-visible / C3 运行时元校验）：每次重扫
+/// 重建缓存时填充，记录装载计数与坏件明细——read/parse 失败不再静默跳过，坏件
+/// 可见可查。语义边界：坏件仍不参与解析（不 fail-fast），builtin 兜底语义不变。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DomainSchemaLoadReport {
-    /// 扫描到的 *.json 件数
+    /// 扫描到的 *.json 件数（含管理件）
     pub scanned: usize,
-    /// 成功入索引件数
+    /// 成功入索引件数（过运行时元校验）
     pub loaded: usize,
-    /// 坏件明细：(文件路径, "read"/"parse" 阶段 + 错误原因)
+    /// 坏件明细：(文件路径, "read"/"parse"/"validate" 阶段 + 错误原因)
     pub failed: Vec<(String, String)>,
+    /// 管理件跳过数（如 301 迁移映射表——非领域 schema，不校验不入索引）
+    pub skipped: usize,
 }
 
 /// 规则存储
@@ -357,17 +359,25 @@ impl RuleStore {
             // 竞态：指纹已取到但 read_dir 失败——与原语义一致，不写缓存，下次重试；builtin 兜底
             return Self::builtin_schema(uri);
         };
-        // 装载计数与坏件明细（批次C C1 fail-visible）：read/parse 失败不再静默 continue，
-        // 逐件 tracing::warn + 报告在案，坏件可见可查（不 fail-fast，坏件仍不参与解析）
+        // 装载计数与坏件明细（批次C C1 fail-visible / C3 运行时元校验）：read/parse/
+        // validate 失败不再静默 continue，逐件 tracing::warn + 报告在案，坏件可见可查
+        //（不 fail-fast，坏件仍不参与解析）
         let mut scanned = 0usize;
         let mut loaded = 0usize;
         let mut failed: Vec<(String, String)> = Vec::new();
+        let mut skipped = 0usize;
         for e in dirs.flatten() {
             let p = e.path();
             if p.extension().and_then(|x| x.to_str()) != Some("json") {
                 continue;
             }
             scanned += 1;
+            // 管理件豁免（批次C C3）：301 迁移映射表（B2 引入）与领域 schema 同居本
+            // 目录——非 schema 资产，不校验不入索引，计 skipped 保持计数自洽
+            if p.file_name().and_then(|x| x.to_str()) == Some("id-migration-map.json") {
+                skipped += 1;
+                continue;
+            }
             let text = match std::fs::read_to_string(&p) {
                 Ok(t) => t,
                 Err(err) => {
@@ -384,6 +394,12 @@ impl RuleStore {
                     continue;
                 }
             };
+            // 运行时元校验（批次C C3）：五必备件+domain 命名域纪律，不合规件不入索引
+            if let Err(reason) = Self::validate_domain_schema_meta(&v) {
+                tracing::warn!(file = %p.display(), reason = %reason, "domain schema 元校验不合规（坏件不参与解析，记录在案）");
+                failed.push((p.display().to_string(), format!("validate: {reason}")));
+                continue;
+            }
             let key = v
                 .get("$id")
                 .and_then(|i| i.as_str())
@@ -405,17 +421,20 @@ impl RuleStore {
             scanned,
             loaded,
             failed,
+            skipped,
         };
         if report.failed.is_empty() {
             tracing::info!(
                 scanned = report.scanned,
                 loaded = report.loaded,
+                skipped = report.skipped,
                 "domain schema 目录装载完成"
             );
         } else {
             tracing::warn!(
                 scanned = report.scanned,
                 loaded = report.loaded,
+                skipped = report.skipped,
                 failed = report.failed.len(),
                 "domain schema 目录装载存在坏件（明细见装载报告）"
             );
@@ -432,10 +451,99 @@ impl RuleStore {
             .or_else(|| Self::builtin_schema(uri))
     }
 
-    /// 领域 schema 装载报告快照（批次C C1 fail-visible）：最近一次重扫重建的装载计数
-    /// 与坏件明细；从未重扫过（缓存未建立）返回 None。坏件在此可见，不静默。
+    /// 领域 schema 装载报告快照（批次C C1 fail-visible / C3 运行时元校验）：最近一次
+    /// 重扫重建的装载计数与坏件明细；从未重扫过（缓存未建立）返回 None。坏件在此可见，不静默。
     pub fn domain_schema_load_report(&self) -> Option<DomainSchemaLoadReport> {
         self.domain_schema_load_report.lock().unwrap().clone()
+    }
+
+    /// 领域 schema 运行时元校验（批次C C3，对齐宪法仓元 schema `domain_schema.meta.v1.json`
+    /// 的 required 面+命名域纪律，手写轻校验零新依赖）：五必备件（$id domain 命名域/
+    /// version/owner/reviewed_by/consumer）在场且形态合规，不合规件不参与解析（坏件
+    /// 计入装载报告 validate: 阶段）。$schema 头不强制（元 schema 同样未 require）。
+    /// 纵深语义：宪法仓 check_domain_meta 在 CI 面拦资产入库，本校验在运行时面拦部署漂移。
+    fn validate_domain_schema_meta(v: &serde_json::Value) -> Result<(), String> {
+        // $id：在场 + string + domain 命名域形态（宪法本域权威路径 /schemas/ 非 domain 段
+        // 被扩展层实体占用 = 双权威复活，当场拒绝）
+        let id = v
+            .get("$id")
+            .and_then(|i| i.as_str())
+            .ok_or("缺 $id（或非字符串）")?;
+        // builtin 覆写件豁免（批次C C3）：目录同 $id 覆写内嵌五件（$id=builtin:knowledge/*）
+        // 是既有产品语义（A1-1b），不属扩展层 domain 资产，元纪律不适用
+        if id.starts_with("builtin:") {
+            return Ok(());
+        }
+        if !Self::is_domain_namespaced_id(id) {
+            return Err(format!(
+                "$id 非 domain 命名域形态: {id}（须 https://evorule.org/schemas/domain/<段>/<名>/v<版本>.json）"
+            ));
+        }
+        // version：在场 + string + 语义版本形态（v 前缀可选）
+        let ver = v
+            .get("version")
+            .and_then(|x| x.as_str())
+            .ok_or("缺 version（或非字符串）")?;
+        let ver_body = ver.strip_prefix('v').unwrap_or(ver);
+        let segs: Vec<&str> = ver_body.split('.').collect();
+        let ver_ok = !segs.is_empty()
+            && segs.len() <= 3
+            && segs
+                .iter()
+                .all(|s| !s.is_empty() && s.chars().all(|c| c.is_ascii_digit()))
+            && segs[0].chars().all(|c| c.is_ascii_digit());
+        if !ver_ok {
+            return Err(format!("version 非语义版本形态: {ver}"));
+        }
+        // owner / reviewed_by / consumer：在场 + 非空 string
+        for key in ["owner", "reviewed_by", "consumer"] {
+            match v.get(key) {
+                Some(s) if s.as_str().map(|x| !x.is_empty()).unwrap_or(false) => {}
+                _ => return Err(format!("缺 {key}（或非非空字符串）")),
+            }
+        }
+        Ok(())
+    }
+
+    /// $id 是否为 domain 命名域合法形态（批次C C3 手写解析，对齐宪法元 schema pattern：
+    /// `https://evorule.org/schemas/domain/<线段>/<名>/v<版本>.json`，段字符集
+    /// [a-z0-9][a-z0-9._-]*，版本 v<数字>(.<数字>)?(.<数字>)?.json）。
+    /// 非该形态（含占用宪法本域 /schemas/ 非 domain 段、缺段、缺版本尾）一律 false。
+    fn is_domain_namespaced_id(id: &str) -> bool {
+        const PREFIX: &str = "https://evorule.org/schemas/domain/";
+        let Some(rest) = id.strip_prefix(PREFIX) else {
+            return false;
+        };
+        let segs: Vec<&str> = rest.split('/').collect();
+        // 至少 <线段>/<名>/v<版本>.json 三段；版本尾单独判
+        if segs.len() < 3 {
+            return false;
+        }
+        // 版本尾：v<数字>(.<数字>)?(.<数字>)?.json
+        let ver_seg = segs[segs.len() - 1];
+        let Some(ver) = ver_seg
+            .strip_prefix('v')
+            .and_then(|s| s.strip_suffix(".json"))
+        else {
+            return false;
+        };
+        let nums: Vec<&str> = ver.split('.').collect();
+        if nums.is_empty()
+            || nums.len() > 3
+            || nums
+                .iter()
+                .any(|s| s.is_empty() || !s.chars().all(|c| c.is_ascii_digit()))
+        {
+            return false;
+        }
+        // 各段（线段+名，不含版本尾）字符集：[a-z0-9][a-z0-9._-]*
+        segs[..segs.len() - 1].iter().all(|s| {
+            let mut cs = s.chars();
+            matches!(cs.next(), Some(c) if c.is_ascii_lowercase() || c.is_ascii_digit())
+                && cs.all(|c| {
+                    c.is_ascii_lowercase() || c.is_ascii_digit() || c == '.' || c == '_' || c == '-'
+                })
+        })
     }
 
     /// 领域 schema 目录指纹（O-236 修复 C）：目录 mtime 与全部 *.json mtime 的最大值。
@@ -7119,7 +7227,7 @@ mod tests {
         use crate::bundle::{BundleTests, TestVerdict};
         use crate::model::dependency::{EventDirection, EventSchemaDecl};
         let (store, dir) = file_store_with_body_schema();
-        let uri = "https://evorule.dev/domain/rpsm-body.json";
+        let uri = "https://evorule.org/schemas/domain/test/rpsm-body/v1.json";
         let mut ds = tax_dataset();
         ds.event_schemas = vec![EventSchemaDecl {
             name: "payroll_event".into(),
@@ -7730,9 +7838,10 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("q12-store-test-{}-{n}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("domain_schemas")).unwrap();
+        // 预置件须过批次C C3 运行时元校验（domain 命名域+五必备件）
         std::fs::write(
             dir.join("domain_schemas").join("rpsm-body.json"),
-            r#"{"$id":"https://evorule.dev/domain/rpsm-body.json","type":"object","required":["mass"],"properties":{"mass":{"type":"number"}},"additionalProperties":false}"#,
+            r#"{"$id":"https://evorule.org/schemas/domain/test/rpsm-body/v1.json","$schema":"https://json-schema.org/draft/2020-12/schema","version":"1.0","owner":"t","reviewed_by":"t","consumer":"store tests","type":"object","required":["mass"],"properties":{"mass":{"type":"number"}},"additionalProperties":false}"#,
         )
         .unwrap();
         let store = RuleStore::open(dir.join("db.sqlite").to_str().unwrap()).unwrap();
@@ -7841,7 +7950,7 @@ mod tests {
             domain: "rpsm".into(),
             tags: vec![],
             payload: serde_json::json!({ "mass": 1.5 }),
-            schema_ref: "https://evorule.dev/domain/rpsm-body.json".into(),
+            schema_ref: "https://evorule.org/schemas/domain/test/rpsm-body/v1.json".into(),
             governance: None,
             knowledge_kind: None,
             trust_level: None,
@@ -8480,7 +8589,7 @@ mod tests {
         raw.execute(
             "INSERT INTO knowledge_entries VALUES ('ds-rpsm-assets', 'old-001', 1, '\"Draft\"', \
              '{\"source\":\"旧库实验记录\"}', 'rpsm', '[]', \
-             '{\"note\":\"存量数据回填检索样本\"}', 'https://evorule.dev/domain/rpsm-body.json', NULL, 'hash')",
+             '{\"note\":\"存量数据回填检索样本\"}', 'https://evorule.org/schemas/domain/test/rpsm-body/v1.json', NULL, 'hash')",
             [],
         )
         .unwrap();
@@ -8554,14 +8663,16 @@ mod tests {
     fn test_domain_schema_cache_fingerprint_rescan() {
         // O-236 修复 C：缓存按目录指纹感知变更——schema 新增/内容修改无需重启生效
         let (store, dir) = file_store_with_body_schema();
-        let uri1 = "https://evorule.dev/domain/rpsm-body.json";
+        let uri1 = "https://evorule.org/schemas/domain/test/rpsm-body/v1.json";
         // 首次解析填充缓存
         assert!(store.lookup_domain_schema(uri1).is_some());
         // a) 新增 schema 文件 → 无需重开即可解析（修复前：缓存锁死，需重启）
-        let uri2 = "https://evorule.dev/domain/anchor-v11.json";
+        let uri2 = "https://evorule.org/schemas/domain/test/anchor/v11.json";
         std::fs::write(
             dir.join("domain_schemas").join("anchor-v11.json"),
-            format!(r#"{{"$id":"{uri2}","type":"object"}}"#),
+            format!(
+                r#"{{"$id":"{uri2}","version":"11.0","owner":"t","reviewed_by":"t","consumer":"store tests","type":"object"}}"#
+            ),
         )
         .unwrap();
         assert!(
@@ -8576,7 +8687,7 @@ mod tests {
         std::thread::sleep(std::time::Duration::from_millis(50));
         std::fs::write(
             dir.join("domain_schemas").join("rpsm-body.json"),
-            r#"{"$id":"https://evorule.dev/domain/rpsm-body.json","type":"object","required":["mass","volume"],"properties":{"mass":{"type":"number"},"volume":{"type":"number"}},"additionalProperties":false}"#,
+            r#"{"$id":"https://evorule.org/schemas/domain/test/rpsm-body/v1.json","version":"1.0","owner":"t","reviewed_by":"t","consumer":"store tests","type":"object","required":["mass","volume"],"properties":{"mass":{"type":"number"},"volume":{"type":"number"}},"additionalProperties":false}"#,
         )
         .unwrap();
         let v = store.lookup_domain_schema(uri1).unwrap();
@@ -8592,7 +8703,7 @@ mod tests {
     fn test_domain_schema_fail_visible_load_report() {
         // 批次C C1：坏件（parse 失败）不再静默——装载报告在案（计数+明细），好件解析不受影响
         let (store, dir) = file_store_with_body_schema();
-        let good_uri = "https://evorule.dev/domain/rpsm-body.json";
+        let good_uri = "https://evorule.org/schemas/domain/test/rpsm-body/v1.json";
         // 首扫建立干净缓存：零失败
         assert!(store.lookup_domain_schema(good_uri).is_some());
         let clean = store
@@ -8600,6 +8711,7 @@ mod tests {
             .expect("首扫后装载报告应在案");
         assert!(clean.failed.is_empty(), "干净目录装载应零失败");
         assert!(clean.loaded >= 1);
+        assert_eq!(clean.skipped, 0, "无管理件时 skipped 应为零");
         // 注入坏件（parse 失败）→ 指纹变化触发重扫；时序退避同 rescan 测试（CI jiffies 粒度）
         std::thread::sleep(std::time::Duration::from_millis(50));
         std::fs::write(dir.join("domain_schemas").join("broken.json"), "{not-json").unwrap();
@@ -8624,9 +8736,122 @@ mod tests {
         );
         assert_eq!(
             report.scanned,
-            report.loaded + 1,
-            "计数应自洽：扫描数=成功数+失败数"
+            report.loaded + report.failed.len() + report.skipped,
+            "计数应自洽：扫描数=成功数+失败数+管理件跳过数"
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_domain_schema_runtime_meta_validation() {
+        // 批次C C3：运行时元校验——五必备件+domain 命名域纪律（对齐宪法元 schema），
+        // 不合规件不参与解析且报告在案；builtin 覆写件豁免；管理件跳过
+        static SEQ: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let n = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!("q12-meta-val-{}-{n}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("domain_schemas")).unwrap();
+        let ds = dir.join("domain_schemas");
+        // 1) 合规件：五必备件+domain 命名域 → loaded
+        std::fs::write(
+            ds.join("good.json"),
+            r#"{"$id":"https://evorule.org/schemas/domain/test/good/v1.json","version":"1.0","owner":"t","reviewed_by":"t","consumer":"c","type":"object"}"#,
+        )
+        .unwrap();
+        // 2) 缺 version 件 → failed (validate)
+        std::fs::write(
+            ds.join("no-version.json"),
+            r#"{"$id":"https://evorule.org/schemas/domain/test/no-version/v1.json","owner":"t","reviewed_by":"t","consumer":"c","type":"object"}"#,
+        )
+        .unwrap();
+        // 3) $id 占用宪法本域权威路径（/schemas/ 非 domain 段）→ failed (validate)
+        std::fs::write(
+            ds.join("constitution-squat.json"),
+            r#"{"$id":"https://evorule.org/schemas/eval/squat/v1.json","version":"1.0","owner":"t","reviewed_by":"t","consumer":"c","type":"object"}"#,
+        )
+        .unwrap();
+        // 4) 管理件（301 映射表）→ skipped，不入索引
+        std::fs::write(ds.join("id-migration-map.json"), r#"{"migrations":[]}"#).unwrap();
+        // 5) builtin 覆写件 → 豁免元校验，覆写能力保持
+        std::fs::write(
+            ds.join("fact-override.json"),
+            r#"{"$id":"builtin:knowledge/fact","type":"object","x-override":"meta-val"}"#,
+        )
+        .unwrap();
+        let store = RuleStore::open(dir.join("db.sqlite").to_str().unwrap()).unwrap();
+        // 好件可解析
+        let good = store
+            .lookup_domain_schema("https://evorule.org/schemas/domain/test/good/v1.json")
+            .expect("合规件应可解析");
+        assert_eq!(good.get("version").and_then(|x| x.as_str()), Some("1.0"));
+        // builtin 覆写生效（豁免面实证）
+        let fact = store
+            .lookup_domain_schema("builtin:knowledge/fact")
+            .unwrap();
+        assert_eq!(
+            fact.get("x-override").and_then(|x| x.as_str()),
+            Some("meta-val")
+        );
+        // 报告：loaded=2（好件+builtin 覆写）/ failed=2（缺 version+宪法域侵占）/ skipped=1
+        let report = store.domain_schema_load_report().expect("装载报告应在案");
+        assert_eq!(report.loaded, 2, "合规件+builtin 覆写件应入索引");
+        assert_eq!(report.skipped, 1, "管理件应跳过");
+        assert_eq!(report.failed.len(), 2, "两个不合规件应在案");
+        assert!(
+            report
+                .failed
+                .iter()
+                .any(|(f, r)| f.ends_with("no-version.json") && r.starts_with("validate:")),
+            "缺 version 件应以 validate 阶段在案: {:?}",
+            report.failed
+        );
+        assert!(
+            report
+                .failed
+                .iter()
+                .any(|(f, r)| f.ends_with("constitution-squat.json")
+                    && r.contains("非 domain 命名域")),
+            "宪法域侵占件应在案: {:?}",
+            report.failed
+        );
+        assert_eq!(
+            report.scanned,
+            report.loaded + report.failed.len() + report.skipped,
+            "计数自洽"
+        );
+        // 不合规件不可解析（缺 version 件不入索引 → None）
+        assert!(store
+            .lookup_domain_schema("https://evorule.org/schemas/domain/test/no-version/v1.json")
+            .is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    #[ignore = "本机实测用：依赖真实仓 data/domain_schemas 目录（CI 检出无该路径）"]
+    fn test_domain_schemas_real_dir_meta_pass() {
+        // 批次C C3 判据：真实 7 件 domain schema + 1 管理件全量实测
+        // 运行：cargo test --lib store::tests::test_domain_schemas_real_dir_meta_pass -- --ignored
+        let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("data");
+        // 防上次断言 panic 残留：先清旧临时 db（实测临时件，非 data/ 资产）
+        let _ = std::fs::remove_file(data_dir.join("rule.db.testmeta"));
+        let store = RuleStore::open(data_dir.join("rule.db.testmeta").to_str().unwrap()).unwrap();
+        let dir = data_dir.join("domain_schemas");
+        assert!(
+            store
+                .lookup_domain_schema("https://evorule.org/schemas/domain/ale/eval-bridge/v1.json")
+                .is_some(),
+            "eval-bridge 应过运行时元校验"
+        );
+        let report = store.domain_schema_load_report().expect("装载报告应在案");
+        assert_eq!(report.loaded, 7, "真实 7 件应全部入索引");
+        assert_eq!(report.skipped, 1, "映射表管理件应跳过");
+        assert!(
+            report.failed.is_empty(),
+            "真实目录应零坏件: {:?}",
+            report.failed
+        );
+        assert_eq!(report.scanned, 8, "扫描 8 件（7 schema+1 管理件）");
+        let _ = std::fs::remove_file(data_dir.join("rule.db.testmeta"));
+        let _ = dir; // 目录只读实测，零触碰
     }
 }

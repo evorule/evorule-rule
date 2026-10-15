@@ -3344,9 +3344,10 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("q12-api-test-{}-{n}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("domain_schemas")).unwrap();
+        // 预置件须过批次C C3 运行时元校验（domain 命名域+五必备件）
         std::fs::write(
             dir.join("domain_schemas").join("scenario.json"),
-            r#"{"$id":"https://rpsm.example/schemas/scenario/v1.0.json","type":"object","required":["scenario_id"],"properties":{"scenario_id":{"type":"string"},"gravity":{"type":"number"}},"additionalProperties":false}"#,
+            r#"{"$id":"https://evorule.org/schemas/domain/test/scenario/v1.0.json","version":"1.0","owner":"t","reviewed_by":"t","consumer":"api tests","type":"object","required":["scenario_id"],"properties":{"scenario_id":{"type":"string"},"gravity":{"type":"number"}},"additionalProperties":false}"#,
         )
         .unwrap();
         let store = RuleStore::open(dir.join("db.sqlite").to_str().unwrap()).unwrap();
@@ -3453,7 +3454,7 @@ mod tests {
             domain: domain.into(),
             tags: tags.iter().map(|s| s.to_string()).collect(),
             payload: serde_json::json!({ "scenario_id": scenario, "gravity": 9.8 }),
-            schema_ref: "https://rpsm.example/schemas/scenario/v1.0.json".into(),
+            schema_ref: "https://evorule.org/schemas/domain/test/scenario/v1.0.json".into(),
             governance: None,
             knowledge_kind: None,
             trust_level: None,
@@ -3869,7 +3870,7 @@ mod tests {
         assert_eq!(entries[0]["entry_kind"], "knowledge");
         assert_eq!(
             entries[0]["schema_ref"],
-            "https://rpsm.example/schemas/scenario/v1.0.json"
+            "https://evorule.org/schemas/domain/test/scenario/v1.0.json"
         );
     }
 
