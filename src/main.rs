@@ -53,8 +53,8 @@ struct Cli {
     #[arg(long, default_value = "evorule-rule-instance")]
     instance_id: String,
 
-    /// evo-agent serve 地址（LLM 命名操作代理目标，历史批次）
-    #[arg(long, default_value = "http://127.0.0.1:18090")]
+    /// evo-agent serve 地址（LLM 命名操作代理目标，历史批次；缺省随 evorule serve 现役端口 8081，RG-1 件A5a）
+    #[arg(long, default_value = "http://127.0.0.1:8081")]
     llm_base_url: String,
 
     /// CORS 允许的 Origin 列表（逗号分隔；空 = 仅同源）
