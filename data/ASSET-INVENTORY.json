@@ -707,11 +707,11 @@
     },
     {
       "path": "token.txt",
-      "guard": "sensitive",
-      "kind": "token",
+      "guard": "strict",
+      "kind": "evidence",
       "batch": "未考（源头待对账）",
       "consumers": "施工复现链/审计证据（无生产消费方）",
-      "note": "测试期 JWT 快照证据（chk-exp.txt 记录其 401 过期）；校验器只查存在性，永不读内容（本清单亦只登记元数据）"
+      "note": "过期 JWT 快照证据（chk-exp.txt 记录其 401 过期）；凭据解耦批裁S3（2026-10-15）从敏感凭据通道除名降格证据件：现登现取不落盘（scripts/credentials.py），本件不再作凭据用"
     },
     {
       "path": "v5.txt",

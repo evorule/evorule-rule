@@ -9,15 +9,17 @@
 
 - 实存资产 **91 件** = 顶层 **83**（尽调正本口径）+ `domain_schemas/` **8**（7 领域 schema + SR-17 B2 迁移映射表；O-461 已入 git 半保护面）。
 - 清单另自登记本体 1 件，机读条目合计 **92**。
-- 守护级分布：**strict 88 / live 1 / sensitive 3**。
+- 守护级分布：**strict 89 / live 1 / sensitive 2**（凭据解耦批裁S3 2026-10-15：token.txt 降格证据件，见下）。
 
 ## 守护级三档
 
 | 档 | 语义 | 件数 | 代表 |
 |---|---|---|---|
-| strict | 时点快照件：消失或改名=红灯（内容不比对） | 88 | bundle×7、脚本 34、输出 35、domain_schemas×8（含迁移映射表）、smoke.db、serve 日志×2、清单本体 |
+| strict | 时点快照件：消失或改名=红灯（内容不比对） | 89 | bundle×7、脚本 34、输出 35、domain_schemas×8（含迁移映射表）、smoke.db、serve 日志×2、清单本体、token.txt（降格证据件） |
 | live | 活体件：存在性+只读试连（mode=ro），不比对内容/尺寸 | 1 | rule.db（dev 栈活体正本，27 表/827 行） |
-| sensitive | 敏感件：只查存在性，**校验器永不读内容** | 3 | admin-credentials.local.txt、jwt_secret.key、token.txt |
+| sensitive | 敏感件：只查存在性，**校验器永不读内容** | 2 | admin-credentials.local.txt、jwt_secret.key |
+
+> **凭据通道淘汰（裁S3，2026-10-15）**：token 存档通道淘汰——新脚本一律 `scripts/credentials.py` 现登现取不落盘；token.txt 经对账实为**已过期 JWT 快照证据**（chk-exp.txt 记录 401），从 sensitive 降格 strict 证据件，不再作凭据用。凭据纪律：新脚本禁硬编码凭据路径，统一走读取器（环境变量 EVORULE_ADMIN_CRED_FILE / EVORULE_RULE_URL 可覆盖）。admin 密码轮换（裁S2）待择机执行，执行前 admin-credentials.local.txt 维持现值。
 
 ## 八批次归属（源头可回溯）
 

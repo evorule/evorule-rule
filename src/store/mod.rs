@@ -8953,29 +8953,33 @@ mod tests {
         // 批次C C3 判据：真实 7 件 domain schema + 1 管理件全量实测
         // 运行：cargo test --lib store::tests::test_domain_schemas_real_dir_meta_pass -- --ignored
         // 临时测试库须与 data/ 同级（装载目录=库 sibling 的 domain_schemas，store/mod.rs:303）；
-        // RemoveOnDrop guard 保证 panic 残留即清，不污染生产 data/
+        // store 放内层作用域：先释放 SQLite 连接（Windows 文件锁）再由 guard 清临时库——
+        // passed 与 panic（unwind 逆序 drop）两条路径都保证 data/ 零残留
         let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("data");
         let tmp_db = data_dir.join("rule.db.testmeta");
         let _ = std::fs::remove_file(&tmp_db);
-        let store = RuleStore::open(tmp_db.to_str().unwrap()).unwrap();
         let _guard = RemoveOnDrop(tmp_db);
         let dir = data_dir.join("domain_schemas");
-        assert!(
-            store
-                .lookup_domain_schema("https://evorule.org/schemas/domain/ale/eval-bridge/v1.json")
-                .is_some(),
-            "eval-bridge 应过运行时元校验"
-        );
-        let report = store.domain_schema_load_report().expect("装载报告应在案");
-        assert_eq!(report.loaded, 7, "真实 7 件应全部入索引");
-        assert_eq!(report.skipped, 1, "映射表管理件应跳过");
-        assert!(
-            report.failed.is_empty(),
-            "真实目录应零坏件: {:?}",
-            report.failed
-        );
-        assert_eq!(report.scanned, 8, "扫描 8 件（7 schema+1 管理件）");
-        drop(_guard); // 显式收尾：临时库即清（panic 路径由 guard 兜底）
+        {
+            let store = RuleStore::open(_guard.0.to_str().unwrap()).unwrap();
+            assert!(
+                store
+                    .lookup_domain_schema(
+                        "https://evorule.org/schemas/domain/ale/eval-bridge/v1.json"
+                    )
+                    .is_some(),
+                "eval-bridge 应过运行时元校验"
+            );
+            let report = store.domain_schema_load_report().expect("装载报告应在案");
+            assert_eq!(report.loaded, 7, "真实 7 件应全部入索引");
+            assert_eq!(report.skipped, 1, "映射表管理件应跳过");
+            assert!(
+                report.failed.is_empty(),
+                "真实目录应零坏件: {:?}",
+                report.failed
+            );
+            assert_eq!(report.scanned, 8, "扫描 8 件（7 schema+1 管理件）");
+        } // store drop：连接释放在先，guard 清文件不被文件锁阻塞
         let _ = dir; // 目录只读实测，零触碰
     }
 }
