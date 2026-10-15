@@ -1,0 +1,49 @@
+{
+  "title": "domain_schemas $id 迁移映射表（301 式，SR-17 件2/B2）",
+  "description": "权威撒谎修正迁移留痕：本目录 7 件领域 schema 实体在 evorule-rule 仓，原 $id 挂宪法仓本域权威路径（/schemas/eval、/schemas/knowledge、/schemas/northstar）构成双权威（[CON-D-002]）；2026-10-15 依 [CON-D-002]/[CON-D-003] 全部迁入 domain 命名域（https://evorule.org/schemas/domain/<线段>/<名>/v<版本>.json，[CON-D-003]），宪法本域权威路径归还宪法仓。旧 $id 永久退役：消费方按本表映射对齐，旧值不得再被任何件占用（宪法仓 tools/check_domain_meta.py 与 server 侧 check_schema_sync.py 扩展层段机器判据）。线段语义：ale=evo-agent 判卷线（ALE 产物），e2e/northstar=他线各占其段。日期：2026-10-15。",
+  "migrated_at": "2026-10-15",
+  "mappings": [
+    {
+      "file": "eval-bridge.json",
+      "old_id": "https://evorule.org/schemas/eval/bridge/v1.json",
+      "new_id": "https://evorule.org/schemas/domain/ale/eval-bridge/v1.json",
+      "reason": "双权威消失（D-002）：实体在 rule 仓，$id 不得占用宪法本域 /schemas/eval 路径；迁入 domain 命名域 ale 段"
+    },
+    {
+      "file": "eval-ruleset.json",
+      "old_id": "https://evorule.org/schemas/eval/ruleset/v1.json",
+      "new_id": "https://evorule.org/schemas/domain/ale/eval-ruleset/v1.json",
+      "reason": "双权威消失（D-002）：同上，迁入 domain 命名域 ale 段"
+    },
+    {
+      "file": "eval-task-card.json",
+      "old_id": "https://evorule.org/schemas/eval/task-card/v1.json",
+      "new_id": "https://evorule.org/schemas/domain/ale/eval-task-card/v1.json",
+      "reason": "双权威消失（D-002）：同上，迁入 domain 命名域 ale 段"
+    },
+    {
+      "file": "eval-test.json",
+      "old_id": "https://evorule.org/schemas/eval/test/v1.json",
+      "new_id": "https://evorule.org/schemas/domain/ale/eval-test/v1.json",
+      "reason": "双权威消失（D-002）：同上，迁入 domain 命名域 ale 段"
+    },
+    {
+      "file": "e2e-knowledge-v1.json",
+      "old_id": "https://evorule.org/schemas/knowledge/e2e/v1.json",
+      "new_id": "https://evorule.org/schemas/domain/e2e/e2e-knowledge/v1.json",
+      "reason": "双权威消失（D-002）：实体在 rule 仓，$id 不得占用宪法本域 /schemas/knowledge 路径；迁入 domain 命名域 e2e 段（他线按线扩段）"
+    },
+    {
+      "file": "northstar-anchor-v1.0.json",
+      "old_id": "https://evorule.org/schemas/northstar/anchor/v1.0.json",
+      "new_id": "https://evorule.org/schemas/domain/northstar/northstar-anchor/v1.0.json",
+      "reason": "双权威消失（D-002）：实体在 rule 仓，$id 不得占用宪法本域 /schemas/northstar 路径；迁入 domain 命名域 northstar 段（他线按线扩段）"
+    },
+    {
+      "file": "northstar-anchor-v1.1.json",
+      "old_id": "https://evorule.org/schemas/northstar/anchor/v1.1.json",
+      "new_id": "https://evorule.org/schemas/domain/northstar/northstar-anchor/v1.1.json",
+      "reason": "双权威消失（D-002）：同上，迁入 domain 命名域 northstar 段（他线按线扩段）"
+    }
+  ]
+}

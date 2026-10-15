@@ -7,15 +7,15 @@
 
 ## 口径
 
-- 实存资产 **90 件** = 顶层 **83**（尽调正本口径）+ `domain_schemas/` **7**（O-461 已入 git 半保护面）。
-- 清单另自登记本体 1 件，机读条目合计 **91**。
-- 守护级分布：**strict 87 / live 1 / sensitive 3**。
+- 实存资产 **91 件** = 顶层 **83**（尽调正本口径）+ `domain_schemas/` **8**（7 领域 schema + SR-17 B2 迁移映射表；O-461 已入 git 半保护面）。
+- 清单另自登记本体 1 件，机读条目合计 **92**。
+- 守护级分布：**strict 88 / live 1 / sensitive 3**。
 
 ## 守护级三档
 
 | 档 | 语义 | 件数 | 代表 |
 |---|---|---|---|
-| strict | 时点快照件：消失或改名=红灯（内容不比对） | 87 | bundle×7、脚本 34、输出 35、domain_schemas×7、smoke.db、serve 日志×2、清单本体 |
+| strict | 时点快照件：消失或改名=红灯（内容不比对） | 88 | bundle×7、脚本 34、输出 35、domain_schemas×8（含迁移映射表）、smoke.db、serve 日志×2、清单本体 |
 | live | 活体件：存在性+只读试连（mode=ro），不比对内容/尺寸 | 1 | rule.db（dev 栈活体正本，27 表/827 行） |
 | sensitive | 敏感件：只查存在性，**校验器永不读内容** | 3 | admin-credentials.local.txt、jwt_secret.key、token.txt |
 
@@ -30,6 +30,7 @@
 | 统帅T2背书批 | tb-gate-v1-bundle.json（human 背书时代唯一留证） |
 | O-424清洗批18081重建 | serve-18081 双日志、rule.db 尾写 |
 | ALE/SR-14线 | eval-bridge/task-card/test、eval-ruleset |
+| SR-17收编批（批次B） | domain_schemas/id-migration-map.json（301 式迁移映射，$id 迁 domain 命名域留痕） |
 | T0'全链复验 | t0 系×6 脚本 + 9 件配对输出 |
 | 未考（源头待对账） | t4 族×11、门禁核验对×4、散件（probe_datasets/show_ins）、敏感三件、smoke.db——**如实标注待考，不做虚构归属** |
 

@@ -1,6 +1,10 @@
 {
-  "$id": "https://evorule.org/schemas/northstar/anchor/v1.1.json",
+  "$id": "https://evorule.org/schemas/domain/northstar/northstar-anchor/v1.1.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "version": "1.1",
+  "owner": "Mr. Damu Zheng",
+  "reviewed_by": "Mr. Damu Zheng",
+  "consumer": "northstar 自立法链（立法者+驱动侧）",
   "title": "Northstar Goal Anchor v1.1",
   "description": "北极星目标锚领域 schema v1.1（设计/15 §6.1）：v1.0 字段全量保留原语义 + 四个可选扩展字段（legislator 立法者会话标识 / status 生命周期状态位 / created_at 立法时间 / void_reason 作废理由）。向后兼容：四字段缺省=回退 v1.0 语义，v1.0 消费方零改动。自立法通路：goal 与里程碑序列/定义由运行中 agent LLM 提案（立法者），机器闸通过后由驱动侧机器执行入库（LLM 提案、机器落笔）； Published 快照不可变，生命周期演进=新版本条目（快照只增不改），作废/销毁全程 anchor-rulings.jsonl 记账留痕。",
   "type": "object",

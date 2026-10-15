@@ -1,5 +1,10 @@
 {
-  "$id": "https://evorule.org/schemas/knowledge/e2e/v1.json",
+  "$id": "https://evorule.org/schemas/domain/e2e/e2e-knowledge/v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "version": "1.0",
+  "owner": "Mr. Damu Zheng",
+  "reviewed_by": "Mr. Damu Zheng",
+  "consumer": "A1-1 收口 E2E 验证链",
   "title": "A1-1 收口 E2E 域 schema（首轮从宽：结构完整性级）",
   "type": "object",
   "required": ["rule_text"],

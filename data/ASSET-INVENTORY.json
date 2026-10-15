@@ -4,12 +4,12 @@
   "generator": "RG-1 批次A 件A1（一次性生成脚本，仓外临时）",
   "source": "尽调正本《evorule-rule-回合2尽调-资产清册与宪法保护-20261015.md》§1.2 八批次/§1.3 敏感定性/§1.4 库量级",
   "counting": {
-    "total_entries": 91,
-    "existing_assets": 90,
+    "total_entries": 92,
+    "existing_assets": 91,
     "self_registered": 1,
     "top_level": 83,
-    "domain_schemas": 7,
-    "note": "尽调正本口径=顶层 83 件；本清单全量登记含 domain_schemas 7 件（O-461 已入 git 半保护面），另自登记清单本体 1 件，合计 91 条目"
+    "domain_schemas": 8,
+    "note": "尽调正本口径=顶层 83 件；本清单全量登记含 domain_schemas 8 件（7 领域 schema+SR-17 B2 迁移映射表），另自登记清单本体 1 件，合计 92 条目"
   },
   "legend": {
     "strict": "时点快照件：文件消失或改名=红灯（内容不比对）",
@@ -95,7 +95,7 @@
       "kind": "schema",
       "batch": "北极星/A1-1知识资产化",
       "consumers": "e2e 种子/evorule-rule-b2 试验仓引用（工作级）",
-      "note": "git-tracked（O-461 半保护面）；$id 挂宪法本域待批次B 迁移"
+      "note": "git-tracked（O-461 半保护面）；$id 已迁 domain 命名域（SR-17 B2，见 id-migration-map.json）"
     },
     {
       "path": "domain_schemas/eval-bridge.json",
@@ -103,7 +103,7 @@
       "kind": "schema",
       "batch": "ALE/SR-14线",
       "consumers": "e2e 种子/evorule-rule-b2 试验仓引用（工作级）",
-      "note": "git-tracked（O-461 半保护面）；$id 挂宪法本域待批次B 迁移"
+      "note": "git-tracked（O-461 半保护面）；$id 已迁 domain 命名域（SR-17 B2，见 id-migration-map.json）"
     },
     {
       "path": "domain_schemas/eval-ruleset.json",
@@ -111,7 +111,7 @@
       "kind": "schema",
       "batch": "ALE/SR-14线",
       "consumers": "e2e 种子/evorule-rule-b2 试验仓引用（工作级）",
-      "note": "git-tracked（O-461 半保护面）；$id 挂宪法本域待批次B 迁移；eval-ruleset 为 ALE 线更新件"
+      "note": "git-tracked（O-461 半保护面）；$id 已迁 domain 命名域（SR-17 B2，见 id-migration-map.json）；eval-ruleset 为 ALE 线更新件"
     },
     {
       "path": "domain_schemas/eval-task-card.json",
@@ -119,7 +119,7 @@
       "kind": "schema",
       "batch": "ALE/SR-14线",
       "consumers": "e2e 种子/evorule-rule-b2 试验仓引用（工作级）",
-      "note": "git-tracked（O-461 半保护面）；$id 挂宪法本域待批次B 迁移"
+      "note": "git-tracked（O-461 半保护面）；$id 已迁 domain 命名域（SR-17 B2，见 id-migration-map.json）"
     },
     {
       "path": "domain_schemas/eval-test.json",
@@ -127,7 +127,15 @@
       "kind": "schema",
       "batch": "ALE/SR-14线",
       "consumers": "e2e 种子/evorule-rule-b2 试验仓引用（工作级）",
-      "note": "git-tracked（O-461 半保护面）；$id 挂宪法本域待批次B 迁移"
+      "note": "git-tracked（O-461 半保护面）；$id 已迁 domain 命名域（SR-17 B2，见 id-migration-map.json）"
+    },
+    {
+      "path": "domain_schemas/id-migration-map.json",
+      "guard": "strict",
+      "kind": "governance",
+      "batch": "SR-17收编批（批次B）",
+      "consumers": "宪法仓 check_domain_meta.py（映射承接）/server 侧 check_schema_sync.py 扩展层段（撒谎判据）",
+      "note": "301 式迁移映射表（旧 $id→新 $id+动因+日期）；B2 交付件，git-tracked"
     },
     {
       "path": "domain_schemas/northstar-anchor-v1.0.json",
@@ -135,7 +143,7 @@
       "kind": "schema",
       "batch": "北极星/A1-1知识资产化",
       "consumers": "e2e 种子/evorule-rule-b2 试验仓引用（工作级）",
-      "note": "git-tracked（O-461 半保护面）；$id 挂宪法本域待批次B 迁移"
+      "note": "git-tracked（O-461 半保护面）；$id 已迁 domain 命名域（SR-17 B2，见 id-migration-map.json）"
     },
     {
       "path": "domain_schemas/northstar-anchor-v1.1.json",
@@ -143,7 +151,7 @@
       "kind": "schema",
       "batch": "北极星/A1-1知识资产化",
       "consumers": "e2e 种子/evorule-rule-b2 试验仓引用（工作级）",
-      "note": "git-tracked（O-461 半保护面）；$id 挂宪法本域待批次B 迁移"
+      "note": "git-tracked（O-461 半保护面）；$id 已迁 domain 命名域（SR-17 B2，见 id-migration-map.json）"
     },
     {
       "path": "dryrun-resp.txt",

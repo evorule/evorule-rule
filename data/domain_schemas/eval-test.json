@@ -1,6 +1,10 @@
 {
-  "$id": "https://evorule.org/schemas/eval/test/v1.json",
+  "$id": "https://evorule.org/schemas/domain/ale/eval-test/v1.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "version": "1.0",
+  "owner": "Mr. Damu Zheng",
+  "reviewed_by": "Mr. Damu Zheng",
+  "consumer": "对拍变体集",
   "title": "ALE 对拍变体集（eval.test.v1 entry）",
   "type": "object",
   "properties": {
