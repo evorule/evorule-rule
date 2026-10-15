@@ -225,6 +225,19 @@ type DomainSchemaCache = Option<(
     Option<std::time::SystemTime>,
 )>;
 
+/// 领域 schema 目录装载报告（批次C C1 fail-visible）：每次重扫重建缓存时填充，
+/// 记录装载计数与坏件明细——read/parse 失败不再静默跳过，坏件可见可查。
+/// 语义边界：坏件仍不参与解析（不 fail-fast），builtin 兜底语义不变。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DomainSchemaLoadReport {
+    /// 扫描到的 *.json 件数
+    pub scanned: usize,
+    /// 成功入索引件数
+    pub loaded: usize,
+    /// 坏件明细：(文件路径, "read"/"parse" 阶段 + 错误原因)
+    pub failed: Vec<(String, String)>,
+}
+
 /// 规则存储
 pub struct RuleStore {
     /// rusqlite `Connection` 为 Send 但非 Sync，axum 跨线程共享需 `Mutex` 包裹
@@ -237,6 +250,9 @@ pub struct RuleStore {
     /// *.json mtime 最大值）未变=直接走缓存；变化=重扫重建——schema 新增/内容修改
     /// 无需重启生效。目录不可读时沿用现缓存（不静默清空）。
     domain_schema_cache: std::sync::Mutex<DomainSchemaCache>,
+    /// 领域 schema 装载报告（批次C C1 fail-visible）：最近一次重扫重建的装载计数与
+    /// 坏件明细；缓存命中沿用，重建时刷新。
+    domain_schema_load_report: std::sync::Mutex<Option<DomainSchemaLoadReport>>,
 }
 
 /// service_templates 行原始列（rusqlite 闭包只读原始列，JSON 反序列化移到闭包外）
@@ -281,6 +297,7 @@ impl RuleStore {
             conn: std::sync::Mutex::new(conn),
             domain_schema_dir,
             domain_schema_cache: std::sync::Mutex::new(None),
+            domain_schema_load_report: std::sync::Mutex::new(None),
         };
         store.init_schema()?;
         Ok(store)
@@ -293,6 +310,7 @@ impl RuleStore {
             conn: std::sync::Mutex::new(conn),
             domain_schema_dir: None,
             domain_schema_cache: std::sync::Mutex::new(None),
+            domain_schema_load_report: std::sync::Mutex::new(None),
         };
         store.init_schema()?;
         Ok(store)
@@ -339,16 +357,32 @@ impl RuleStore {
             // 竞态：指纹已取到但 read_dir 失败——与原语义一致，不写缓存，下次重试；builtin 兜底
             return Self::builtin_schema(uri);
         };
+        // 装载计数与坏件明细（批次C C1 fail-visible）：read/parse 失败不再静默 continue，
+        // 逐件 tracing::warn + 报告在案，坏件可见可查（不 fail-fast，坏件仍不参与解析）
+        let mut scanned = 0usize;
+        let mut loaded = 0usize;
+        let mut failed: Vec<(String, String)> = Vec::new();
         for e in dirs.flatten() {
             let p = e.path();
             if p.extension().and_then(|x| x.to_str()) != Some("json") {
                 continue;
             }
-            let Ok(text) = std::fs::read_to_string(&p) else {
-                continue;
+            scanned += 1;
+            let text = match std::fs::read_to_string(&p) {
+                Ok(t) => t,
+                Err(err) => {
+                    tracing::warn!(file = %p.display(), error = %err, "domain schema 文件读取失败（坏件不参与解析，记录在案）");
+                    failed.push((p.display().to_string(), format!("read: {err}")));
+                    continue;
+                }
             };
-            let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) else {
-                continue;
+            let v = match serde_json::from_str::<serde_json::Value>(&text) {
+                Ok(v) => v,
+                Err(err) => {
+                    tracing::warn!(file = %p.display(), error = %err, "domain schema JSON 解析失败（坏件不参与解析，记录在案）");
+                    failed.push((p.display().to_string(), format!("parse: {err}")));
+                    continue;
+                }
             };
             let key = v
                 .get("$id")
@@ -359,12 +393,36 @@ impl RuleStore {
                         .map(|s| s.to_string_lossy().into_owned())
                         .unwrap_or_default()
                 });
-            if !key.is_empty() {
-                map.insert(key, v);
+            if key.is_empty() {
+                tracing::warn!(file = %p.display(), "domain schema 缺 $id 且文件名不可作索引键（坏件不参与解析，记录在案）");
+                failed.push((p.display().to_string(), "key: 无 $id 且文件名不可取".into()));
+                continue;
             }
+            map.insert(key, v);
+            loaded += 1;
+        }
+        let report = DomainSchemaLoadReport {
+            scanned,
+            loaded,
+            failed,
+        };
+        if report.failed.is_empty() {
+            tracing::info!(
+                scanned = report.scanned,
+                loaded = report.loaded,
+                "domain schema 目录装载完成"
+            );
+        } else {
+            tracing::warn!(
+                scanned = report.scanned,
+                loaded = report.loaded,
+                failed = report.failed.len(),
+                "domain schema 目录装载存在坏件（明细见装载报告）"
+            );
         }
         let mut cache = self.domain_schema_cache.lock().unwrap();
         *cache = Some((map, fp));
+        *self.domain_schema_load_report.lock().unwrap() = Some(report);
         cache
             .as_ref()
             .unwrap()
@@ -372,6 +430,12 @@ impl RuleStore {
             .get(uri)
             .cloned()
             .or_else(|| Self::builtin_schema(uri))
+    }
+
+    /// 领域 schema 装载报告快照（批次C C1 fail-visible）：最近一次重扫重建的装载计数
+    /// 与坏件明细；从未重扫过（缓存未建立）返回 None。坏件在此可见，不静默。
+    pub fn domain_schema_load_report(&self) -> Option<DomainSchemaLoadReport> {
+        self.domain_schema_load_report.lock().unwrap().clone()
     }
 
     /// 领域 schema 目录指纹（O-236 修复 C）：目录 mtime 与全部 *.json mtime 的最大值。
@@ -8520,6 +8584,48 @@ mod tests {
             v.get("required").unwrap().as_array().unwrap().len(),
             2,
             "内容修改应经指纹重扫生效"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_domain_schema_fail_visible_load_report() {
+        // 批次C C1：坏件（parse 失败）不再静默——装载报告在案（计数+明细），好件解析不受影响
+        let (store, dir) = file_store_with_body_schema();
+        let good_uri = "https://evorule.dev/domain/rpsm-body.json";
+        // 首扫建立干净缓存：零失败
+        assert!(store.lookup_domain_schema(good_uri).is_some());
+        let clean = store
+            .domain_schema_load_report()
+            .expect("首扫后装载报告应在案");
+        assert!(clean.failed.is_empty(), "干净目录装载应零失败");
+        assert!(clean.loaded >= 1);
+        // 注入坏件（parse 失败）→ 指纹变化触发重扫；时序退避同 rescan 测试（CI jiffies 粒度）
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        std::fs::write(dir.join("domain_schemas").join("broken.json"), "{not-json").unwrap();
+        // 好件解析不受坏件影响（fail-visible ≠ fail-fast，坏件仍不参与解析）
+        assert!(
+            store.lookup_domain_schema(good_uri).is_some(),
+            "坏件在场时好件解析不应受影响"
+        );
+        let report = store
+            .domain_schema_load_report()
+            .expect("重扫后装载报告应在案");
+        assert_eq!(report.failed.len(), 1, "坏件应记录在案");
+        assert!(
+            report.failed[0].0.ends_with("broken.json"),
+            "坏件明细应含文件路径: {}",
+            report.failed[0].0
+        );
+        assert!(
+            report.failed[0].1.starts_with("parse"),
+            "坏件明细应标注失败阶段: {}",
+            report.failed[0].1
+        );
+        assert_eq!(
+            report.scanned,
+            report.loaded + 1,
+            "计数应自洽：扫描数=成功数+失败数"
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
