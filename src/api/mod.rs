@@ -883,6 +883,121 @@ mod tests {
         serde_json::to_value(&parsed).unwrap()
     }
 
+    // ------------------------------------------------------------------
+    // RG-1 件A4：bundle 导入面 enforce 三门矩阵（哈希/版本/背书）——O-466 收口
+    // 三门本体在 evorule-bundle 0.5.2 `BundleImporter::validate`（版本→哈希）+
+    // store `validate_test_evidence`（背书）；本矩阵锁定 HTTP 面行为：负向全 400、合法 201。
+    // ------------------------------------------------------------------
+    #[tokio::test]
+    async fn test_bundle_import_gate_enforce_matrix() {
+        let (app, state) = build_app();
+        // admin 直建（公共注册固定 rule_engineer，MVP 安全边界；导入面 admin-only）
+        let now = unix_now();
+        state
+            .auth
+            .register(
+                &state.store,
+                "tenant_a",
+                "root",
+                "password123",
+                crate::model::auth::Role::Admin,
+                now,
+            )
+            .expect("admin bootstrap");
+        let tokens = state
+            .auth
+            .login(&state.store, "tenant_a", "root", "password123", now)
+            .expect("admin login");
+        let token = tokens.access_token;
+
+        // ① 正样例：合法包（哈希已回填、verdict=pass + sandbox 证据）→ 201
+        let good = a31_bundle_json("rg1-good", json!("human"), json!("CC-BY-4.0"));
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/bundles/import",
+            Some(&token),
+            Some(json!({ "bundle": good })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "合法包应 201: {body}");
+
+        // ② 哈希门：内容篡改、原哈希不变 → 400（防篡改闸，不静默）
+        let mut tampered = a31_bundle_json("rg1-hash", json!("human"), json!("CC-BY-4.0"));
+        tampered["entries"][0]["rule_body"]["statement"] = json!("篡改后的载荷");
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/bundles/import",
+            Some(&token),
+            Some(json!({ "bundle": tampered })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "坏哈希应 400: {body}");
+        assert!(
+            body["error"]["message"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("导入校验失败"),
+            "{body}"
+        );
+
+        // ③ 版本门：bundle_schema_version 不受支持 → 400（校验链第一门优先命中）
+        let mut v99 = a31_bundle_json("rg1-ver", json!("human"), json!("CC-BY-4.0"));
+        v99["bundle_schema_version"] = json!("9.9");
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/bundles/import",
+            Some(&token),
+            Some(json!({ "bundle": v99 })),
+        )
+        .await;
+        assert_eq!(
+            status,
+            StatusCode::BAD_REQUEST,
+            "未知 schema 版本应 400: {body}"
+        );
+
+        // ④ 背书门：verdict=pass 且 subset 空（重算哈希回填，否则先撞哈希门）→ 400
+        let mut ev = a31_bundle_json("rg1-ev", json!("human"), json!("CC-BY-4.0"));
+        ev["tests"]["subset"] = json!([]);
+        let mut b: crate::bundle::DatasetBundle = serde_json::from_value(ev).expect("bundle");
+        b.audit.content_hash = b.compute_content_hash();
+        let ev = serde_json::to_value(&b).expect("serialize");
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/bundles/import",
+            Some(&token),
+            Some(json!({ "bundle": ev })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "空背书应 400: {body}");
+        assert!(
+            body["error"]["message"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("背书证据不可追溯"),
+            "{body}"
+        );
+
+        // ⑤ dry-run 预检同样拦截篡改包 → 400
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/bundles/import/dry-run",
+            Some(&token),
+            Some(json!({ "bundle": tampered })),
+        )
+        .await;
+        assert_eq!(
+            status,
+            StatusCode::BAD_REQUEST,
+            "dry-run 篡改应 400: {body}"
+        );
+    }
+
     #[tokio::test]
     async fn test_a31_import_knowledge_end_to_end() {
         let (app, state) = build_app();

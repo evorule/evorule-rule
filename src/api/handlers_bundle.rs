@@ -278,6 +278,11 @@ pub async fn import_status(
 fn import_err(e: StoreError) -> ApiError {
     match e {
         StoreError::Bundle(b) => ApiError::bad_request(format!("导入校验失败（不静默降级）: {b}")),
+        // 背书证据闸（RG-1 件A4，O-466 收口）：verdict=pass 须 sandbox: 机器背书且
+        // subset 非空——证据形态缺陷属客户端契约问题，映射 400（修正前落通用分支 500，语义失真）
+        StoreError::UntraceableTestEvidence(id) => ApiError::bad_request(format!(
+            "背书证据不可追溯（verdict=pass 须 sandbox: 机器背书且 subset 非空）: {id}"
+        )),
         other => ApiError::from(other),
     }
 }
