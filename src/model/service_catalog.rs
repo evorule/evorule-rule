@@ -80,6 +80,10 @@ const EMBEDDED_SERVICE_FILES: &[(&str, &str)] = &[
         "inference-services",
         include_str!("official_native_services.inference-services.embedded.json"),
     ),
+    (
+        "geometry-services",
+        include_str!("official_native_services.geometry-services.embedded.json"),
+    ),
 ];
 
 /// 官方预置原生服务种子（声明文件化；泛化至多插件聚合）。
@@ -210,7 +214,7 @@ mod tests {
     fn test_embedded_native_services_snapshot() {
         /// 快照期望表（聚合序 = EMBEDDED_SERVICE_FILES 声明序：
         /// demo-services → physics-services → indicator-services → template-services
-        /// → inference-services）。
+        /// → inference-services → geometry-services）。
         /// 条目 = (name, sensitive, description)，与 SSOT 声明文件逐字对应。
         const EXPECTED_SERVICES: &[(&str, bool, &str)] = &[
             // ---- demo-services ----
@@ -246,6 +250,11 @@ mod tests {
             ("inference_counterfactual_analyze", false, "反事实差异分析(双前向仿真+终态可观测面diff,控制面单列,确定性解释,确定性)"),
             ("inference_equivalence_probe", false, "等价探针(结构比较+有限探针行为证据,probe_equivalent为证据语义非数学证明,确定性)"),
             ("inference_differential_diff", false, "规则集差分(读写集结构化diff,写异必不同/读异可能不同的保守方向,确定性)"),
+            ("inference_counterfactual_sweep", false, "反事实参数扫描(参数路径逐值双仿真,每点差异面+汇总,复用反事实语义,确定性)"),
+            // ---- geometry-services ----
+            ("geometry_collision_check", false, "几何碰撞检测(零件两两相交判定,bbox/圆/多边形,触即算,确定性)"),
+            ("geometry_clearance_check", false, "几何间隙检查(零件两两最小距离vs阈值,违规清单+全局最小,宽容方向容差,确定性)"),
+            ("geometry_occlusion_check", false, "几何遮挡序检查(重叠零件绘制序vs声明z层,画家算法语义,确定性)"),
         ];
 
         let seed = official_native_services();
