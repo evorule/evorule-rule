@@ -150,6 +150,13 @@ pub enum StoreError {
     #[error("测试证据校验失败: verdict=pass 的导入必须携带可追溯标记（tests.subset 每项须为 sandbox:<沙盒ID>）。机器背书请从治理域测试工作台导出并携带沙盒报告引用；verdict=fail 无此要求")]
     UntraceableTestEvidence(String),
 
+    /// enforce 指令准入闸（[CON-L3]/DC-02 纪律，rule 仓导入面口径）：bundle 内 Rule
+    /// 条目 transform 指令集含 enforce 指令（含分支嵌套）一律拒绝——治理强制形态
+    /// 不进数据集资产库；mismatch/守门一律走断言错误形态（push eval_assert_failed），
+    /// 治理强制语义由 server 装载侧 tier 门承担（纵深第二道）。
+    #[error("条目 `{entry}` 的 transform 指令集含 enforce 指令（含分支嵌套），禁止经 bundle 导入数据集资产库；mismatch/守门形态请改用断言错误（push eval_assert_failed），治理强制语义由 server 装载侧 tier 门承担")]
+    EnforceInstructionForbidden { entry: String },
+
     #[error("数据条目 `{entry}` 的 schema_ref 缺失或为空")]
     KnowledgeMissingSchemaRef { entry: String },
 
@@ -4427,6 +4434,38 @@ impl RuleStore {
         Ok(())
     }
 
+    /// enforce 指令递归扫描：任何嵌套层级的对象 type=="enforce" 即命中（TCB 指令
+    /// 形态 {"type":"enforce",...}；on_true/on_false 分支嵌套同样命中——DC-02 嵌套
+    /// enforce 关注一并覆盖）。
+    fn contains_enforce_instruction(v: &serde_json::Value) -> bool {
+        match v {
+            serde_json::Value::Object(map) => {
+                if map.get("type").and_then(|t| t.as_str()) == Some("enforce") {
+                    return true;
+                }
+                map.values().any(Self::contains_enforce_instruction)
+            }
+            serde_json::Value::Array(arr) => arr.iter().any(Self::contains_enforce_instruction),
+            _ => false,
+        }
+    }
+
+    /// enforce 指令准入闸（O-466 裁断=a 案 L3 一刀切，2026-10-15 统帅批）：bundle 全部
+    /// Rule 条目过扫描，命中即拒。仅扫 Rule 条目——Knowledge 条目 rule_body 为领域
+    /// payload（非 TCB 指令集），业务字段同形（如 type:"enforce" 分类标记）不误伤。
+    /// 实况依据：rule.db 53 entries+data/ 规则集资产全量零 enforce（2026-10-15 实测），
+    /// 收紧无破坏面；与 server 沙盒装载三门（拒 enforce）形成纵深两道。
+    fn ensure_no_enforce_instructions(bundle: &DatasetBundle) -> Result<(), StoreError> {
+        for e in &bundle.entries {
+            if e.entry_kind == EntryKind::Rule && Self::contains_enforce_instruction(&e.rule_body) {
+                return Err(StoreError::EnforceInstructionForbidden {
+                    entry: e.entry_id.clone(),
+                });
+            }
+        }
+        Ok(())
+    }
+
     /// 导入快照包：`BundleImporter::validate`（schema→防篡改→符号三方一致/数据条目 D3→版本解析→闸门一）通过后落库。
     ///
     /// - 数据集：不存在则新建（tenant=导入方），已存在则覆盖其版本链/依赖/锚；
@@ -4454,6 +4493,9 @@ impl RuleStore {
         // sandbox:<id> 的 workspace 存在性深度校验执行侧独有（依赖 workspace_db，
         // 治理侧无此设施）；本层保持纯格式校验，与 export 端点一致。
         Self::validate_test_evidence(bundle)?;
+        // enforce 指令准入闸（O-466）：Rule 条目含 enforce（含嵌套）一律拒——挂在
+        // store 层与证据闸同深度（CLI 等非 HTTP 调用方同受保护）
+        Self::ensure_no_enforce_instructions(bundle)?;
         // Q12 R5：混合 kind 拒绝（数据集类型单一）
         let has_rule = bundle
             .entries
@@ -6090,6 +6132,76 @@ mod tests {
             !err.to_string().contains("可追溯"),
             "fail 包不应触发测试证据闸: {err}"
         );
+    }
+
+    /// enforce 指令准入闸（O-466，a 案 L3 一刀切）：Rule 条目直嵌/分支嵌套 enforce
+    /// 均拒（DC-02 嵌套关注一并覆盖）；零 enforce 合法包正常导入；扫描器对同形
+    /// 非命中形态（enforce-x/大小写）不误报。Knowledge 条目不扫——领域 payload
+    /// 非 TCB 指令集，业务字段同形不受影响（由 entry_kind 分支保障）。
+    #[test]
+    fn test_import_bundle_rejects_enforce_instruction() {
+        use crate::bundle::{BundleTests, TestVerdict};
+        let store = RuleStore::in_memory().unwrap();
+        reg094_seed_covered_dataset(&store);
+        let tests = BundleTests {
+            subset: vec!["sandbox:sb-e2e".into()],
+            fixtures: vec![],
+            verdict: TestVerdict::Pass,
+        };
+        let export = || {
+            store
+                .export_bundle("ds-tax-2024", &tests, "eng", "t", "org-evorule", None)
+                .unwrap()
+        };
+
+        // ① 直嵌 enforce 指令（合规元指令形态 type+params——bundle 0.5.2 形态门放行，
+        //    tier=meta 管控由 server 承担=登记实证的缺口面）→ 本闸拒
+        //    （追加式注入：保留原指令含 io_request 符号引用，绕不开符号三方一致门）
+        let mut direct = export();
+        direct.entries[0].rule_body["transform"]
+            .as_array_mut()
+            .unwrap()
+            .push(serde_json::json!({"type": "enforce", "params": {}}));
+        direct.audit.content_hash = direct.compute_content_hash();
+        let err = store
+            .import_bundle(&direct, "org-x", "u", "t", "inst")
+            .unwrap_err();
+        assert!(
+            matches!(err, StoreError::EnforceInstructionForbidden { .. }),
+            "直嵌 enforce 应被拒: {err}"
+        );
+
+        // ② 分支嵌套（params 内 on_false 挂 enforce）→ 拒（DC-02 覆盖）
+        let mut nested = export();
+        nested.entries[0].rule_body["transform"]
+            .as_array_mut()
+            .unwrap()
+            .push(serde_json::json!({"type": "branch", "params": {"domain": "grade", "on_true": [{"type": "push", "params": {"instructions": []}}], "on_false": [{"type": "enforce", "params": {}}]}}));
+        nested.audit.content_hash = nested.compute_content_hash();
+        let err = store
+            .import_bundle(&nested, "org-x", "u", "t", "inst")
+            .unwrap_err();
+        assert!(
+            matches!(err, StoreError::EnforceInstructionForbidden { .. }),
+            "嵌套 enforce 应被拒: {err}"
+        );
+
+        // ③ 零 enforce 合法包 → 正常导入
+        let clean = export();
+        store
+            .import_bundle(&clean, "org-x", "u", "t", "inst")
+            .unwrap();
+
+        // ④ 扫描器负例：同形非命中形态不误报
+        assert!(!RuleStore::contains_enforce_instruction(
+            &serde_json::json!([{"type": "enforce-x"}])
+        ));
+        assert!(!RuleStore::contains_enforce_instruction(
+            &serde_json::json!([{"type": "Enforce"}])
+        ));
+        assert!(!RuleStore::contains_enforce_instruction(
+            &serde_json::json!([{"type": null}])
+        ));
     }
 
     /// 覆盖导入在条目插入段失败 → 整体回滚（修复前：删旧已提交+插新失败=数据丢失半状态）
