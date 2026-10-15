@@ -8938,15 +8938,27 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// 临时测试库清理 guard：断言 panic（unwind）时 Drop 仍执行清残留，
+    /// 消除「红灯迭代期临时件滞留生产 data/」污染面（本机实测用）。
+    struct RemoveOnDrop(std::path::PathBuf);
+    impl Drop for RemoveOnDrop {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(&self.0);
+        }
+    }
+
     #[test]
     #[ignore = "本机实测用：依赖真实仓 data/domain_schemas 目录（CI 检出无该路径）"]
     fn test_domain_schemas_real_dir_meta_pass() {
         // 批次C C3 判据：真实 7 件 domain schema + 1 管理件全量实测
         // 运行：cargo test --lib store::tests::test_domain_schemas_real_dir_meta_pass -- --ignored
+        // 临时测试库须与 data/ 同级（装载目录=库 sibling 的 domain_schemas，store/mod.rs:303）；
+        // RemoveOnDrop guard 保证 panic 残留即清，不污染生产 data/
         let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("data");
-        // 防上次断言 panic 残留：先清旧临时 db（实测临时件，非 data/ 资产）
-        let _ = std::fs::remove_file(data_dir.join("rule.db.testmeta"));
-        let store = RuleStore::open(data_dir.join("rule.db.testmeta").to_str().unwrap()).unwrap();
+        let tmp_db = data_dir.join("rule.db.testmeta");
+        let _ = std::fs::remove_file(&tmp_db);
+        let store = RuleStore::open(tmp_db.to_str().unwrap()).unwrap();
+        let _guard = RemoveOnDrop(tmp_db);
         let dir = data_dir.join("domain_schemas");
         assert!(
             store
@@ -8963,7 +8975,7 @@ mod tests {
             report.failed
         );
         assert_eq!(report.scanned, 8, "扫描 8 件（7 schema+1 管理件）");
-        let _ = std::fs::remove_file(data_dir.join("rule.db.testmeta"));
+        drop(_guard); // 显式收尾：临时库即清（panic 路径由 guard 兜底）
         let _ = dir; // 目录只读实测，零触碰
     }
 }
