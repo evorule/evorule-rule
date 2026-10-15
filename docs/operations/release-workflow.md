@@ -7,51 +7,34 @@
 | 节奏 | 频率 | 触发 |
 |---|---|---|
 | **commit** | 每天 1+ 个 | 每写完 1 个模块 / 修 1 个 bug / 改 1 个 API |
-| **push** | 跟 commit 同步 | **自动**(post-commit hook) |
+| **push** | 批次收尾手动执行 | 人工执行(推前自查) |
 | **tag** | 0.x 早期每 2-4 周 1 个 MINOR | "对外宣布这批工作 ready" |
 | **version bump** | 跟 tag 同步 | `Cargo.toml [package].version` 在 tag 时刻改 |
 | **crates.io publish** | 跟 tag 同步(可选) | 同上 |
 
 > **不要把 commit 和 tag 混为一谈。** commit 是开发历史,tag 是发布历史。
 
-## 2. 日常 commit(自动 push,绝不堆积)
+## 2. 日常 commit(手动 push)
 
 ```bash
 # 写完一个模块
 git add .
 git commit -m "feat: 加 LDAP 认证"
-# ↑ post-commit hook 自动 git push origin main
+# push 在批次收尾时手动执行(推前自查:消息红线+内容红线)
 ```
 
-**hook 装好后,根本不需要手动 `git push`**。working tree 永远保持推送同步,绝不会出现"积累大量未推送内容"的情况。
+**push 一律手动执行**(2026-10-15 起)。commit 后不自动推送,批次收尾统一 push,
+推前过一遍自查(消息红线、敏感内容、双端一致性),留出缓冲余地。
 
-### hook 装法(新机器 / 重新 clone 后)
+### 本地门禁 hook(.git/hooks,clone 自带)
 
-```bash
-# Windows PowerShell
-pwsh scripts/install-hooks.ps1
+- **commit-msg**: commit 消息红线扫描(AI 代号/AI 署名/内部编号/私有仓名词表)
+- **pre-push**: tag 白名单(公开双端只放行 `v*` 版本 tag)
+- 两钩子随仓 `.git/hooks` 分发,**无需安装**;严禁 `git config core.hooksPath`
+  改指他处(2026-10-15 前曾指向 `scripts/hooks` 仅含 post-commit 自动推送,
+  致两门禁整体休眠——已复位,O-469)
 
-# 或手动
-git config core.hooksPath scripts/hooks
-```
-
-### hook 行为细则
-
-- **post-commit**: commit 完立刻 push 当前 branch
-  - 无 origin 远端 → 跳过(允许本地仓 / 离线开发)
-  - amend commit → 跳过(避免循环)
-  - push 失败 → 警告但不阻塞 commit(允许网络断时继续开发,下次 push 自动累积)
-
-### ~~pre-push~~(2026-08-22 决策:**不装**)
-
-曾考虑装 pre-push(在 push 前跑 `cargo test --workspace`,失败阻止 push),但:
-
-- evorule-rule **108 测试** + feature 102 tests,实测**超过 60s 跑不完**
-- 这会导致日常 `git push` 经常卡住,违背"轻量工作流"原则
-- 用户核心诉求是"workingtree 永远干净",**post-commit 自动 push 已解决**
-- 测试门禁职责**留给 CI**(Gitee Go 启用时配 `ci.yml` 的 `test` / `clippy` job)
-
-如果你想加 pre-push,手动 `git config core.hooksPath scripts/hooks` 后,加 `pre-push` shell 脚本即可。**默认不装**。
+自检脚本:`pwsh scripts/install-hooks.ps1`(校验门禁在场+hooksPath 未被改指)。
 
 ## 3. 发版(tag + version bump)
 
