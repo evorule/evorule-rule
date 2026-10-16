@@ -9,7 +9,9 @@
 //!   的 CRUD，字段序列化对齐 SQLite 侧（`serde_json`→`TEXT`）。用运行时 `sqlx::query` 手动映射，
 //!   避免 `query!` 宏编译期依赖真实 PG，便于在提供 PG 实例前编译通过。
 //!
-//! 边界（如实）：**代码已就绪，待真实 PG 实例跑集成测试验证**（见 tests `#[ignore]`）。
+//! 边界（如实）：**P4 往返与冒烟自检已对真实 PostgreSQL 17.7 实测全绿**
+//! （建池+迁移+CRUD 往返+核心表族），测试保持 `#[ignore]`——需 `DATABASE_URL`
+//! 指向真实实例；配方=全新库+串行 `--test-threads=1`（防并行首跑迁移竞态）。
 //! 仅覆盖核心两表；全表方言改写、PG 事务拆分（P6）、配置化双后端为后续批次，不伪称完成。
 
 use sqlx::migrate::MigrateError;
@@ -934,9 +936,10 @@ mod tests {
 
     // ------------------------------------------------------------------
     // P4 真实集成测试（`#[ignore]`：需真实 PostgreSQL 实例 + DATABASE_URL）
-    // 本机默认无 PG，故标记 ignore；提供 PG 后执行：
+    // 已实测通过（真实 PostgreSQL 17.7）；复跑配方=全新库（测试写固定样本数据，
+    // 对持久库重跑会撞唯一键）+串行（防并行首跑迁移竞态）：
     //   $env:DATABASE_URL="postgres://user:pass@host:5432/evorule_rulehub_test"
-    //   cargo test --features postgres pg_ds_entry_roundtrip -- --ignored
+    //   cargo test --lib --features postgres pg_ -- --ignored --test-threads=1
     // ------------------------------------------------------------------
 
     /// 构造一个 RuleDataset 测试样本（对齐 create_dataset 测试的字段形态）
@@ -1065,9 +1068,10 @@ mod tests {
         assert_eq!(hist[0].to, "Draft");
         assert_eq!(hist[0].cause, "P6 验证");
 
+        let log_id = format!("b-{}", entry_epoch_ms());
         store
             .log_bundle_import(
-                "b1",
+                &log_id,
                 &ds_id,
                 "hash-x",
                 "ok",
