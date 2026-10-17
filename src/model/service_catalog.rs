@@ -84,6 +84,10 @@ const EMBEDDED_SERVICE_FILES: &[(&str, &str)] = &[
         "geometry-services",
         include_str!("official_native_services.geometry-services.embedded.json"),
     ),
+    (
+        "numeric-services",
+        include_str!("official_native_services.numeric-services.embedded.json"),
+    ),
 ];
 
 /// 官方预置原生服务种子（声明文件化；泛化至多插件聚合）。
@@ -214,7 +218,7 @@ mod tests {
     fn test_embedded_native_services_snapshot() {
         /// 快照期望表（聚合序 = EMBEDDED_SERVICE_FILES 声明序：
         /// demo-services → physics-services → indicator-services → template-services
-        /// → inference-services → geometry-services）。
+        /// → inference-services → geometry-services → numeric-services）。
         /// 条目 = (name, sensitive, description)，与 SSOT 声明文件逐字对应。
         const EXPECTED_SERVICES: &[(&str, bool, &str)] = &[
             // ---- demo-services ----
@@ -255,6 +259,15 @@ mod tests {
             ("geometry_collision_check", false, "几何碰撞检测(零件两两相交判定,bbox/圆/多边形,触即算,确定性)"),
             ("geometry_clearance_check", false, "几何间隙检查(零件两两最小距离vs阈值,违规清单+全局最小,宽容方向容差,确定性)"),
             ("geometry_occlusion_check", false, "几何遮挡序检查(重叠零件绘制序vs声明z层,画家算法语义,确定性)"),
+            // ---- numeric-services ----
+            ("numeric_rational_eval", false, "有理数表达式精确求值(整数与四则/整数幂,既约分数输出,确定性)"),
+            ("numeric_decimal_eval", false, "定点十进制表达式求值(全程精确有理运算,输出端按 scale+rounding 单次舍入,确定性)"),
+            ("numeric_decimal_convert", false, "分数与十进制互转(终止性如实标注,无限小数须显式舍入,确定性)"),
+            ("numeric_number_theory", false, "数论原子(gcd/lcm/factorial/nCr/nPr,大整数精确,确定性)"),
+            ("numeric_fin_interest", false, "单利/复利精确计算(中间量全程有理数精确,末端显式舍入,确定性)"),
+            ("numeric_fin_amortize", false, "等额本息/等额本金摊销表(逐期显式舍入,尾差并入末期,确定性)"),
+            ("numeric_unit_convert", false, "单位换算(换算率由调用方显式提供,服务不内置任何率,有理数中转末端舍入,确定性)"),
+            ("numeric_dim_eval", false, "量纲感知表达式求值(单位字面量解析+量纲检查+精确求值,复用量纲原语,确定性)"),
         ];
 
         let seed = official_native_services();
