@@ -6134,6 +6134,54 @@ mod tests {
         );
     }
 
+    /// 缺 verdict 字段包 fail-closed（evorule-bundle 0.6.0）：外部 JSON 反序列化沿
+    /// 缺 `tests.verdict` 时缺省=Fail（0.5.2 曾缺省 Pass=静默当已验证），残缺/恶意
+    /// 包经导入闸拒收。防回归锚定：缺字段反序列化 ≠ 已验证。
+    #[test]
+    fn test_import_bundle_missing_verdict_field_fail_closed() {
+        use crate::bundle::{BundleTests, DatasetBundle, TestVerdict};
+        let store = RuleStore::in_memory().unwrap();
+        reg094_seed_covered_dataset(&store);
+
+        // 本可过闸的包（sandbox 背书 pass）
+        let full = store
+            .export_bundle(
+                "ds-tax-2024",
+                &BundleTests {
+                    subset: vec!["sandbox:eng-01".into()],
+                    fixtures: vec![],
+                    verdict: TestVerdict::Pass,
+                },
+                "eng",
+                "t",
+                "org-evorule",
+                None,
+            )
+            .unwrap();
+
+        // 模拟外部 JSON 传输沿丢失 verdict 字段（残缺/恶意形态）
+        let mut raw = serde_json::to_value(&full).unwrap();
+        raw["tests"]
+            .as_object_mut()
+            .expect("tests 须为 JSON 对象")
+            .remove("verdict");
+        let tampered: DatasetBundle = serde_json::from_value(raw).unwrap();
+        assert_eq!(
+            tampered.tests.verdict,
+            TestVerdict::Fail,
+            "缺 verdict 字段须缺省 Fail（fail-closed），不得静默 Pass"
+        );
+
+        // 导入闸拒收：走「未验证」路径，不归测试证据闸管
+        let err = store
+            .import_bundle(&tampered, "org-x", "u", "t", "inst")
+            .unwrap_err();
+        assert!(
+            !matches!(err, StoreError::UntraceableTestEvidence(_)),
+            "缺字段包应走未验证拒绝路径而非测试证据闸: {err}"
+        );
+    }
+
     /// enforce 指令准入闸（O-466，a 案 L3 一刀切）：Rule 条目直嵌/分支嵌套 enforce
     /// 均拒（DC-02 嵌套关注一并覆盖）；零 enforce 合法包正常导入；扫描器对同形
     /// 非命中形态（enforce-x/大小写）不误报。Knowledge 条目不扫——领域 payload

@@ -535,9 +535,7 @@ dependencies = [
 
 [[package]]
 name = "evorule-bundle"
-version = "0.5.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "35dcf17e8756de2bb23b11083d7812397d0dcfcf049a84622a4a928b2f3da598"
+version = "0.6.0"
 dependencies = [
  "evorule-hash",
  "jsonschema",

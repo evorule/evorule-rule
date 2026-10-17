@@ -3280,11 +3280,12 @@ mod tests {
             .store
             .export_bundle(
                 "ds-pay-01",
-                // sandbox 背书满足导入侧测试证据闸（BundleTests::default() =
-                // pass+空 subset，会被 store::validate_test_evidence 拒收）
+                // sandbox 背书满足导入侧测试证据闸（evorule-bundle 0.6.0 起
+                // BundleTests::default()=Fail=未验证，verdict 须显式写出）
                 &crate::bundle::BundleTests {
                     subset: vec!["sandbox:test-op".into()],
-                    ..Default::default()
+                    fixtures: vec![],
+                    verdict: crate::bundle::TestVerdict::Pass,
                 },
                 "eng",
                 "2026-08-02T00:00:00Z",

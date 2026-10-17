@@ -22,7 +22,9 @@ subtle = "2"
 # 0.5.2：O-377① 批 1——DatasetBundle 增可选 recipe_snapshot（策略快照随包固化，
 # 全包哈希覆盖；可选字段不 bump BUNDLE_SCHEMA_VERSION）；0.5.1 修根部 re-export，
 # 0.5.2 公开面注释清洗版
-evorule-bundle = { version = "0.5.2" }
+# 0.6.0：TestVerdict 缺省值 Pass→Fail——缺 verdict 字段的包反序列化为「未验证」，
+# 经导入闸 fail-closed 拒收，不再静默当已验证；产包工具须显式写出 verdict 字段
+evorule-bundle = { version = "0.6.0" }
 rand = "0.8"
 base64 = "0.22"
 # 0.32：与 evorule-server workspace（evorule-workspace 0.32）对齐——libsqlite3-sys
