@@ -264,8 +264,8 @@ mod tests {
             ("geometry_clearance_check", false, "几何间隙检查(零件两两最小距离vs阈值,违规清单+全局最小,宽容方向容差,确定性)"),
             ("geometry_occlusion_check", false, "几何遮挡序检查(重叠零件绘制序vs声明z层,画家算法语义,确定性)"),
             // ---- numeric-services ----
-            ("numeric_rational_eval", false, "有理数表达式精确求值(整数与四则/整数幂,既约分数输出,确定性)"),
-            ("numeric_decimal_eval", false, "定点十进制表达式求值(全程精确有理运算,输出端按 scale+rounding 单次舍入,确定性)"),
+            ("numeric_rational_eval", false, "有理数表达式精确求值(整数与四则/整数幂,支持 vars 变量绑定,既约分数输出,确定性)"),
+            ("numeric_decimal_eval", false, "定点十进制表达式求值(支持 vars 变量绑定,全程精确有理运算,输出端按 scale+rounding 单次舍入,确定性)"),
             ("numeric_decimal_convert", false, "分数与十进制互转(终止性如实标注,无限小数须显式舍入,确定性)"),
             ("numeric_number_theory", false, "数论原子(gcd/lcm/factorial/nCr/nPr,大整数精确,确定性)"),
             ("numeric_fin_interest", false, "单利/复利精确计算(中间量全程有理数精确,末端显式舍入,确定性)"),
