@@ -96,6 +96,10 @@ const EMBEDDED_SERVICE_FILES: &[(&str, &str)] = &[
         "gnss-services",
         include_str!("official_native_services.gnss-services.embedded.json"),
     ),
+    (
+        "grav-services",
+        include_str!("official_native_services.grav-services.embedded.json"),
+    ),
 ];
 
 /// 官方预置原生服务种子（声明文件化；泛化至多插件聚合）。
@@ -286,6 +290,9 @@ mod tests {
             ("mechanics_pid_step", false, "离散 PID 单步(位置式,状态显式出入无隐藏状态,双跑位元一致,确定性)"),
             ("gnss_factory_prebias", false, "GNSS 工厂频率预偏置换算(标称/设偏/分数偏置三量互求+每日漂移纳秒换算,精确有理数,确定性)"),
             ("gnss_range_error", false, "GNSS 时间误差与距离误差换算(c=SI 精确定义内置带版本戳,精确有理数,确定性)"),
+            ("grav_schwarzschild_radius", false, "史瓦西半径 rs=2GM/c(G 显式入参,c 为 SI 精确定义内置,精确有理数,确定性)"),
+            ("grav_perihelion_precession", false, "近日点进动 Delta_phi=3888000GM/(c^2*a*(1-e^2)) 弧秒式精确(水星 43 角秒/世纪经典验证;弧度输出用 pi 的 50 位有理近似带版本戳,确定性)"),
+            ("grav_light_deflection", false, "光线偏折 alpha=4GM/(c^2*b)(太阳掠射 1.75 角秒经典验证;角秒/弧度中 pi 用 50 位有理近似带版本戳,弧度本体精确,确定性)"),
         ];
 
         let seed = official_native_services();
