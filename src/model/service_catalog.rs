@@ -88,6 +88,10 @@ const EMBEDDED_SERVICE_FILES: &[(&str, &str)] = &[
         "numeric-services",
         include_str!("official_native_services.numeric-services.embedded.json"),
     ),
+    (
+        "mechanics-services",
+        include_str!("official_native_services.mechanics-services.embedded.json"),
+    ),
 ];
 
 /// 官方预置原生服务种子（声明文件化；泛化至多插件聚合）。
@@ -218,7 +222,7 @@ mod tests {
     fn test_embedded_native_services_snapshot() {
         /// 快照期望表（聚合序 = EMBEDDED_SERVICE_FILES 声明序：
         /// demo-services → physics-services → indicator-services → template-services
-        /// → inference-services → geometry-services → numeric-services）。
+        /// → inference-services → geometry-services → numeric-services → mechanics-services）。
         /// 条目 = (name, sensitive, description)，与 SSOT 声明文件逐字对应。
         const EXPECTED_SERVICES: &[(&str, bool, &str)] = &[
             // ---- demo-services ----
@@ -268,6 +272,14 @@ mod tests {
             ("numeric_fin_amortize", false, "等额本息/等额本金摊销表(逐期显式舍入,尾差并入末期,确定性)"),
             ("numeric_unit_convert", false, "单位换算(换算率由调用方显式提供,服务不内置任何率,有理数中转末端舍入,确定性)"),
             ("numeric_dim_eval", false, "量纲感知表达式求值(单位字面量解析+量纲检查+精确求值,复用量纲原语,确定性)"),
+            // ---- mechanics-services ----
+            ("mechanics_newton_second", false, "牛顿第二定律 F=m·a 三量互求与一致性校验(精确有理数,确定性)"),
+            ("mechanics_kinematics_uniform", false, "匀加速运动学互求(v0/a/t/s/v 任三独立量解其余,双根组合如实拒解,确定性)"),
+            ("mechanics_momentum_impulse", false, "动量与冲量互求(p=m·v 与 I=F·t,精确有理数,确定性)"),
+            ("mechanics_energy_mech", false, "机械能计算(Ek=m·v²/2 与 Ep=m·g·h,g 显式入参零内置常数,确定性)"),
+            ("mechanics_ohm_law", false, "欧姆定律 U=I·R 三量互求与一致性校验(精确有理数,确定性)"),
+            ("mechanics_resistance_network", false, "电阻网络等效(串联Σ/并联倒数和,有理数精确,短路如实报告,确定性)"),
+            ("mechanics_pid_step", false, "离散 PID 单步(位置式,状态显式出入无隐藏状态,双跑位元一致,确定性)"),
         ];
 
         let seed = official_native_services();
