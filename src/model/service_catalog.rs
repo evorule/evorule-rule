@@ -100,6 +100,14 @@ const EMBEDDED_SERVICE_FILES: &[(&str, &str)] = &[
         "grav-services",
         include_str!("official_native_services.grav-services.embedded.json"),
     ),
+    (
+        "checksum-services",
+        include_str!("official_native_services.checksum-services.embedded.json"),
+    ),
+    (
+        "cny-services",
+        include_str!("official_native_services.cny-services.embedded.json"),
+    ),
 ];
 
 /// 官方预置原生服务种子（声明文件化；泛化至多插件聚合）。
@@ -293,6 +301,10 @@ mod tests {
             ("grav_schwarzschild_radius", false, "史瓦西半径 rs=2GM/c(G 显式入参,c 为 SI 精确定义内置,精确有理数,确定性)"),
             ("grav_perihelion_precession", false, "近日点进动 Delta_phi=3888000GM/(c^2*a*(1-e^2)) 弧秒式精确(水星 43 角秒/世纪经典验证;弧度输出用 pi 的 50 位有理近似带版本戳,确定性)"),
             ("grav_light_deflection", false, "光线偏折 alpha=4GM/(c^2*b)(太阳掠射 1.75 角秒经典验证;角秒/弧度中 pi 用 50 位有理近似带版本戳,弧度本体精确,确定性)"),
+            ("checksum_luhn", false, "Luhn 模 10 校验(银行卡号/IMEI 等;validate 校验/append 补位,纯整数,确定性)"),
+            ("checksum_isbn", false, "ISBN 校验(isbn10 模 11 含 X 位/isbn13 交替权 1-3;validate 校验/check_digit 补位,纯整数,确定性)"),
+            ("checksum_iban", false, "IBAN mod-97 校验(ISO 13616;validate 校验/check_digits 补算两位校验码;结构+mod97,国家长度表不内置如实声明,确定性)"),
+            ("cny_amount_upper", false, "人民币大写金额转换(票据规范:零合并/整字/角分规则;负数与超 16 位整数如实拒解;规范两可处以省略零为确定性选择并注明,确定性)"),
         ];
 
         let seed = official_native_services();
