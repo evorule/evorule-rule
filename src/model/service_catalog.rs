@@ -108,6 +108,10 @@ const EMBEDDED_SERVICE_FILES: &[(&str, &str)] = &[
         "cny-services",
         include_str!("official_native_services.cny-services.embedded.json"),
     ),
+    (
+        "fluid-services",
+        include_str!("official_native_services.fluid-services.embedded.json"),
+    ),
 ];
 
 /// 官方预置原生服务种子（声明文件化；泛化至多插件聚合）。
@@ -305,6 +309,9 @@ mod tests {
             ("checksum_isbn", false, "ISBN 校验(isbn10 模 11 含 X 位/isbn13 交替权 1-3;validate 校验/check_digit 补位,纯整数,确定性)"),
             ("checksum_iban", false, "IBAN mod-97 校验(ISO 13616;validate 校验/check_digits 补算两位校验码;结构+mod97,国家长度表不内置如实声明,确定性)"),
             ("cny_amount_upper", false, "人民币大写金额转换(票据规范:零合并/整字/角分规则;负数与超 16 位整数如实拒解;规范两可处以省略零为确定性选择并注明,确定性)"),
+            ("fluid_bernoulli", false, "伯努利方程互求(p+ρv²/2+ρgh 沿流线守恒;p/h 四量线性可解,v 求解开方双根如实拒解;ρ/g 显式入参,精确有理数,确定性)"),
+            ("fluid_continuity", false, "连续性方程互求(A₁v₁=A₂v₂,不可压;四量任缺一线性可解,全给一致性校验,输出流量,精确有理数,确定性)"),
+            ("fluid_hydrostatic", false, "静水压强互求(p=p₀+ρgh;五量任缺一线性可解,全给一致性校验;ρ/g 显式入参,精确有理数,确定性)"),
         ];
 
         let seed = official_native_services();
