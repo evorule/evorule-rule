@@ -92,6 +92,10 @@ const EMBEDDED_SERVICE_FILES: &[(&str, &str)] = &[
         "mechanics-services",
         include_str!("official_native_services.mechanics-services.embedded.json"),
     ),
+    (
+        "gnss-services",
+        include_str!("official_native_services.gnss-services.embedded.json"),
+    ),
 ];
 
 /// 官方预置原生服务种子（声明文件化；泛化至多插件聚合）。
@@ -280,6 +284,8 @@ mod tests {
             ("mechanics_ohm_law", false, "欧姆定律 U=I·R 三量互求与一致性校验(精确有理数,确定性)"),
             ("mechanics_resistance_network", false, "电阻网络等效(串联Σ/并联倒数和,有理数精确,短路如实报告,确定性)"),
             ("mechanics_pid_step", false, "离散 PID 单步(位置式,状态显式出入无隐藏状态,双跑位元一致,确定性)"),
+            ("gnss_factory_prebias", false, "GNSS 工厂频率预偏置换算(标称/设偏/分数偏置三量互求+每日漂移纳秒换算,精确有理数,确定性)"),
+            ("gnss_range_error", false, "GNSS 时间误差与距离误差换算(c=SI 精确定义内置带版本戳,精确有理数,确定性)"),
         ];
 
         let seed = official_native_services();
