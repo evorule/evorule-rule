@@ -112,6 +112,14 @@ const EMBEDDED_SERVICE_FILES: &[(&str, &str)] = &[
         "fluid-services",
         include_str!("official_native_services.fluid-services.embedded.json"),
     ),
+    (
+        "quantum-services",
+        include_str!("official_native_services.quantum-services.embedded.json"),
+    ),
+    (
+        "metrology-services",
+        include_str!("official_native_services.metrology-services.embedded.json"),
+    ),
 ];
 
 /// 官方预置原生服务种子（声明文件化；泛化至多插件聚合）。
@@ -315,6 +323,9 @@ mod tests {
             ("fluid_bernoulli", false, "伯努利方程互求(p+ρv²/2+ρgh 沿流线守恒;p/h 四量线性可解,v 求解开方双根如实拒解;ρ/g 显式入参,精确有理数,确定性)"),
             ("fluid_continuity", false, "连续性方程互求(A₁v₁=A₂v₂,不可压;四量任缺一线性可解,全给一致性校验,输出流量,精确有理数,确定性)"),
             ("fluid_hydrostatic", false, "静水压强互求(p=p₀+ρgh;五量任缺一线性可解,全给一致性校验;ρ/g 显式入参,精确有理数,确定性)"),
+            ("quantum_infinite_well", false, "无限深势阱能级 Eₙ=n²π²ℏ²/(2mL²)(ℏ=h/2π 派生:h 为 SI 精确内置带版本戳,π 用 50 位近似;m/L 显式入参;J 与 eV 双单位输出,确定性)"),
+            ("quantum_harmonic_oscillator", false, "量子谐振子能级 Eₙ=(n+½)ℏω(ℏ 派生同上;ω 显式入参;J 与 eV 双单位输出,确定性)"),
+            ("metrology_uncertainty_propagate", false, "GUM 乘法幂模型不确定度传播(y=Πxᵢ^aᵢ;相对不确定度平方合成后定点平方根,误差 ≤10⁻ˢᶜᵃˡᵉ 契约;独立输入假设,相关项/加法模型如实拒解,确定性)"),
         ];
 
         let seed = official_native_services();
