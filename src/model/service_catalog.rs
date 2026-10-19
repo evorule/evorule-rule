@@ -124,6 +124,10 @@ const EMBEDDED_SERVICE_FILES: &[(&str, &str)] = &[
         "gov-services",
         include_str!("official_native_services.gov-services.embedded.json"),
     ),
+    (
+        "legal-services",
+        include_str!("official_native_services.legal-services.embedded.json"),
+    ),
 ];
 
 /// 官方预置原生服务种子（声明文件化；泛化至多插件聚合）。
@@ -334,6 +338,7 @@ mod tests {
             ("gov_aggregate", false, "数组聚合(sum/avg/median/min/max,精确有理数;median 偶数个取中间两数平均,确定性)"),
             ("gov_window_duration", false, "时长差 end−start(epoch 秒 i64,精确;负值如实输出不截断,确定性)"),
             ("gov_window_overlap", false, "区间对判定(overlap 长度 max(0,min(e)−max(s)) 与关系标签 no_overlap/adjacent/overlap/contained_1_in_2/contained_2_in_1/identical,精确有理数,确定性)"),
+            ("legal_deadline", false, "期间届日计算(日起算不含当日/周月年按历法对应日,对应日不存在取当月末;节假日表与周末顺延显式入参,法定休假数据不内置如实声明;确定性)"),
         ];
 
         let seed = official_native_services();
