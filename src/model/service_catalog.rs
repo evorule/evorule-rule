@@ -120,6 +120,10 @@ const EMBEDDED_SERVICE_FILES: &[(&str, &str)] = &[
         "metrology-services",
         include_str!("official_native_services.metrology-services.embedded.json"),
     ),
+    (
+        "gov-services",
+        include_str!("official_native_services.gov-services.embedded.json"),
+    ),
 ];
 
 /// 官方预置原生服务种子（声明文件化；泛化至多插件聚合）。
@@ -326,6 +330,10 @@ mod tests {
             ("quantum_infinite_well", false, "无限深势阱能级 Eₙ=n²π²ℏ²/(2mL²)(ℏ=h/2π 派生:h 为 SI 精确内置带版本戳,π 用 50 位近似;m/L 显式入参;J 与 eV 双单位输出,确定性)"),
             ("quantum_harmonic_oscillator", false, "量子谐振子能级 Eₙ=(n+½)ℏω(ℏ 派生同上;ω 显式入参;J 与 eV 双单位输出,确定性)"),
             ("metrology_uncertainty_propagate", false, "GUM 乘法幂模型不确定度传播(y=Πxᵢ^aᵢ;相对不确定度平方合成后定点平方根,误差 ≤10⁻ˢᶜᵃˡᵉ 契约;独立输入假设,相关项/加法模型如实拒解,确定性)"),
+            ("gov_ratio_split", false, "比例分配(total 按 weights 精确有理份额;mode=integer 时最大余数法整数分配保证和恰为 total;零浮点,确定性)"),
+            ("gov_aggregate", false, "数组聚合(sum/avg/median/min/max,精确有理数;median 偶数个取中间两数平均,确定性)"),
+            ("gov_window_duration", false, "时长差 end−start(epoch 秒 i64,精确;负值如实输出不截断,确定性)"),
+            ("gov_window_overlap", false, "区间对判定(overlap 长度 max(0,min(e)−max(s)) 与关系标签 no_overlap/adjacent/overlap/contained_1_in_2/contained_2_in_1/identical,精确有理数,确定性)"),
         ];
 
         let seed = official_native_services();
