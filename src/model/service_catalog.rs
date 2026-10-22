@@ -345,6 +345,8 @@ mod tests {
             ("legal_deadline", false, "期间届日计算(日起算不含当日/周月年按历法对应日,对应日不存在取当月末;节假日表与周末顺延显式入参,法定休假数据不内置如实声明;确定性)"),
             // ---- export-services ----
             ("export_report_pdf", false, "报告PDF导出(审计/业务数据→纯Rust文本型PDF渲染→落盘导出目录,返回绝对路径与字节数及blake3内容哈希,幂等覆写)"),
+            ("export_workbook_xlsx", false, "工作簿xlsx导出(多表+表头/整数字符串值域→rust_xlsxwriter确定性渲染,固定文档时间戳,落盘导出目录,返回绝对路径与字节数及blake3内容哈希,幂等覆写)"),
+            ("export_document_docx", false, "文档docx导出(标题+段落+表格+溯源表→docx-rs确定性渲染(零时间戳内嵌),落盘导出目录,返回绝对路径与字节数及blake3内容哈希,幂等覆写)"),
         ];
 
         let seed = official_native_services();
