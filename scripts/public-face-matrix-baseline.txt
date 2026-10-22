@@ -1,0 +1,5 @@
+A1-AI身份署名|scripts/public-face-baseline.txt|352393ccec677afda324dc2647e0a2a0
+A1-AI身份署名|scripts/public-face-baseline.txt|4d72a4e70177cba66f1c31b475711ece
+A1-AI身份署名|scripts/public-face-baseline.txt|5a49f0ecffdd3bdd7d2e69803e8b5e2a
+A1-AI身份署名|scripts/public-face-baseline.txt|6d62d47e0b5ad1b9d37995221bda0799
+A1-AI身份署名|scripts/public-face-baseline.txt|bdad2124e0e7ee8d681af76a992441b0

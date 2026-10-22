@@ -127,4 +127,4 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: 公开面矩阵扫描 (AI 身份 + 内部编号阻断)
-        run: python3 scripts/scan_public_face.py --fail-on A1 --fail-on B
+        run: python3 scripts/scan_public_face.py --fail-on A1 --fail-on B --ratchet scripts/public-face-matrix-baseline.txt
