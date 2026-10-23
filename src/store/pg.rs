@@ -5,14 +5,18 @@
 //! - 连接池（`PgPool`，`DATABASE_URL` 注入，兼容 PgBouncer 事务级）；
 //! - 版本化迁移（运行时 `Migrator` 加载 `migrations/`）；
 //! - 连通性自检 `ping`；
-//! - **P4 方言改写（核心两表，2026-08-22）**：`datasets`/`entries`（含 `entry_snapshots` 去重）
-//!   的 CRUD，字段序列化对齐 SQLite 侧（`serde_json`→`TEXT`）。用运行时 `sqlx::query` 手动映射，
+//! - **P4 方言改写（起点为核心两表，2026-08-22；此后逐批扩展）**：自 `datasets`/`entries`
+//!   （含 `entry_snapshots` 去重）起步，现已覆盖 14 张表（datasets / entries 族、
+//!   dataset_versions 族、api_keys、auth_audits、bundles_import_logs、llm_op_audit、
+//!   revoked_tokens、service_templates、tenants、users 等），约 40 个方法；字段序列化
+//!   对齐 SQLite 侧（`serde_json`→`TEXT`）。用运行时 `sqlx::query` 手动映射，
 //!   避免 `query!` 宏编译期依赖真实 PG，便于在提供 PG 实例前编译通过。
 //!
 //! 边界（如实）：**P4 往返与冒烟自检已对真实 PostgreSQL 17.7 实测全绿**
 //! （建池+迁移+CRUD 往返+核心表族），测试保持 `#[ignore]`——需 `DATABASE_URL`
 //! 指向真实实例；配方=全新库+串行 `--test-threads=1`（防并行首跑迁移竞态）。
-//! 仅覆盖核心两表；全表方言改写、PG 事务拆分（P6）、配置化双后端为后续批次，不伪称完成。
+//! 表覆盖仍非全量（SQLite 独有对象与部分方言差异在途）；PG 事务拆分（P6）、
+//! 配置化双后端为后续批次，不伪称完成。
 
 use sqlx::migrate::MigrateError;
 use sqlx::migrate::Migrator;

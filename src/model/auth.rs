@@ -192,7 +192,8 @@ pub struct ApiKey {
     pub key_id: String,
     pub tenant_id: String,
     pub name: String,
-    /// pull | （后置扩展）
+    /// `pull` | `entries:propose` | `entries:transition` | `writeback:rule_failure`
+    /// （四值白名单校验在 handlers_keys；缺省 pull）
     pub scope: String,
     pub key_hash: String,
     pub created_at: String,

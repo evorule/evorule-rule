@@ -6,7 +6,8 @@
 //! - 统一错误不静默降级：`{ "error": { "code", "message" } }`；
 //! - 同步导入、`Idempotency-Key` 幂等（设计文档 §14；历史批次 P1-B4 落地，见各写端点）；
 //! - lifecycle 迁移统一走 `PATCH /v1/datasets/{id}/lifecycle`；
-//! - api_keys 提供最小 scope 版（pull，执行侧拉取快照包联动）。
+//! - api_keys 提供 scope 化凭据：`pull`（执行侧拉取快照包联动）、`entries:propose`、
+//!   `entries:transition`、`writeback:rule_failure` 四种（校验见 handlers_keys）。
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
