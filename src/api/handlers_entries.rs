@@ -382,7 +382,9 @@ pub(crate) fn run_machine_gate(
         .store
         .get_dataset(dataset_id)?
         .ok_or_else(|| ApiError::not_found(format!("数据集 `{dataset_id}` 不存在")))?;
-    let stats = state.store.llm_audit_stats()?;
+    // M5 信誉输入按数据集租户作用域采集（D-RULHTTP-09：全实例统计会把
+    // 他租户的 LLM 失败率耦合进本租户条目的机器闸梯位）
+    let stats = state.store.llm_audit_stats(Some(&dataset.tenant_id))?;
     let input = match entry {
         AnyEntry::Rule(e) => {
             let probe = state.store.gate_probe_rule(dataset_id, &e)?;
@@ -524,7 +526,8 @@ pub async fn machine_gate_promote(
 }
 
 /// GET /audit/machine-gate/post-review-queue —— 机器闸 T1 事后追认队列（最小版：
-/// 两审计表 UNION Active+T1+追认标记，按 at DESC；Approve 角色）
+/// 两审计表 UNION Active+T1+追认标记，按 at DESC；Approve 角色）。
+/// 租户作用域：org 级审批者只见本租户条目；平台管理员可见全实例。
 pub async fn machine_gate_post_review_queue(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
@@ -532,10 +535,16 @@ pub async fn machine_gate_post_review_queue(
     if !can(ctx.role, Action::Approve) {
         return Err(ApiError::forbidden("追认队列查看需审批者及以上角色"));
     }
+    let platform = can(ctx.role, Action::ManageOrgs);
+    let tenant = if platform {
+        None
+    } else {
+        Some(ctx.tenant_id.as_str())
+    };
     Ok(Json(
         state
             .store
-            .machine_gate_post_review_queue(POST_REVIEW_QUEUE_LIMIT)?,
+            .machine_gate_post_review_queue(tenant, POST_REVIEW_QUEUE_LIMIT)?,
     ))
 }
 

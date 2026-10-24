@@ -949,6 +949,10 @@ impl RuleStore {
             "ALTER TABLE writeback_events ADD COLUMN proposed_ref TEXT",
             [],
         );
+        // 租户作用域（R3-gov-auth）：llm_op_audit 补租户列——存量行 NULL=
+        // 迁移前数据，租户作用域查询不可见；新行一律落租户（writeback 行
+        // 取收件租户，命名操作行取调用者租户）
+        let _ = conn.execute("ALTER TABLE llm_op_audit ADD COLUMN tenant_id TEXT", []);
         // Q12 数据资产化 R3：knowledge 条目平行表（方案 D 定案：rule 查询热路径零扰动）
         conn.execute_batch(
             r#"
@@ -2415,8 +2419,8 @@ impl RuleStore {
         let conn = self.conn.lock().unwrap();
         conn.execute(
             "INSERT INTO llm_op_audit
-               (request_id, operation, model, status, duration_ms, result_ref, error, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+               (request_id, operation, model, status, duration_ms, result_ref, error, created_at, tenant_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
              ON CONFLICT(request_id) DO UPDATE SET
                 operation=excluded.operation,
                 model=excluded.model,
@@ -2424,7 +2428,8 @@ impl RuleStore {
                 duration_ms=excluded.duration_ms,
                 result_ref=excluded.result_ref,
                 error=excluded.error,
-                created_at=excluded.created_at",
+                created_at=excluded.created_at,
+                tenant_id=excluded.tenant_id",
             params![
                 audit.request_id,
                 audit.operation,
@@ -2434,6 +2439,7 @@ impl RuleStore {
                 audit.result_ref,
                 audit.error,
                 audit.created_at,
+                audit.tenant_id,
             ],
         )?;
         Ok(())
@@ -2443,7 +2449,7 @@ impl RuleStore {
     pub fn get_llm_audit(&self, request_id: &str) -> Result<Option<LlmOpAudit>, StoreError> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT request_id, operation, model, status, duration_ms, result_ref, error, created_at
+            "SELECT request_id, operation, model, status, duration_ms, result_ref, error, created_at, tenant_id
              FROM llm_op_audit WHERE request_id=?1",
         )?;
         let mut rows = stmt.query_map(params![request_id], row_to_audit)?;
@@ -2486,8 +2492,8 @@ impl RuleStore {
         let event_id = tx.last_insert_rowid();
         tx.execute(
             "INSERT INTO llm_op_audit
-               (request_id, operation, model, status, duration_ms, result_ref, error, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+               (request_id, operation, model, status, duration_ms, result_ref, error, created_at, tenant_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             params![
                 format!("wb-{event_id}"),
                 "writeback_rule_failure",
@@ -2497,6 +2503,7 @@ impl RuleStore {
                 entry_id,
                 Option::<String>::None,
                 received_at,
+                tenant_id,
             ],
         )?;
         tx.commit()?;
@@ -2559,6 +2566,7 @@ impl RuleStore {
         self.list_llm_audits_filtered(&LlmAuditFilter {
             operation: None,
             status: None,
+            tenant: None,
             limit,
         })
     }
@@ -2566,12 +2574,15 @@ impl RuleStore {
     /// 按过滤条件列出审计记录（对外展示接口，设计文档 §8）
     ///
     /// 可按操作/状态过滤，按时间倒序，`limit` 上限；空过滤条件 = 全量倒序。
+    /// `filter.tenant` = Some 时强制租户谓词；**注意**：tenant_id 为 NULL 的
+    /// 迁移前存量行在任何租户作用域查询中不可见（fail-closed），仅无租户
+    /// 谓词的平台全量视图可见。
     pub fn list_llm_audits_filtered(
         &self,
         filter: &LlmAuditFilter,
     ) -> Result<Vec<LlmOpAudit>, StoreError> {
         let mut sql = String::from(
-            "SELECT request_id, operation, model, status, duration_ms, result_ref, error, created_at
+            "SELECT request_id, operation, model, status, duration_ms, result_ref, error, created_at, tenant_id
              FROM llm_op_audit WHERE 1=1",
         );
         let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
@@ -2582,6 +2593,10 @@ impl RuleStore {
         if let Some(status) = &filter.status {
             sql.push_str(" AND status = ?");
             params.push(Box::new(status.clone()));
+        }
+        if let Some(tenant) = &filter.tenant {
+            sql.push_str(" AND tenant_id = ?");
+            params.push(Box::new(tenant.clone()));
         }
         sql.push_str(" ORDER BY created_at DESC LIMIT ?");
         params.push(Box::new(filter.limit as i64));
@@ -2597,15 +2612,29 @@ impl RuleStore {
     /// 审计统计摘要（对外展示接口，设计文档 §8）
     ///
     /// 总条数 / 成功 / 失败 / 平均耗时，并按操作维度聚合（供报表与"LLM 每步可审计"展示）。
-    pub fn llm_audit_stats(&self) -> Result<LlmAuditStats, StoreError> {
+    /// `tenant` = Some 时按租户作用域聚合（机器闸 M5 信誉输入走此形态，
+    /// 防跨租户失败率耦合治理裁决）；None = 全实例。
+    pub fn llm_audit_stats(&self, tenant: Option<&str>) -> Result<LlmAuditStats, StoreError> {
         let conn = self.conn.lock().unwrap();
+        // 动态参数向量（与 list_llm_audits_filtered 同款）：租户谓词与参数
+        // 同进同退，None = 全实例聚合
+        let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+        let tenant_pred = if let Some(t) = tenant {
+            params.push(Box::new(t.to_string()));
+            " WHERE tenant_id = ?1"
+        } else {
+            ""
+        };
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|b| b.as_ref()).collect();
         let (total, completed, failed, avg) = conn.query_row(
-            "SELECT COUNT(*),
+            &format!(
+                "SELECT COUNT(*),
                     COALESCE(SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END), 0),
                     COALESCE(SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END), 0),
                     COALESCE(AVG(duration_ms), 0)
-             FROM llm_op_audit",
-            [],
+             FROM llm_op_audit{tenant_pred}"
+            ),
+            param_refs.as_slice(),
             |r| {
                 Ok((
                     r.get::<_, i64>(0)?,
@@ -2616,13 +2645,13 @@ impl RuleStore {
             },
         )?;
 
-        let mut stmt = conn.prepare(
+        let mut stmt = conn.prepare(&format!(
             "SELECT operation, COUNT(*),
                     COALESCE(SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END), 0),
                     COALESCE(AVG(duration_ms), 0)
-             FROM llm_op_audit GROUP BY operation",
-        )?;
-        let rows = stmt.query_map([], |r| {
+             FROM llm_op_audit{tenant_pred} GROUP BY operation"
+        ))?;
+        let rows = stmt.query_map(param_refs.as_slice(), |r| {
             Ok((
                 r.get::<_, String>(0)?,
                 r.get::<_, i64>(1)?,
@@ -3471,24 +3500,35 @@ impl RuleStore {
     /// `to_state='Active' AND tier='T1' AND post_review_required=1 AND 未追认`，
     /// 按 at DESC；追认后行退出队列（留痕于 ratified_by/at，审计面可查）；
     /// 排序精化（影响面×运行表现）随机器闸演进。
+    /// 机器闸 T1 事后追认队列（两审计表 UNION，按 at DESC）。
+    ///
+    /// `tenant` = Some 时按 dataset→tenant 过滤（租户作用域，防跨租户条目
+    /// 暴露）；None = 全实例（平台管理员路径）。
     pub fn machine_gate_post_review_queue(
         &self,
+        tenant: Option<&str>,
         limit: usize,
     ) -> Result<Vec<crate::model::lifecycle::PostReviewItem>, StoreError> {
         let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare(
+        let tenant_filter = if tenant.is_some() {
+            " AND dataset_id IN (SELECT dataset_id FROM datasets WHERE tenant_id = ?1)"
+        } else {
+            ""
+        };
+        let sql = format!(
             "SELECT dataset_id, entry_id, version, from_state, to_state, at, by, cause, tier
              FROM entry_state_history
              WHERE to_state='Active' AND tier='T1' AND post_review_required=1
-               AND ratified_by IS NULL
+               AND ratified_by IS NULL{tenant_filter}
              UNION ALL
              SELECT dataset_id, entry_id, version, from_state, to_state, at, by, cause, tier
              FROM knowledge_state_history
              WHERE to_state='Active' AND tier='T1' AND post_review_required=1
-               AND ratified_by IS NULL
-             ORDER BY at DESC LIMIT ?1",
-        )?;
-        let rows = stmt.query_map(params![limit as i64], |r| {
+               AND ratified_by IS NULL{tenant_filter}
+             ORDER BY at DESC LIMIT {limit}"
+        );
+        let mut stmt = conn.prepare(&sql)?;
+        let map_item = |r: &rusqlite::Row| {
             Ok(crate::model::lifecycle::PostReviewItem {
                 dataset_id: r.get(0)?,
                 entry_id: r.get(1)?,
@@ -3500,7 +3540,12 @@ impl RuleStore {
                 cause: r.get(7)?,
                 tier: r.get(8)?,
             })
-        })?;
+        };
+        let rows = if tenant.is_some() {
+            stmt.query_map(params![tenant], map_item)?
+        } else {
+            stmt.query_map([], map_item)?
+        };
         rows.collect::<Result<_, _>>().map_err(Into::into)
     }
 
@@ -5377,6 +5422,7 @@ fn row_to_audit(r: &rusqlite::Row) -> rusqlite::Result<LlmOpAudit> {
         result_ref: r.get(5)?,
         error: r.get(6)?,
         created_at: r.get(7)?,
+        tenant_id: r.get(8)?,
     })
 }
 
@@ -5622,7 +5668,7 @@ mod tests {
         assert_eq!(hist[0].post_review_required, Some(true));
 
         // 追认队列可查（最小版）
-        let queue = store.machine_gate_post_review_queue(100).unwrap();
+        let queue = store.machine_gate_post_review_queue(None, 100).unwrap();
         assert_eq!(queue.len(), 1);
         assert_eq!(queue[0].entry_id, "tax-001");
         assert_eq!(queue[0].to_state, "Active");
@@ -5664,7 +5710,7 @@ mod tests {
                 .unwrap();
         }
         // 必入:队列恰 1 条(两跳同版本?——每跳独立行,Active 行入队,Candidate 行不入)
-        let queue = store.machine_gate_post_review_queue(100).unwrap();
+        let queue = store.machine_gate_post_review_queue(None, 100).unwrap();
         assert_eq!(queue.len(), 1, "仅 Active 行入追认队列");
         assert_eq!(queue[0].entry_id, "tax-001");
         // 未追认禁 Published(数据集先走合法路径至 Active:Candidate→Active)
@@ -5678,14 +5724,14 @@ mod tests {
             .unwrap_err();
         assert!(err.to_string().contains("I17"), "未追认必须拒绝发布: {err}");
         // 仅入一次:重复查询不产生重复行;队列仍 1
-        assert_eq!(store.machine_gate_post_review_queue(100).unwrap().len(), 1);
+        assert_eq!(store.machine_gate_post_review_queue(None, 100).unwrap().len(), 1);
         // 追认:覆写 1 行→队列退出
         let n = store
             .ratify_post_review("ds-tax-2024", "tax-001", "human-r1", "t2")
             .unwrap();
         assert_eq!(n, 1, "恰覆写 Active 行");
         assert!(store
-            .machine_gate_post_review_queue(100)
+            .machine_gate_post_review_queue(None, 100)
             .unwrap()
             .is_empty());
         // 追认后发布通过
@@ -5727,7 +5773,7 @@ mod tests {
         assert_eq!(hist[0].post_review_required, Some(false));
         // T0 直通不入追认队列
         assert!(store
-            .machine_gate_post_review_queue(100)
+            .machine_gate_post_review_queue(None, 100)
             .unwrap()
             .is_empty());
     }
@@ -7779,6 +7825,7 @@ mod tests {
             result_ref: Some("ds-tax-2024/tax-001-rule-01".into()),
             error: None,
             created_at: "2026-08-22T10:00:00Z".into(),
+            tenant_id: None,
         };
         store.record_llm_audit(&a).unwrap();
         let got = store.get_llm_audit("req-0001").unwrap().unwrap();
@@ -7798,6 +7845,7 @@ mod tests {
             result_ref: None,
             error: Some("LLM 调用失败".into()),
             created_at: "2026-08-22T10:00:00Z".into(),
+            tenant_id: None,
         };
         store.record_llm_audit(&a).unwrap();
         // 同 request_id 重试 → 覆盖更新（幂等），不产生第二行
@@ -7828,6 +7876,7 @@ mod tests {
                     error: None,
                     // 时间戳递增，确保倒序可断言
                     created_at: format!("2026-08-22T10:00:0{}Z", i),
+                    tenant_id: None,
                 })
                 .unwrap();
         }
@@ -7854,6 +7903,7 @@ mod tests {
                     result_ref: None,
                     error: None,
                     created_at: format!("2026-08-22T10:00:0{}Z", i),
+                    tenant_id: None,
                 })
                 .unwrap();
         }
@@ -7867,12 +7917,14 @@ mod tests {
                 result_ref: None,
                 error: Some("boom".into()),
                 created_at: "2026-08-22T10:00:09Z".into(),
+                tenant_id: None,
             })
             .unwrap();
 
         // 按 operation 过滤
         let drafts = store
             .list_llm_audits_filtered(&LlmAuditFilter {
+                tenant: None,
                 operation: Some("draft_rule".into()),
                 status: None,
                 limit: 100,
@@ -7884,6 +7936,7 @@ mod tests {
         // 按 status 过滤
         let failed = store
             .list_llm_audits_filtered(&LlmAuditFilter {
+                tenant: None,
                 operation: None,
                 status: Some("failed".into()),
                 limit: 100,
@@ -7895,6 +7948,7 @@ mod tests {
         // 组合过滤（无匹配）
         let none = store
             .list_llm_audits_filtered(&LlmAuditFilter {
+                tenant: None,
                 operation: Some("gen_tests".into()),
                 status: Some("completed".into()),
                 limit: 100,
@@ -7905,6 +7959,7 @@ mod tests {
         // limit 生效
         let one = store
             .list_llm_audits_filtered(&LlmAuditFilter {
+                tenant: None,
                 operation: Some("draft_rule".into()),
                 status: None,
                 limit: 1,
@@ -7928,6 +7983,7 @@ mod tests {
                     result_ref: None,
                     error: None,
                     created_at: "2026-08-22T10:00:00Z".into(),
+                tenant_id: None,
                 })
                 .unwrap();
         }
@@ -7941,6 +7997,7 @@ mod tests {
                 result_ref: None,
                 error: Some("boom".into()),
                 created_at: "2026-08-22T10:00:00Z".into(),
+                tenant_id: None,
             })
             .unwrap();
         // gen_tests: 1 成功（耗时 100）
@@ -7954,10 +8011,11 @@ mod tests {
                 result_ref: None,
                 error: None,
                 created_at: "2026-08-22T10:00:00Z".into(),
+                tenant_id: None,
             })
             .unwrap();
 
-        let stats = store.llm_audit_stats().unwrap();
+        let stats = store.llm_audit_stats(None).unwrap();
         assert_eq!(stats.total, 5);
         assert_eq!(stats.completed, 4);
         assert_eq!(stats.failed, 1);
@@ -7980,7 +8038,7 @@ mod tests {
     #[test]
     fn test_llm_audit_stats_empty() {
         let store = RuleStore::in_memory().unwrap();
-        let stats = store.llm_audit_stats().unwrap();
+        let stats = store.llm_audit_stats(None).unwrap();
         assert_eq!(stats.total, 0);
         assert_eq!(stats.completed, 0);
         assert_eq!(stats.failed, 0);
@@ -9029,5 +9087,138 @@ mod tests {
             assert_eq!(report.scanned, 8, "扫描 8 件（7 schema+1 管理件）");
         } // store drop：连接释放在先，guard 清文件不被文件锁阻塞
         let _ = dir; // 目录只读实测，零触碰
+    }
+}
+
+#[cfg(test)]
+mod llm_audit_tenant_tests {
+    use super::*;
+    use crate::model::llm_audit::LlmOpAudit;
+
+    fn audit(request_id: &str, tenant: Option<&str>) -> LlmOpAudit {
+        LlmOpAudit {
+            request_id: request_id.to_string(),
+            operation: "draft_rule".to_string(),
+            model: None,
+            status: "completed".to_string(),
+            duration_ms: 5,
+            result_ref: None,
+            error: None,
+            created_at: "2026-01-01T00:00:00Z".to_string(),
+            tenant_id: tenant.map(str::to_string),
+        }
+    }
+
+    fn store_with_two_tenants() -> RuleStore {
+        let store = RuleStore::in_memory().unwrap();
+        store.record_llm_audit(&audit("req-ta-1", Some("tenant_a"))).unwrap();
+        store.record_llm_audit(&audit("req-ta-2", Some("tenant_a"))).unwrap();
+        store.record_llm_audit(&audit("req-tb-1", Some("tenant_b"))).unwrap();
+        // 模拟迁移前存量行：无租户
+        store.record_llm_audit(&audit("req-legacy", None)).unwrap();
+        store
+    }
+
+    #[test]
+    fn tenant_scoped_list_excludes_other_tenant_and_legacy() {
+        let store = store_with_two_tenants();
+        let filter = crate::model::llm_audit::LlmAuditFilter {
+            tenant: Some("tenant_a".to_string()),
+            ..Default::default()
+        };
+        let rows = store.list_llm_audits_filtered(&filter).unwrap();
+        assert_eq!(rows.len(), 2, "租户作用域只含本租户新行（他租户+存量 NULL 不可见）");
+        assert!(rows.iter().all(|r| r.tenant_id.as_deref() == Some("tenant_a")));
+    }
+
+    #[test]
+    fn unscoped_list_sees_everything() {
+        let store = store_with_two_tenants();
+        let rows = store
+            .list_llm_audits_filtered(&crate::model::llm_audit::LlmAuditFilter::default())
+            .unwrap();
+        assert_eq!(rows.len(), 4, "平台全量视图含全部四行（含存量 NULL）");
+    }
+
+    #[test]
+    fn tenant_scoped_stats_excludes_other_tenant_and_legacy() {
+        let store = store_with_two_tenants();
+        let stats = store.llm_audit_stats(Some("tenant_a")).unwrap();
+        assert_eq!(stats.total, 2, "租户统计只聚合本租户行");
+        let all = store.llm_audit_stats(None).unwrap();
+        assert_eq!(all.total, 4);
+    }
+
+    #[test]
+    fn post_review_queue_filters_by_dataset_tenant() {
+        let store = RuleStore::in_memory().unwrap();
+        // 两个租户各一条经 datasets 落地的 T1 追认行（entry_state_history 经
+        // datasets 外键过滤的前提是 datasets 里有对应行）
+        for (ds, tenant) in [("ds-ra", "tenant_a"), ("ds-rb", "tenant_b")] {
+            store
+                .create_dataset(&crate::model::dataset::RuleDataset {
+                    dataset_id: ds.to_string(),
+                    name: ds.to_string(),
+                    description: None,
+                    dataset_kind: crate::model::dataset::DatasetKind::RuleSet,
+                    domain: vec![],
+                    tags: vec![],
+                    tenant_id: tenant.to_string(),
+                    visibility: Default::default(),
+                    lifecycle: Default::default(),
+                    versioning: Default::default(),
+                    law_ref: None,
+                    version_selection: None,
+                    data_dependencies: None,
+                    event_schemas: vec![],
+                    meta: crate::model::dataset::Meta {
+                        created_at: "2026-01-01T00:00:00Z".to_string(),
+                        created_by: "seed".to_string(),
+                        updated_at: None,
+                        updated_by: None,
+                    },
+                })
+                .unwrap();
+        }
+        for (ds, id) in [("ds-ra", 1), ("ds-rb", 2)] {
+            let conn = store.conn.lock().unwrap();
+            // 测试直插审计史行：entries 外键在直插场景无真实条目，临时关闭
+            conn.execute_batch("PRAGMA foreign_keys=OFF").unwrap();
+            conn.execute(
+                "INSERT INTO entry_state_history
+                   (dataset_id, entry_id, version, from_state, to_state, at, by, cause, tier, post_review_required)
+                 VALUES (?1, 'e1', 1, 'T2', 'Active', '2026-01-01T00:00:00Z', 'gate', 'cause', 'T1', 1)",
+                rusqlite::params![ds],
+            ).unwrap();
+            drop(conn);
+        }
+        // 三种作用域逐一验证：org 租户 1 条 / 另一 org 租户 1 条 / 平台全量 2 条
+        assert_eq!(
+            store.machine_gate_post_review_queue(Some("tenant_a"), 50).unwrap().len(),
+            1,
+            "tenant_a 应见本租户 1 条"
+        );
+        assert_eq!(
+            store.machine_gate_post_review_queue(Some("tenant_b"), 50).unwrap().len(),
+            1,
+            "tenant_b 应见本租户 1 条"
+        );
+        assert_eq!(
+            store.machine_gate_post_review_queue(None, 50).unwrap().len(),
+            2,
+            "平台视图应见全部 2 条"
+        );
+    }
+
+    #[test]
+    fn writeback_audit_row_carries_tenant() {
+        let store = RuleStore::in_memory().unwrap();
+        store
+            .record_writeback_event(
+                "tenant_a", "ds-1", "e-1", "v1", None, "{}", "2026-01-01T00:00:00Z", None,
+            )
+            .unwrap();
+        let audit = store.get_llm_audit("wb-1").unwrap().unwrap();
+        assert_eq!(audit.tenant_id.as_deref(), Some("tenant_a"));
     }
 }

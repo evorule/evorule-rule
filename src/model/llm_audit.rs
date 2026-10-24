@@ -18,6 +18,9 @@ pub struct LlmAuditFilter {
     /// 按状态过滤（completed / failed；None = 全部）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
+    /// 按租户过滤（None = 不限租户——仅平台管理员路径使用）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tenant: Option<String>,
     /// 返回上限（默认 100）
     #[serde(default = "default_audit_limit")]
     pub limit: usize,
@@ -28,6 +31,7 @@ impl Default for LlmAuditFilter {
         Self {
             operation: None,
             status: None,
+            tenant: None,
             limit: default_audit_limit(),
         }
     }
@@ -87,4 +91,7 @@ pub struct LlmOpAudit {
     pub error: Option<String>,
     /// 调用时间（ISO-8601 UTC）
     pub created_at: String,
+    /// 产生该审计行的租户（迁移前存量行 = None，租户作用域查询不可见）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tenant_id: Option<String>,
 }

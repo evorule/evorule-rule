@@ -315,6 +315,7 @@ pub fn build_audit(
         operation: op.as_str().to_string(),
         model: req.model.clone(),
         status: status.to_string(),
+        tenant_id: None,
         duration_ms,
         result_ref: result_ref.map(ToOwned::to_owned),
         error,

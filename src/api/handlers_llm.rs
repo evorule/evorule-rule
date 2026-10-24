@@ -22,7 +22,8 @@ fn parse_operation(s: &str) -> Option<Operation> {
     }
 }
 
-/// LLM 操作审计列表（仅管理员，设计文档 §8）
+/// LLM 操作审计列表（仅管理员，设计文档 §8）。
+/// 租户作用域：org 级管理员只见本租户审计行；平台管理员（ManageOrgs）可见全实例。
 pub async fn list_llm_audits(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
@@ -31,13 +32,16 @@ pub async fn list_llm_audits(
     if !is_org_admin(ctx.role) {
         return Err(ApiError::forbidden("仅管理员可查看 LLM 审计"));
     }
-    let audits = state
-        .store
-        .list_llm_audits_filtered(&LlmAuditFilter::default())?;
+    let platform = can(ctx.role, Action::ManageOrgs);
+    let mut filter = LlmAuditFilter::default();
+    if !platform {
+        filter.tenant = Some(ctx.tenant_id.clone());
+    }
+    let audits = state.store.list_llm_audits_filtered(&filter)?;
     Ok(paginate(audits, page.limit, page.offset))
 }
 
-/// LLM 操作审计统计（仅管理员，设计文档 §8）
+/// LLM 操作审计统计（仅管理员，设计文档 §8）。租户作用域口径同列表。
 pub async fn llm_audit_stats(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
@@ -45,7 +49,12 @@ pub async fn llm_audit_stats(
     if !is_org_admin(ctx.role) {
         return Err(ApiError::forbidden("仅管理员可查看 LLM 审计统计"));
     }
-    let stats = state.store.llm_audit_stats()?;
+    let platform = can(ctx.role, Action::ManageOrgs);
+    let stats = if platform {
+        state.store.llm_audit_stats(None)?
+    } else {
+        state.store.llm_audit_stats(Some(&ctx.tenant_id))?
+    };
     Ok(Json(stats))
 }
 
@@ -67,7 +76,8 @@ pub async fn run_llm_op(
     let call = client.call(op, &req);
     let duration_ms = started.elapsed().as_millis() as u64;
 
-    // 操作级审计：成功/失败都落库（设计文档 §8）
+    // 操作级审计：成功/失败都落库（设计文档 §8）；租户随调用者
+    let tenant = Some(ctx.tenant_id.clone());
     let audit = match &call {
         Ok(resp) => LlmOpAudit {
             request_id: resp
@@ -85,6 +95,7 @@ pub async fn run_llm_op(
                 .map(ToOwned::to_owned),
             error: resp.errors.clone(),
             created_at: now_iso(),
+            tenant_id: tenant.clone(),
         },
         Err(e) => LlmOpAudit {
             request_id: crate::llm_client::make_request_id(),
@@ -95,6 +106,7 @@ pub async fn run_llm_op(
             result_ref: None,
             error: Some(e.to_string()),
             created_at: now_iso(),
+            tenant_id: tenant,
         },
     };
     if let Err(audit_err) = state.store.record_llm_audit(&audit) {
