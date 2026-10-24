@@ -15,6 +15,7 @@ use axum::Json;
 use serde::Deserialize;
 
 use crate::api::handlers_auth::now_iso;
+use crate::api::handlers_datasets::ensure_dataset_tenant;
 use crate::api::{paginate, unix_now, ApiError, AppState, AuthContext, Page, PageQuery};
 use crate::model::auth::{can, is_org_admin, Action};
 use crate::model::dependency::{
@@ -50,6 +51,7 @@ pub async fn put_dataset_deps(
     if !can(ctx.role, Action::Edit) {
         return Err(ApiError::forbidden("需要规则工程师及以上角色"));
     }
+    ensure_dataset_tenant(&state, &ctx, &id).await?;
     // C1（02 方案层1）：依赖声明的服务名必须已注册在服务目录（本租户可见范围）——
     // 把「服务名错误」从导入期提前到声明期（事前预检，不静默）。
     let catalog: std::collections::HashSet<String> = state

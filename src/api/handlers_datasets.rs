@@ -385,6 +385,24 @@ pub async fn update_dataset_meta(
     Ok(Json(ds))
 }
 
+/// 租户归属闸（所有按 id 操作数据集的端点共用）：
+/// 取数 + 归属校验一步完成，他租户数据集一律以 404 掩护（不暴露存在性）。
+/// 既有口径（本文件多处同款）收敛为单一缝隙，便于统一测试。
+pub(crate) async fn ensure_dataset_tenant(
+    state: &AppState,
+    ctx: &AuthContext,
+    dataset_id: &str,
+) -> Result<RuleDataset, ApiError> {
+    let ds = state
+        .store
+        .get_dataset(dataset_id)?
+        .ok_or_else(|| ApiError::not_found("数据集不存在"))?;
+    if ds.tenant_id != ctx.tenant_id {
+        return Err(ApiError::not_found("数据集不存在"));
+    }
+    Ok(ds)
+}
+
 /// DELETE /datasets/{id} —— 删除数据集（仅 Draft/Rejected，admin）
 pub async fn delete_dataset_meta(
     State(state): State<AppState>,
@@ -394,6 +412,7 @@ pub async fn delete_dataset_meta(
     if !is_org_admin(ctx.role) {
         return Err(ApiError::forbidden("删除数据集需管理员角色"));
     }
+    ensure_dataset_tenant(&state, &ctx, &id).await?;
     state.store.delete_dataset(&id)?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -476,6 +495,7 @@ pub async fn create_version(
             )))
         }
     };
+    ensure_dataset_tenant(&state, &ctx, &id).await?;
     let new_version =
         state
             .store
@@ -897,6 +917,7 @@ async fn exec_import_knowledge(
             "外部知识导入=创建 Draft 条目，需规则工程师及以上角色",
         ));
     }
+    ensure_dataset_tenant(state, ctx, dataset_id).await?;
     let source = req.source.trim().to_string();
     if source.is_empty() {
         return Err(ApiError::bad_request(
@@ -1282,4 +1303,89 @@ fn sha256_hex(input: &str) -> String {
     h.update(input.as_bytes());
     let out = h.finalize();
     out.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+#[cfg(test)]
+mod tenant_gate_tests {
+    use super::*;
+    use crate::model::dataset::{DatasetKind, Meta};
+    use crate::model::auth::Role;
+    use crate::store::RuleStore;
+    use std::sync::Arc;
+
+    fn test_state() -> AppState {
+        AppState::new(
+            RuleStore::in_memory().expect("in-memory store"),
+            "test-secret",
+            "inst-test",
+            "http://127.0.0.1:19000",
+        )
+    }
+
+    fn ctx(user: &str, tenant: &str) -> AuthContext {
+        AuthContext {
+            user_id: user.to_string(),
+            tenant_id: tenant.to_string(),
+            role: Role::Admin,
+        }
+    }
+
+    fn seed_dataset(store: &RuleStore, id: &str, tenant: &str) {
+        let ds = RuleDataset {
+            dataset_id: id.to_string(),
+            name: format!("ds-{id}"),
+            description: None,
+            dataset_kind: DatasetKind::RuleSet,
+            domain: vec![],
+            tags: vec![],
+            tenant_id: tenant.to_string(),
+            visibility: Visibility::default(),
+            lifecycle: Default::default(),
+            versioning: Default::default(),
+            law_ref: None,
+            version_selection: None,
+            data_dependencies: None,
+            event_schemas: vec![],
+            meta: Meta {
+                created_at: "2026-01-01T00:00:00Z".to_string(),
+                created_by: "seed".to_string(),
+                updated_at: None,
+                updated_by: None,
+            },
+        };
+        store.create_dataset(&ds).expect("seed dataset");
+    }
+
+    #[tokio::test]
+    async fn same_tenant_passes_and_returns_dataset() {
+        let state = test_state();
+        seed_dataset(&state.store, "ds-a1", "tenant_a");
+        let caller = ctx("u1", "tenant_a");
+        let ds = ensure_dataset_tenant(&state, &caller, "ds-a1").await.unwrap();
+        assert_eq!(ds.tenant_id, "tenant_a");
+    }
+
+    #[tokio::test]
+    async fn cross_tenant_is_404_masked() {
+        let state = test_state();
+        seed_dataset(&state.store, "ds-a2", "tenant_a");
+        // tenant_b 的管理员访问 tenant_a 的数据集：404 掩护（不暴露存在性）
+        let caller = ctx("u2", "tenant_b");
+        let err = ensure_dataset_tenant(&state, &caller, "ds-a2")
+            .await
+            .unwrap_err();
+        assert_eq!(err.status, axum::http::StatusCode::NOT_FOUND);
+        // 数据集仍在（删除/改写未发生）
+        assert!(state.store.get_dataset("ds-a2").unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn nonexistent_dataset_is_404() {
+        let state = test_state();
+        let caller = ctx("u1", "tenant_a");
+        let err = ensure_dataset_tenant(&state, &caller, "no-such-ds")
+            .await
+            .unwrap_err();
+        assert_eq!(err.status, axum::http::StatusCode::NOT_FOUND);
+    }
 }
