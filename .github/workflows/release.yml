@@ -77,11 +77,89 @@ jobs:
           if-no-files-found: error
 
   # ==========================================================================
-  # 2. 汇总发布 (GitHub Release)
+  # 2. 合规随附包 (五件套) + 源码 tarball (AGPL §4/§13)
+  #    裸二进制直附 Release: 许可正文/第三方声明/源码入口以独立合规归档
+  #    evorule-rule-<ver>-compliance.zip 随 Release 附加 (纯链接不满足随附义务);
+  #    THIRD-PARTY-NOTICES.md + LICENSES/third-party/ 出自根仓声明面单一事实源
+  #    (钉 SHA 保可复现); SOURCE.md 按本次发布动态生成, 源码 tarball 供 §13 校验
+  # ==========================================================================
+  compliance:
+    name: compliance bundle + source tarball
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout 根仓声明面 SSOT (钉 SHA)
+        uses: actions/checkout@v4
+        with:
+          repository: evorule/evorule
+          ref: 5560fe93c2443c1d985d21b534535b241333cffd
+          path: lic-ssot
+          persist-credentials: false
+
+      - name: 生成 SOURCE.md、源码 tarball 与五件套合规归档
+        run: |
+          set -e
+          VER="${GITHUB_REF_NAME#v}"
+          SRC_TGZ="evorule-rule-${VER}-source.tar.gz"
+          git archive --format=tar.gz --prefix="evorule-rule-${VER}/" -o "${SRC_TGZ}" HEAD
+          SRC_SHA=$(sha256sum "${SRC_TGZ}" | cut -d' ' -f1)
+          cat > SOURCE.md <<'EOF'
+          <!--
+            Copyright 2026 EvoRule Project
+
+            SPDX-License-Identifier: AGPL-3.0-or-later
+          -->
+
+          # EvoRule Rule — 源码提供入口（AGPL-3.0 §13）
+
+          本合规归档随 EvoRule Rule v@@VER@@ 的二进制分发物一同发布，以
+          AGPL-3.0-or-later 授权。本文件用于定位并校验与该分发物对应的完整源码
+          （AGPL-3.0 第 13 条）。
+
+          | 字段 | 值 |
+          |---|---|
+          | 发布 tag | v@@VER@@ |
+          | 源码仓库（权威源） | <https://gitee.com/evorule/evorule-rule> |
+          | 源码仓库（GitHub 镜像） | <https://github.com/evorule/evorule-rule> |
+          | 源码 tarball | `evorule-rule-@@VER@@-source.tar.gz`（随本 Release 附件分发） |
+          | 源码 tarball SHA256 | `@@SHA@@` |
+
+          ## 获取与校验方式
+
+          1. `git clone` 上表任一仓库，`git checkout v@@VER@@`
+          2. 复现归档：`git archive --format=tar.gz --prefix=evorule-rule-@@VER@@/ -o evorule-rule-@@VER@@-source.tar.gz HEAD`
+          3. 计算 SHA256 并与上表值比对（同一记录亦在随 Release 发布的 `sha256-checks.txt` 中）
+
+          ## 第三方组件
+
+          许可正文与归属声明见本归档内 `THIRD-PARTY-NOTICES.md` 与 `LICENSES/third-party/`
+          （出自根仓声明面单一事实源，钉版 commit 5560fe93c2443c1d985d21b534535b241333cffd）。
+          EOF
+          sed -i "s/@@VER@@/${VER}/g; s/@@SHA@@/${SRC_SHA}/g" SOURCE.md
+          DIR="evorule-rule-${VER}-compliance"
+          mkdir -p "${DIR}/LICENSES"
+          cp LICENSE NOTICE.md SOURCE.md "${DIR}/"
+          cp lic-ssot/THIRD-PARTY-NOTICES.md "${DIR}/"
+          cp -r lic-ssot/LICENSES/third-party "${DIR}/LICENSES/third-party"
+          zip -qr "${DIR}.zip" "${DIR}"
+          ls -la "${DIR}.zip" "${SRC_TGZ}"
+
+      - name: 上传合规产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: evorule-rule-compliance
+          path: |
+            evorule-rule-*-compliance.zip
+            evorule-rule-*-source.tar.gz
+          if-no-files-found: error
+
+  # ==========================================================================
+  # 3. 汇总发布 (GitHub Release)
   # ==========================================================================
   release:
     name: release
-    needs: [build]
+    needs: [build, compliance]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -106,6 +184,8 @@ jobs:
           mv artifacts/evorule-rule-serve.exe  artifacts/evorule-rule-serve-windows-x86_64.exe
           mv artifacts/evorule-rule-cli        artifacts/evorule-rule-cli-linux-x86_64
           mv artifacts/evorule-rule-cli.exe    artifacts/evorule-rule-cli-windows-x86_64.exe
+          test -f artifacts/evorule-rule-*-compliance.zip
+          test -f artifacts/evorule-rule-*-source.tar.gz
           cd artifacts
           sha256sum * > sha256-checks.txt
           cat sha256-checks.txt
@@ -119,6 +199,8 @@ jobs:
             artifacts/evorule-rule-serve-windows-x86_64.exe
             artifacts/evorule-rule-cli-linux-x86_64
             artifacts/evorule-rule-cli-windows-x86_64.exe
+            artifacts/evorule-rule-*-compliance.zip
+            artifacts/evorule-rule-*-source.tar.gz
             artifacts/sha256-checks.txt
           generate_release_notes: true
 
@@ -135,7 +217,7 @@ jobs:
   # ==========================================================================
   attach-gitee:
     name: attach-all-to-gitee
-    needs: [build]
+    needs: [build, compliance]
     runs-on: ubuntu-latest
     steps:
       - name: 下载 Linux 构建产物
@@ -150,12 +232,19 @@ jobs:
           name: evorule-rule-windows-x86_64
           path: gitee-assets/windows
 
+      - name: 下载合规产物
+        uses: actions/download-artifact@v4
+        with:
+          name: evorule-rule-compliance
+          path: gitee-assets/compliance
+
       - name: 补平台后缀并计算 sha256
         run: |
           mv gitee-assets/linux/evorule-rule-serve      gitee-assets/evorule-rule-serve-linux-x86_64
           mv gitee-assets/linux/evorule-rule-cli        gitee-assets/evorule-rule-cli-linux-x86_64
           mv gitee-assets/windows/evorule-rule-serve.exe gitee-assets/evorule-rule-serve-windows-x86_64.exe
           mv gitee-assets/windows/evorule-rule-cli.exe   gitee-assets/evorule-rule-cli-windows-x86_64.exe
+          mv gitee-assets/compliance/evorule-rule-*-compliance.zip gitee-assets/compliance/evorule-rule-*-source.tar.gz gitee-assets/
           cd gitee-assets
           sha256sum evorule-rule-* > sha256-checks.txt
           cat sha256-checks.txt
@@ -193,7 +282,7 @@ jobs:
           echo "gitee Release id: ${RELEASE_ID}"
 
           cd gitee-assets
-          for f in evorule-rule-serve-linux-x86_64 evorule-rule-cli-linux-x86_64 evorule-rule-serve-windows-x86_64.exe evorule-rule-cli-windows-x86_64.exe sha256-checks.txt; do
+          for f in $(ls evorule-rule-* sha256-checks.txt); do
             echo "上传 ${f} ..."
             curl --retry 3 --retry-delay 5 --retry-connrefused -fsS -X POST \
               "https://gitee.com/api/v5/repos/${REPO}/releases/${RELEASE_ID}/attach_files" \
