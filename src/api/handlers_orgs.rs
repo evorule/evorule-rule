@@ -100,8 +100,7 @@ pub async fn add_member(
     Json(req): Json<AddMemberReq>,
 ) -> Result<(StatusCode, Json<MemberResp>), ApiError> {
     authorize_member_admin(&state, &ctx, &org_id).await?;
-    let role = Role::parse(&req.role)
-        .ok_or_else(|| ApiError::bad_request(format!("角色 `{}` 非法", req.role)))?;
+    let role = parse_org_role(&req.role)?;
     let created_at = crate::api::handlers_auth::now_iso();
     state
         .store
@@ -160,4 +159,44 @@ async fn authorize_member_admin(
         return Err(ApiError::forbidden("仅平台管理员或该组织管理层可管理成员"));
     }
     Ok(())
+}
+
+/// 组织成员角色解析：org 成员端点**不接受平台级角色**。
+///
+/// `platform_admin` 只能经平台层授予（token 签发面）；若此处放行，
+/// org 管理员即可把平台级角色赋给自己或 org 内他人，直接获得
+/// `Action::ManageOrgs` 全权——权限提升路径在此封堵。
+pub(crate) fn parse_org_role(raw: &str) -> Result<Role, ApiError> {
+    let role =
+        Role::parse(raw).ok_or_else(|| ApiError::bad_request(format!("角色 `{raw}` 非法")))?;
+    if role == Role::PlatformAdmin {
+        return Err(ApiError::bad_request(
+            "platform_admin 不能经组织成员端点分配（仅平台层授予）",
+        ));
+    }
+    Ok(role)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn org_role_parse_rejects_platform_admin() {
+        let err = parse_org_role("platform_admin").unwrap_err();
+        assert_eq!(err.status, axum::http::StatusCode::BAD_REQUEST);
+        assert!(err.message.contains("platform_admin"));
+    }
+
+    #[test]
+    fn org_role_parse_accepts_org_roles() {
+        for ok in ["viewer", "rule_engineer", "approver", "admin"] {
+            assert!(parse_org_role(ok).is_ok(), "{ok} 应为合法组织角色");
+        }
+    }
+
+    #[test]
+    fn org_role_parse_rejects_unknown_role() {
+        assert!(parse_org_role("superuser").is_err());
+    }
 }
