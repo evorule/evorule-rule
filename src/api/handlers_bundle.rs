@@ -7,7 +7,7 @@
 
 use axum::extract::{Extension, Path, Query, State};
 use axum::http::StatusCode;
-use axum::Json;
+use axum::{Json, response::IntoResponse};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -89,7 +89,7 @@ pub async fn export_with_tests(
     State(state): State<AppState>,
     Extension(ctx): Extension<AuthContext>,
     Json(req): Json<ExportReq>,
-) -> Result<Json<DatasetBundle>, ApiError> {
+) -> Result<axum::response::Response, ApiError> {
     // B1: 证据形状校验(阶段一校验层·治理域侧)。
     // verdict=pass 的导出必须携带可追溯证据标记——subset 非空且每项以
     // `sandbox:<id>`(机器背书)开头,防绕过 console 手写"零证据 pass"伪造导出
@@ -125,9 +125,38 @@ pub async fn export_with_tests(
         &state.instance_id,
         req.recipe_snapshot, // 历史版本请求由 store 忽略（历史包不关联当前策略）
     )?;
+    // 背书边界显式化（响应头）：治理域只做 `sandbox:` 形状校验，引用的存在性
+    // 与报告一致性在执行域导入侧验证——消费方不得将本出包视为已验证背书。
+    let endorsement_header = if req.tests.verdict == TestVerdict::Pass {
+        (
+            "x-evorule-endorsement",
+            "sandbox-references-shape-checked-only; verified-at-import-side",
+        )
+    } else {
+        (
+            "x-evorule-endorsement",
+            "verdict=fail; no sandbox endorsement present",
+        )
+    };
     match req.subset {
-        Some(spec) => trim(&bundle, &spec, &ctx.user_id),
-        None => Ok(Json(bundle)),
+        Some(spec) => {
+            let mut resp = trim(&bundle, &spec, &ctx.user_id)?.into_response();
+            resp.headers_mut().append(
+                axum::http::HeaderName::from_static("x-evorule-endorsement"),
+                axum::http::HeaderValue::from_str(endorsement_header.1)
+                    .map_err(|_| ApiError::internal("背书标注头非法"))?,
+            );
+            Ok(resp)
+        }
+        None => {
+            let mut resp = Json(bundle).into_response();
+            resp.headers_mut().append(
+                axum::http::HeaderName::from_static("x-evorule-endorsement"),
+                axum::http::HeaderValue::from_str(endorsement_header.1)
+                    .map_err(|_| ApiError::internal("背书标注头非法"))?,
+            );
+            Ok(resp)
+        }
     }
 }
 

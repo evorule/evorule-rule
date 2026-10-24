@@ -145,6 +145,7 @@ impl AppState {
 async fn noop_await() {}
 
 /// 幂等缓存条目（设计文档 §14；数据源：写请求 + 响应；同 key 同负载返回缓存，不同负载 409）
+#[derive(Clone)]
 struct IdemEntry {
     /// 首次请求体（Bytes 等值比较判定负载是否一致）
     req_body: Bytes,
@@ -163,6 +164,9 @@ enum IdemState {
 }
 
 const IDEM_TTL_SECS: i64 = 86400; // 24h
+/// 在途（Pending）登记的超时上限：下游 panic/取消会跳过 Done 回写，
+/// 无此上限则同 key 请求被 409 锁死到 24h TTL（登记即允许超时后重试）。
+const IDEM_PENDING_TIMEOUT_SECS: i64 = 300;
 
 /// 已认证上下文（由 require_auth 中间件注入）
 #[derive(Debug, Clone)]
@@ -381,7 +385,7 @@ pub async fn idempotency(
         // 未完成认证（正常不应发生于受保护路由）：透传，不施加幂等语义
         return Ok(next.run(req).await);
     };
-    let cache_key = format!("{}:{}", ctx.tenant_id, key_header);
+    let cache_key = format!("{}:{}:{}", ctx.tenant_id, ctx.user_id, key_header);
 
     // 拆请求体并保留 parts，供下游 next 复用
     let (parts, body) = req.into_parts();
@@ -393,19 +397,26 @@ pub async fn idempotency(
     {
         let mut map = state.idem.lock().unwrap();
         map.retain(|_, e| e.expires_at > now); // 机会式清理过期项
-        if let Some(entry) = map.get(&cache_key) {
+        if let Some(entry) = map.get(&cache_key).cloned() {
             if entry.state == IdemState::Pending {
-                return Err(ApiError::conflict(
-                    "该 Idempotency-Key 正在处理中（并发重复请求）",
-                ));
-            }
-            if entry.req_body == req_body {
+                // 在途超时（D：下游 panic/取消会让 Pending 永久滞留）：
+                // 超过在途上限视为该次执行已失败，移除登记允许重试，
+                // 否则同 key 请求将被 409 锁死到 24h TTL。
+                if now > entry.expires_at - IDEM_TTL_SECS + IDEM_PENDING_TIMEOUT_SECS {
+                    map.remove(&cache_key);
+                } else {
+                    return Err(ApiError::conflict(
+                        "该 Idempotency-Key 正在处理中（并发重复请求）",
+                    ));
+                }
+            } else if entry.req_body == req_body {
                 let mut rp = Response::new(()).into_parts().0;
                 rp.status = entry.status;
                 rp.headers = entry.headers.clone();
                 return Ok(Response::from_parts(rp, entry.body.clone().into()));
+            } else {
+                return Err(ApiError::conflict("Idempotency-Key 复用但请求体不同"));
             }
-            return Err(ApiError::conflict("Idempotency-Key 复用但请求体不同"));
         }
         // 首次：先登记在途，防止并发同 key 双写
         map.insert(
@@ -1439,6 +1450,73 @@ mod tests {
         .await;
         assert_eq!(status, StatusCode::CONFLICT, "换负载需 409: {body}");
         assert_eq!(body["error"]["message"], "Idempotency-Key 复用但请求体不同");
+    }
+
+    /// 幂等键按 (tenant, user, key) 隔离：同租户两个用户共用同一 key，
+    /// 各自的首调都应真实执行（201 各自 dataset_id），不回放他人响应、
+    /// 不被他人登记 409 锁死（D-RULHTTP-11）。
+    async fn register_login_as(app: &Router, username: &str) -> String {
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/auth/register")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                json!({
+                    "tenant_id": "tenant_a",
+                    "username": username,
+                    "password": "password123",
+                })
+                .to_string(),
+            ))
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body: serde_json::Value =
+            serde_json::from_str(&String::from_utf8(bytes.to_vec()).unwrap()).unwrap();
+        body["access_token"].as_str().unwrap().to_string()
+    }
+
+    async fn post_dataset_with_key(
+        app: &Router,
+        token: &str,
+        key: &str,
+        dataset_id: &str,
+    ) -> (StatusCode, serde_json::Value) {
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/datasets")
+            .header("authorization", format!("Bearer {token}"))
+            .header("Idempotency-Key", key)
+            .header("content-type", "application/json")
+            .body(Body::from(
+                json!({ "dataset_id": dataset_id, "name": format!("ds-{dataset_id}") })
+                    .to_string(),
+            ))
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        let status = resp.status();
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let value = serde_json::from_str(&String::from_utf8(bytes.to_vec()).unwrap_or_default())
+            .unwrap_or(serde_json::Value::Null);
+        (status, value)
+    }
+
+    #[tokio::test]
+    async fn idempotency_key_is_isolated_per_user() {
+        let (app, _state) = build_app();
+        let t1 = register_login_as(&app, "idem-user-1").await;
+        let t2 = register_login_as(&app, "idem-user-2").await;
+
+        let (status, body) = post_dataset_with_key(&app, &t1, "shared-key", "ds-idem-u1").await;
+        assert_eq!(status, StatusCode::CREATED, "{body}");
+        assert_eq!(body["dataset_id"], "ds-idem-u1");
+
+        // 同 key 同负载形态但不同 dataset_id（不同用户各自业务）：
+        // 修复前 = 命中 user-1 的 Pending/Done → 409 或回放 u1 的响应体
+        let (status, body) = post_dataset_with_key(&app, &t2, "shared-key", "ds-idem-u2").await;
+        assert_eq!(status, StatusCode::CREATED, "他人登记不得影响本用户: {body}");
+        assert_eq!(body["dataset_id"], "ds-idem-u2");
     }
 
     #[tokio::test]
@@ -4808,3 +4886,4 @@ mod tests {
         assert_eq!(body.as_array().map(|a| a.len()), Some(0));
     }
 }
+

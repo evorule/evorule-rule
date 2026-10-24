@@ -864,12 +864,24 @@ pub async fn get_bundle(
         }
         return export_for(&state, &key.tenant_id, &id, key.key_id.as_str()).await;
     }
-    // 2) Bearer（登录用户）
+    // 2) Bearer（登录用户）——校验口径与 require_auth 一致（含 jti 黑名单，
+    // 登出 token 在剩余有效期内同样不可拉取）
     if let Some(token) = bearer_token(&headers) {
+        let now = unix_now();
         let claims = state
             .auth
-            .verify_token(token, unix_now(), "access")
+            .verify_token(token, now, "access")
             .map_err(|_| ApiError::unauthorized("token 非法或已过期"))?;
+        let revoked = state
+            .auth
+            .is_blacklisted(&state.store, &claims, now)
+            .map_err(|e| {
+                tracing::warn!("黑名单查询失败，拒绝放行: {e}");
+                ApiError::internal("鉴权状态不可用")
+            })?;
+        if revoked {
+            return Err(ApiError::unauthorized("token 已失效（登出）"));
+        }
         let ctx = AuthContext {
             user_id: claims.sub,
             tenant_id: claims.tenant_id,
@@ -1311,7 +1323,6 @@ mod tenant_gate_tests {
     use crate::model::dataset::{DatasetKind, Meta};
     use crate::model::auth::Role;
     use crate::store::RuleStore;
-    use std::sync::Arc;
 
     fn test_state() -> AppState {
         AppState::new(
