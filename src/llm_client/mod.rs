@@ -111,7 +111,12 @@ impl LlmClient {
         let url = format!("{}/ops/{}", self.base_url, op.as_str());
         let body = serde_json::to_string(req).map_err(|e| LlmClientError::Parse(e.to_string()))?;
 
-        let resp = ureq::post(&url)
+        // 连接与总耗时均有上限（防 LLM 端无响应挂死调用方 tokio worker）
+        let agent = ureq::AgentBuilder::new()
+            .timeout_connect(std::time::Duration::from_secs(10))
+            .timeout(std::time::Duration::from_secs(300))
+            .build();
+        let resp = agent.post(&url)
             .set("Content-Type", "application/json")
             .send_string(&body)
             .map_err(|e| LlmClientError::Http(e.to_string()))?;

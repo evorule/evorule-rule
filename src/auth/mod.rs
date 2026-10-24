@@ -475,6 +475,16 @@ impl AuthService {
             return Err(AuthError::UserDisabled);
         }
         let role = Self::effective_role(store, &user, tenant_id)?;
+        // 真旋转（设计文档 §3.3 语义收紧）：旧 refresh jti 立即吊销，
+        // 此后旧 token 不可再次刷新（网络丢包场景由客户端重登录兜底）
+        store.revoke_token(
+            &claims.jti,
+            &claims.tenant_id,
+            Some(&user.user_id),
+            "refresh",
+            claims.exp,
+            &iso_from_unix(now),
+        )?;
         let tokens = self.tokens_for_in(&user, tenant_id, role, now);
         self.audit(
             store,
@@ -488,11 +498,16 @@ impl AuthService {
         Ok(tokens)
     }
 
-    /// 登出：吊销给定 refresh token（按 jti 拉黑至 exp），后续 refresh 用此 token 将失败
+    /// 登出：吊销给定 refresh token（按 jti 拉黑至 exp），后续 refresh 用此 token 将失败。
+    ///
+    /// `access_token` = 可选的同用户 access token：提供且校验通过时其 jti 一并
+    /// 拉黑（关闭「登出后 access 在剩余 TTL 内仍可用」的窗口）；与 refresh
+    /// 属主不一致或校验失败时静默跳过（不泄露、不阻断登出主流程）。
     pub fn logout(
         &self,
         store: &RuleStore,
         refresh_token: &str,
+        access_token: Option<&str>,
         now: i64,
     ) -> Result<(), AuthError> {
         let claims = self.verify_token(refresh_token, now, "refresh")?;
@@ -504,6 +519,20 @@ impl AuthService {
             claims.exp,
             &iso_from_unix(now),
         )?;
+        if let Some(at) = access_token {
+            if let Ok(a_claims) = self.verify_token(at, now, "access") {
+                if a_claims.sub == claims.sub {
+                    store.revoke_token(
+                        &a_claims.jti,
+                        &a_claims.tenant_id,
+                        Some(&a_claims.sub),
+                        "access",
+                        a_claims.exp,
+                        &iso_from_unix(now),
+                    )?;
+                }
+            }
+        }
         self.audit(
             store,
             &claims.tenant_id,
@@ -672,7 +701,9 @@ fn hex(bytes: &[u8]) -> String {
 }
 
 fn unhex(s: &str) -> Vec<u8> {
-    (0..s.len())
+    // 只迭代完整字节对：奇数长度输入（尾 nibble 残缺）不再越界 panic，
+    // 残缺尾字符静默丢弃（解码面为内部 hex，外部输入已在更上层校验）
+    (0..s.len() / 2 * 2)
         .step_by(2)
         .filter_map(|i| u8::from_str_radix(&s[i..i + 2], 16).ok())
         .collect()
@@ -1019,7 +1050,7 @@ mod tests {
             .is_ok());
 
         // 登出：吊销 refresh（拉黑）
-        svc.logout(&store, &tokens.refresh_token, now + 61)
+        svc.logout(&store, &tokens.refresh_token, None, now + 61)
             .expect("logout");
 
         // refresh 已拉黑 → 刷新失败
@@ -1029,7 +1060,7 @@ mod tests {
         ));
 
         // 同一 refresh 再次登出幂等（ON CONFLICT DO NOTHING）
-        svc.logout(&store, &tokens.refresh_token, now + 62)
+        svc.logout(&store, &tokens.refresh_token, None, now + 62)
             .expect("idempotent logout");
 
         // 未拉黑的另一用户不受影响
@@ -1060,5 +1091,72 @@ mod tests {
             hex(&digest),
             "f7bc83f430538424b13298e6aa6fb143ef4d59a14946175997479dbc2d1a3cd8"
         );
+    }
+}
+
+#[cfg(test)]
+mod rotation_tests {
+    use super::*;
+
+    fn store() -> RuleStore {
+        RuleStore::in_memory().expect("store")
+    }
+
+    fn seeded(store: &RuleStore) -> String {
+        store.ensure_default_tenant("tenant_a", "示例组织", "inst-001", "2026-08-22T00:00:00Z").unwrap();
+        store.ensure_default_org("tenant_a", "示例组织", "2026-08-22T00:00:00Z").unwrap();
+        "tenant_a".to_string()
+    }
+
+    /// 真旋转：refresh 成功后旧 refresh jti 立即吊销，二次刷新失败（D：原实现旧 token 可无限续刷）
+    #[test]
+    fn refresh_rotates_and_revokes_old_token() {
+        let store = store();
+        let tenant = seeded(&store);
+        let now: i64 = 1_700_000_000;
+        let svc = AuthService::with_iterations("s", 1_000);
+        svc.register(&store, &tenant, "rot-user", "password123", Role::RuleEngineer, now).unwrap();
+        let t1 = svc.login(&store, &tenant, "rot-user", "password123", now + 10).unwrap();
+
+        let t2 = svc.refresh(&store, &tenant, &t1.refresh_token, now + 20).unwrap();
+        assert_ne!(t2.refresh_token, t1.refresh_token, "旋转应签发新 refresh");
+
+        // 旧 refresh 已吊销 → 再刷失败
+        assert!(matches!(
+            svc.refresh(&store, &tenant, &t1.refresh_token, now + 30),
+            Err(AuthError::InvalidToken)
+        ));
+        // 新 refresh 仍可用
+        assert!(svc.refresh(&store, &tenant, &t2.refresh_token, now + 40).is_ok());
+    }
+
+    /// 登出提供 access token 时一并拉黑（关闭剩余 TTL 窗口）
+    #[test]
+    fn logout_revokes_access_token_when_provided() {
+        let store = store();
+        let tenant = seeded(&store);
+        let now: i64 = 1_700_000_000;
+        let svc = AuthService::with_iterations("s", 1_000);
+        svc.register(&store, &tenant, "lo-user", "password123", Role::RuleEngineer, now).unwrap();
+        let t = svc.login(&store, &tenant, "lo-user", "password123", now + 10).unwrap();
+
+        let a_claims = svc.verify_token(&t.access_token, now + 20, "access").unwrap();
+        assert!(!svc.is_blacklisted(&store, &a_claims, now + 20).unwrap());
+
+        svc.logout(&store, &t.refresh_token, Some(&t.access_token), now + 20).unwrap();
+
+        let a_claims = svc.verify_token(&t.access_token, now + 21, "access").unwrap();
+        assert!(svc.is_blacklisted(&store, &a_claims, now + 21).unwrap(), "access jti 应随登出拉黑");
+    }
+
+    /// unhex 奇数长度不再 panic（D：原实现 s[i..i+2] 越界切片）
+    #[test]
+    fn unhex_odd_length_does_not_panic() {
+        assert_eq!(unhex(""), Vec::<u8>::new());
+        assert_eq!(unhex("a"), Vec::<u8>::new());
+        assert_eq!(unhex("abc"), vec![0xab]);
+        assert_eq!(unhex("abcd"), vec![0xab, 0xcd]);
+        // 非法字符静默丢弃（既有语义）
+        assert_eq!(unhex("zz"), Vec::<u8>::new());
     }
 }

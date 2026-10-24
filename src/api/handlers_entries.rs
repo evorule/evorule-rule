@@ -201,6 +201,14 @@ pub async fn submit_candidate(
     if !can(ctx.role, Action::Edit) {
         return Err(ApiError::forbidden("需要规则工程师及以上角色"));
     }
+    // 闸门一证据最低门槛：空串/纯空白报告 ID 拒绝（报告存在性与 verdict 的
+    // 深校验随沙箱报告账本落地后启用——历史批次边界，登记在案）
+    let report_id = req.sandbox_report_id.trim().to_string();
+    if report_id.is_empty() {
+        return Err(ApiError::bad_request(
+            "sandbox_report_id 不能为空：闸门一需沙箱验证报告引用（历史批次：报告账本未建，当前仅拒绝空证据）",
+        ));
+    }
     let hint = scope.dataset_id.as_deref();
     let (dataset_id, _) = locate_entry(&state, &ctx.tenant_id, &entry_id, hint)?;
     transition_any(
@@ -209,7 +217,7 @@ pub async fn submit_candidate(
         &entry_id,
         LifecycleStatus::Candidate,
         &ctx.user_id,
-        &format!("闸门一通过，沙箱报告 {}", req.sandbox_report_id),
+        &format!("闸门一通过，沙箱报告 {report_id}"),
     )?;
     let (_, updated) = locate_entry(&state, &ctx.tenant_id, &entry_id, hint)?;
     Ok(Json(updated.to_json()))
