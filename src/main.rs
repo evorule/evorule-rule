@@ -128,33 +128,36 @@ async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
     //    重启自动复用同一密钥，token 跨重启保持有效；密钥永不打印到日志——
     //    安全边界与 rule.db 一致：持有文件系统读权限即持有库内口令哈希，同级信任面）
     let secret_file = secret_file_path(&cli.db);
-    let secret = match &cli.secret {
+    let previous_file = secret_file.with_extension("previous.key");
+    // 密钥装载 + 轮换检测（K4 双代）：显式 --secret 与持久化旧钥不同 = 轮换
+    // 事件——旧钥降为 previous 持久化，双代验签窗口开启（旧 token 至自然过期）；
+    // 其余路径单代不变。
+    let (secret, previous_secret) = match &cli.secret {
         Some(s) if !s.is_empty() => {
+            let old = load_secret(&secret_file)?;
             persist_secret(&secret_file, s)?;
-            tracing::info!(
-                path = %secret_file.display(),
-                "已使用显式 --secret 并持久化（重启自动复用，token 保持有效）"
-            );
-            s.clone()
+            let previous = match old {
+                Some(o) if o != *s => {
+                    persist_secret(&previous_file, &o)?;
+                    tracing::info!(
+                        path = %previous_file.display(),
+                        "检测到显式密钥轮换：旧密钥降为 previous（双代验签窗口开启，旧 token 至自然过期）"
+                    );
+                    Some(o)
+                }
+                _ => None,
+            };
+            (s.clone(), previous)
         }
-        _ => match load_secret(&secret_file)? {
-            Some(s) => {
-                tracing::info!(
-                    path = %secret_file.display(),
-                    "已加载持久化签名密钥（重启 token 保持有效）"
-                );
-                s
-            }
-            None => {
+        _ => {
+            let s = load_secret(&secret_file)?.unwrap_or_else(|| {
                 let s = random_secret();
-                persist_secret(&secret_file, &s)?;
-                tracing::info!(
-                    path = %secret_file.display(),
-                    "已生成随机签名密钥并持久化（重启自动复用，token 保持有效）"
-                );
+                tracing::info!(path = %secret_file.display(), "已生成随机签名密钥并持久化");
                 s
-            }
-        },
+            });
+            let previous = load_secret(&previous_file).ok().flatten();
+            (s, previous)
+        }
     };
 
     // 4. 引导管理员（幂等：仅当租户内无该用户名时创建；B1：平台管理员，可管理 org）
@@ -170,7 +173,13 @@ async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // 5. 应用状态 + 后端靴（PG 冒烟门控；默认 SQLite）
-    let state = AppState::new(store, &secret, &cli.instance_id, &cli.llm_base_url);
+    let state = AppState::with_previous_secret(
+        store,
+        &secret,
+        previous_secret.as_deref(),
+        &cli.instance_id,
+        &cli.llm_base_url,
+    );
     let state = state.bootstrap_backend().await;
     tracing::info!(backend = %state.backend.as_str(), "存储后端已激活");
 

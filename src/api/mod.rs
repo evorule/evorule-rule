@@ -79,9 +79,25 @@ pub struct AppState {
 
 impl AppState {
     pub fn new(store: RuleStore, secret: &str, instance_id: &str, llm_base_url: &str) -> Self {
+        Self::with_previous_secret(store, secret, None, instance_id, llm_base_url)
+    }
+
+    /// 双代构造（密钥轮换窗口）：`previous_secret` 仅用于旧 token 验签
+    /// （design K4 backward 兼容），新签发一律走 active 密钥。
+    pub fn with_previous_secret(
+        store: RuleStore,
+        secret: &str,
+        previous_secret: Option<&str>,
+        instance_id: &str,
+        llm_base_url: &str,
+    ) -> Self {
         Self {
             store: Arc::new(store),
-            auth: Arc::new(AuthService::new(secret)),
+            auth: Arc::new(AuthService::with_previous(
+                secret,
+                previous_secret.map(str::to_string),
+                crate::auth::DEFAULT_PBKDF2_ITERATIONS,
+            )),
             instance_id: instance_id.to_string(),
             llm_base_url: llm_base_url.to_string(),
             backend: BackendKind::Sqlite,
