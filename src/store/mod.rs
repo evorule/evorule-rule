@@ -953,6 +953,17 @@ impl RuleStore {
         // 迁移前数据，租户作用域查询不可见；新行一律落租户（writeback 行
         // 取收件租户，命名操作行取调用者租户）
         let _ = conn.execute("ALTER TABLE llm_op_audit ADD COLUMN tenant_id TEXT", []);
+        // 回写收件去重（R3-gov-auth）：dedup_key = 事件内容指纹（同内容重复
+        // 投递在存储层幂等）；UNIQUE 部分索引下 NULL（存量行）互不冲突
+        let _ = conn.execute(
+            "ALTER TABLE writeback_events ADD COLUMN dedup_key TEXT",
+            [],
+        );
+        let _ = conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_writeback_dedup
+                ON writeback_events(dedup_key) WHERE dedup_key IS NOT NULL",
+            [],
+        );
         // Q12 数据资产化 R3：knowledge 条目平行表（方案 D 定案：rule 查询热路径零扰动）
         conn.execute_batch(
             r#"
@@ -2473,11 +2484,41 @@ impl RuleStore {
         classified_class: Option<&str>,
     ) -> Result<i64, StoreError> {
         let mut conn = self.conn.lock().unwrap();
+        // 去重指纹：租户/数据集/条目/版本/失败类型/事件原文按行拼接后哈希
+        // （不含收件时间——同一事件重复投递时间必不同，须判同；JSON 字符串
+        // 不含裸换行，行分隔无碰撞）
+        let dedup_source = format!(
+            "{}
+{}
+{}
+{}
+{}
+{}",
+            tenant_id,
+            dataset_id,
+            entry_id,
+            version_used,
+            failure_type.unwrap_or(""),
+            event_json
+        );
+        let dedup_key = sha256_hex(&dedup_source);
         let tx = conn.transaction()?;
+        // 去重预检：同指纹事件已收件 → 幂等返回原 event_id（重复投递不再产生重复队列行）
+        let existing: Option<i64> = tx
+            .query_row(
+                "SELECT id FROM writeback_events WHERE dedup_key = ?1",
+                params![dedup_key],
+                |r| r.get(0),
+            )
+            .optional()?;
+        if let Some(id) = existing {
+            tx.commit()?;
+            return Ok(id);
+        }
         tx.execute(
             "INSERT INTO writeback_events
-               (tenant_id, dataset_id, entry_id, version_used, failure_type, event, received_at, classified_class)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+               (tenant_id, dataset_id, entry_id, version_used, failure_type, event, received_at, classified_class, dedup_key)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             params![
                 tenant_id,
                 dataset_id,
@@ -2487,6 +2528,7 @@ impl RuleStore {
                 event_json,
                 received_at,
                 classified_class,
+                dedup_key,
             ],
         )?;
         let event_id = tx.last_insert_rowid();
@@ -9180,7 +9222,7 @@ mod llm_audit_tenant_tests {
                 })
                 .unwrap();
         }
-        for (ds, id) in [("ds-ra", 1), ("ds-rb", 2)] {
+        for (ds, _id) in [("ds-ra", 1), ("ds-rb", 2)] {
             let conn = store.conn.lock().unwrap();
             // 测试直插审计史行：entries 外键在直插场景无真实条目，临时关闭
             conn.execute_batch("PRAGMA foreign_keys=OFF").unwrap();
@@ -9220,5 +9262,52 @@ mod llm_audit_tenant_tests {
             .unwrap();
         let audit = store.get_llm_audit("wb-1").unwrap().unwrap();
         assert_eq!(audit.tenant_id.as_deref(), Some("tenant_a"));
+    }
+}
+
+/// 事件内容指纹（writeback 去重键）：SHA-256 hex。与 handler 侧同实现。
+fn sha256_hex(input: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let mut h = Sha256::new();
+    h.update(input.as_bytes());
+    h.finalize().iter().map(|b| format!("{b:02x}")).collect()
+}
+
+#[cfg(test)]
+mod writeback_dedup_tests {
+    use super::*;
+
+    /// 同一事件重复投递：幂等返回原 event_id，队列行不重复（D-RULHTTP-10 最小实现）
+    #[test]
+    fn duplicate_delivery_is_idempotent() {
+        let store = RuleStore::in_memory().unwrap();
+        let args = ("tenant_a", "ds-1", "e-1", "v1", Some("timeout"), "{}");
+        let id1 = store
+            .record_writeback_event(args.0, args.1, args.2, args.3, args.4, args.5, "2026-01-01T00:00:00Z", None)
+            .unwrap();
+        // 第二次投递：收件时间不同（真实场景=重试间隔），内容相同
+        let id2 = store
+            .record_writeback_event(args.0, args.1, args.2, args.3, args.4, args.5, "2026-01-01T00:01:00Z", None)
+            .unwrap();
+        assert_eq!(id1, id2, "同指纹重复投递应返回原 event_id");
+        let (ta, tb) = (
+            store.list_writeback_events("tenant_a", 50).unwrap().len(),
+            0,
+        );
+        assert_eq!(ta, 1, "队列行不重复");
+        let _ = tb;
+    }
+
+    /// 内容不同的事件：各自入队（去重只针对同指纹）
+    #[test]
+    fn different_events_both_enqueued() {
+        let store = RuleStore::in_memory().unwrap();
+        let id1 = store
+            .record_writeback_event("tenant_a", "ds-1", "e-1", "v1", Some("timeout"), "{}", "2026-01-01T00:00:00Z", None)
+            .unwrap();
+        let id2 = store
+            .record_writeback_event("tenant_a", "ds-1", "e-2", "v1", Some("timeout"), "{}", "2026-01-01T00:00:01Z", None)
+            .unwrap();
+        assert_ne!(id1, id2, "不同条目的事件应各自入队");
     }
 }
