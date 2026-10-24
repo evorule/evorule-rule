@@ -1,0 +1,4 @@
+# hash-bypass ratchet baseline
+# 存量冻结（2026-10-24 生成）：本文件行 = 已知豁免命中；新绕行不入列即 CI 红。
+# 收缩：修复后用 `python scripts/hash_bypass_scan.py --dump` 重生成，禁手工增列。
+
