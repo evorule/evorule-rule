@@ -549,11 +549,10 @@ pub async fn machine_gate_post_review_queue(
     } else {
         Some(ctx.tenant_id.as_str())
     };
-    Ok(Json(
-        state
-            .store
-            .machine_gate_post_review_queue(tenant, POST_REVIEW_QUEUE_LIMIT)?,
-    ))
+    Ok(Json(state.store.machine_gate_post_review_queue(
+        tenant,
+        POST_REVIEW_QUEUE_LIMIT,
+    )?))
 }
 
 /// GET /entries/{id}/deps —— 条目级 data_source_binding（设计文档 §3 层 2 绑定）

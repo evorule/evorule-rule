@@ -116,7 +116,8 @@ impl LlmClient {
             .timeout_connect(std::time::Duration::from_secs(10))
             .timeout(std::time::Duration::from_secs(300))
             .build();
-        let resp = agent.post(&url)
+        let resp = agent
+            .post(&url)
             .set("Content-Type", "application/json")
             .send_string(&body)
             .map_err(|e| LlmClientError::Http(e.to_string()))?;

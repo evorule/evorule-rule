@@ -63,7 +63,10 @@ yanked = "warn"
 # bare-metal 已弃用归档（RUSTSEC-2026-0110，unmaintained 类）：cortex-m 0.7 生态
 # 传递依赖，无安全升级路径（官方迁移指引 critical-section 属 cortex-m 大版本
 # 迁移范畴）；当前仅 evorule-mcu 仿真固件 dev/示例链引入，非生产服务面，豁免。
-ignore = ["RUSTSEC-2026-0110"]
+# TLS 根证书集（RUSTSEC-2026-0381）：webpki-roots 0.26 线止于 0.26.11，修复依赖
+# ureq 3.x 迁移（破坏性 API 重写，另行专项）；影响=根存储保留 emSign 不信任
+# 中间证书（多余信任锚，非验证绕过），升级 ureq 时一并消除，豁免。
+ignore = ["RUSTSEC-2026-0110", "RUSTSEC-2026-0381"]
 
 # ---------------------------------------------------------------------------
 # 依赖关系: 重复版本警告；通配符依赖拒绝

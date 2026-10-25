@@ -1487,7 +1487,9 @@ mod tests {
             .unwrap();
         let resp = app.clone().oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::CREATED);
-        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let body: serde_json::Value =
             serde_json::from_str(&String::from_utf8(bytes.to_vec()).unwrap()).unwrap();
         body["access_token"].as_str().unwrap().to_string()
@@ -1506,13 +1508,14 @@ mod tests {
             .header("Idempotency-Key", key)
             .header("content-type", "application/json")
             .body(Body::from(
-                json!({ "dataset_id": dataset_id, "name": format!("ds-{dataset_id}") })
-                    .to_string(),
+                json!({ "dataset_id": dataset_id, "name": format!("ds-{dataset_id}") }).to_string(),
             ))
             .unwrap();
         let resp = app.clone().oneshot(req).await.unwrap();
         let status = resp.status();
-        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let value = serde_json::from_str(&String::from_utf8(bytes.to_vec()).unwrap_or_default())
             .unwrap_or(serde_json::Value::Null);
         (status, value)
@@ -1531,7 +1534,11 @@ mod tests {
         // 同 key 同负载形态但不同 dataset_id（不同用户各自业务）：
         // 修复前 = 命中 user-1 的 Pending/Done → 409 或回放 u1 的响应体
         let (status, body) = post_dataset_with_key(&app, &t2, "shared-key", "ds-idem-u2").await;
-        assert_eq!(status, StatusCode::CREATED, "他人登记不得影响本用户: {body}");
+        assert_eq!(
+            status,
+            StatusCode::CREATED,
+            "他人登记不得影响本用户: {body}"
+        );
         assert_eq!(body["dataset_id"], "ds-idem-u2");
     }
 
@@ -4902,4 +4909,3 @@ mod tests {
         assert_eq!(body.as_array().map(|a| a.len()), Some(0));
     }
 }
-

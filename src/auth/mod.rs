@@ -1103,8 +1103,12 @@ mod rotation_tests {
     }
 
     fn seeded(store: &RuleStore) -> String {
-        store.ensure_default_tenant("tenant_a", "示例组织", "inst-001", "2026-08-22T00:00:00Z").unwrap();
-        store.ensure_default_org("tenant_a", "示例组织", "2026-08-22T00:00:00Z").unwrap();
+        store
+            .ensure_default_tenant("tenant_a", "示例组织", "inst-001", "2026-08-22T00:00:00Z")
+            .unwrap();
+        store
+            .ensure_default_org("tenant_a", "示例组织", "2026-08-22T00:00:00Z")
+            .unwrap();
         "tenant_a".to_string()
     }
 
@@ -1115,10 +1119,22 @@ mod rotation_tests {
         let tenant = seeded(&store);
         let now: i64 = 1_700_000_000;
         let svc = AuthService::with_iterations("s", 1_000);
-        svc.register(&store, &tenant, "rot-user", "password123", Role::RuleEngineer, now).unwrap();
-        let t1 = svc.login(&store, &tenant, "rot-user", "password123", now + 10).unwrap();
+        svc.register(
+            &store,
+            &tenant,
+            "rot-user",
+            "password123",
+            Role::RuleEngineer,
+            now,
+        )
+        .unwrap();
+        let t1 = svc
+            .login(&store, &tenant, "rot-user", "password123", now + 10)
+            .unwrap();
 
-        let t2 = svc.refresh(&store, &tenant, &t1.refresh_token, now + 20).unwrap();
+        let t2 = svc
+            .refresh(&store, &tenant, &t1.refresh_token, now + 20)
+            .unwrap();
         assert_ne!(t2.refresh_token, t1.refresh_token, "旋转应签发新 refresh");
 
         // 旧 refresh 已吊销 → 再刷失败
@@ -1127,7 +1143,9 @@ mod rotation_tests {
             Err(AuthError::InvalidToken)
         ));
         // 新 refresh 仍可用
-        assert!(svc.refresh(&store, &tenant, &t2.refresh_token, now + 40).is_ok());
+        assert!(svc
+            .refresh(&store, &tenant, &t2.refresh_token, now + 40)
+            .is_ok());
     }
 
     /// 登出提供 access token 时一并拉黑（关闭剩余 TTL 窗口）
@@ -1137,16 +1155,34 @@ mod rotation_tests {
         let tenant = seeded(&store);
         let now: i64 = 1_700_000_000;
         let svc = AuthService::with_iterations("s", 1_000);
-        svc.register(&store, &tenant, "lo-user", "password123", Role::RuleEngineer, now).unwrap();
-        let t = svc.login(&store, &tenant, "lo-user", "password123", now + 10).unwrap();
+        svc.register(
+            &store,
+            &tenant,
+            "lo-user",
+            "password123",
+            Role::RuleEngineer,
+            now,
+        )
+        .unwrap();
+        let t = svc
+            .login(&store, &tenant, "lo-user", "password123", now + 10)
+            .unwrap();
 
-        let a_claims = svc.verify_token(&t.access_token, now + 20, "access").unwrap();
+        let a_claims = svc
+            .verify_token(&t.access_token, now + 20, "access")
+            .unwrap();
         assert!(!svc.is_blacklisted(&store, &a_claims, now + 20).unwrap());
 
-        svc.logout(&store, &t.refresh_token, Some(&t.access_token), now + 20).unwrap();
+        svc.logout(&store, &t.refresh_token, Some(&t.access_token), now + 20)
+            .unwrap();
 
-        let a_claims = svc.verify_token(&t.access_token, now + 21, "access").unwrap();
-        assert!(svc.is_blacklisted(&store, &a_claims, now + 21).unwrap(), "access jti 应随登出拉黑");
+        let a_claims = svc
+            .verify_token(&t.access_token, now + 21, "access")
+            .unwrap();
+        assert!(
+            svc.is_blacklisted(&store, &a_claims, now + 21).unwrap(),
+            "access jti 应随登出拉黑"
+        );
     }
 
     /// unhex 奇数长度不再 panic（D：原实现 s[i..i+2] 越界切片）

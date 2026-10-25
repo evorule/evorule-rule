@@ -955,10 +955,7 @@ impl RuleStore {
         let _ = conn.execute("ALTER TABLE llm_op_audit ADD COLUMN tenant_id TEXT", []);
         // 回写收件去重（R3-gov-auth）：dedup_key = 事件内容指纹（同内容重复
         // 投递在存储层幂等）；UNIQUE 部分索引下 NULL（存量行）互不冲突
-        let _ = conn.execute(
-            "ALTER TABLE writeback_events ADD COLUMN dedup_key TEXT",
-            [],
-        );
+        let _ = conn.execute("ALTER TABLE writeback_events ADD COLUMN dedup_key TEXT", []);
         let _ = conn.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_writeback_dedup
                 ON writeback_events(dedup_key) WHERE dedup_key IS NOT NULL",
@@ -2667,7 +2664,8 @@ impl RuleStore {
         } else {
             ""
         };
-        let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|b| b.as_ref()).collect();
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> =
+            params.iter().map(|b| b.as_ref()).collect();
         let (total, completed, failed, avg) = conn.query_row(
             &format!(
                 "SELECT COUNT(*),
@@ -5766,7 +5764,13 @@ mod tests {
             .unwrap_err();
         assert!(err.to_string().contains("I17"), "未追认必须拒绝发布: {err}");
         // 仅入一次:重复查询不产生重复行;队列仍 1
-        assert_eq!(store.machine_gate_post_review_queue(None, 100).unwrap().len(), 1);
+        assert_eq!(
+            store
+                .machine_gate_post_review_queue(None, 100)
+                .unwrap()
+                .len(),
+            1
+        );
         // 追认:覆写 1 行→队列退出
         let n = store
             .ratify_post_review("ds-tax-2024", "tax-001", "human-r1", "t2")
@@ -8025,7 +8029,7 @@ mod tests {
                     result_ref: None,
                     error: None,
                     created_at: "2026-08-22T10:00:00Z".into(),
-                tenant_id: None,
+                    tenant_id: None,
                 })
                 .unwrap();
         }
@@ -9153,9 +9157,15 @@ mod llm_audit_tenant_tests {
 
     fn store_with_two_tenants() -> RuleStore {
         let store = RuleStore::in_memory().unwrap();
-        store.record_llm_audit(&audit("req-ta-1", Some("tenant_a"))).unwrap();
-        store.record_llm_audit(&audit("req-ta-2", Some("tenant_a"))).unwrap();
-        store.record_llm_audit(&audit("req-tb-1", Some("tenant_b"))).unwrap();
+        store
+            .record_llm_audit(&audit("req-ta-1", Some("tenant_a")))
+            .unwrap();
+        store
+            .record_llm_audit(&audit("req-ta-2", Some("tenant_a")))
+            .unwrap();
+        store
+            .record_llm_audit(&audit("req-tb-1", Some("tenant_b")))
+            .unwrap();
         // 模拟迁移前存量行：无租户
         store.record_llm_audit(&audit("req-legacy", None)).unwrap();
         store
@@ -9169,8 +9179,14 @@ mod llm_audit_tenant_tests {
             ..Default::default()
         };
         let rows = store.list_llm_audits_filtered(&filter).unwrap();
-        assert_eq!(rows.len(), 2, "租户作用域只含本租户新行（他租户+存量 NULL 不可见）");
-        assert!(rows.iter().all(|r| r.tenant_id.as_deref() == Some("tenant_a")));
+        assert_eq!(
+            rows.len(),
+            2,
+            "租户作用域只含本租户新行（他租户+存量 NULL 不可见）"
+        );
+        assert!(rows
+            .iter()
+            .all(|r| r.tenant_id.as_deref() == Some("tenant_a")));
     }
 
     #[test]
@@ -9236,17 +9252,26 @@ mod llm_audit_tenant_tests {
         }
         // 三种作用域逐一验证：org 租户 1 条 / 另一 org 租户 1 条 / 平台全量 2 条
         assert_eq!(
-            store.machine_gate_post_review_queue(Some("tenant_a"), 50).unwrap().len(),
+            store
+                .machine_gate_post_review_queue(Some("tenant_a"), 50)
+                .unwrap()
+                .len(),
             1,
             "tenant_a 应见本租户 1 条"
         );
         assert_eq!(
-            store.machine_gate_post_review_queue(Some("tenant_b"), 50).unwrap().len(),
+            store
+                .machine_gate_post_review_queue(Some("tenant_b"), 50)
+                .unwrap()
+                .len(),
             1,
             "tenant_b 应见本租户 1 条"
         );
         assert_eq!(
-            store.machine_gate_post_review_queue(None, 50).unwrap().len(),
+            store
+                .machine_gate_post_review_queue(None, 50)
+                .unwrap()
+                .len(),
             2,
             "平台视图应见全部 2 条"
         );
@@ -9257,7 +9282,14 @@ mod llm_audit_tenant_tests {
         let store = RuleStore::in_memory().unwrap();
         store
             .record_writeback_event(
-                "tenant_a", "ds-1", "e-1", "v1", None, "{}", "2026-01-01T00:00:00Z", None,
+                "tenant_a",
+                "ds-1",
+                "e-1",
+                "v1",
+                None,
+                "{}",
+                "2026-01-01T00:00:00Z",
+                None,
             )
             .unwrap();
         let audit = store.get_llm_audit("wb-1").unwrap().unwrap();
@@ -9283,11 +9315,29 @@ mod writeback_dedup_tests {
         let store = RuleStore::in_memory().unwrap();
         let args = ("tenant_a", "ds-1", "e-1", "v1", Some("timeout"), "{}");
         let id1 = store
-            .record_writeback_event(args.0, args.1, args.2, args.3, args.4, args.5, "2026-01-01T00:00:00Z", None)
+            .record_writeback_event(
+                args.0,
+                args.1,
+                args.2,
+                args.3,
+                args.4,
+                args.5,
+                "2026-01-01T00:00:00Z",
+                None,
+            )
             .unwrap();
         // 第二次投递：收件时间不同（真实场景=重试间隔），内容相同
         let id2 = store
-            .record_writeback_event(args.0, args.1, args.2, args.3, args.4, args.5, "2026-01-01T00:01:00Z", None)
+            .record_writeback_event(
+                args.0,
+                args.1,
+                args.2,
+                args.3,
+                args.4,
+                args.5,
+                "2026-01-01T00:01:00Z",
+                None,
+            )
             .unwrap();
         assert_eq!(id1, id2, "同指纹重复投递应返回原 event_id");
         let (ta, tb) = (
@@ -9303,10 +9353,28 @@ mod writeback_dedup_tests {
     fn different_events_both_enqueued() {
         let store = RuleStore::in_memory().unwrap();
         let id1 = store
-            .record_writeback_event("tenant_a", "ds-1", "e-1", "v1", Some("timeout"), "{}", "2026-01-01T00:00:00Z", None)
+            .record_writeback_event(
+                "tenant_a",
+                "ds-1",
+                "e-1",
+                "v1",
+                Some("timeout"),
+                "{}",
+                "2026-01-01T00:00:00Z",
+                None,
+            )
             .unwrap();
         let id2 = store
-            .record_writeback_event("tenant_a", "ds-1", "e-2", "v1", Some("timeout"), "{}", "2026-01-01T00:00:01Z", None)
+            .record_writeback_event(
+                "tenant_a",
+                "ds-1",
+                "e-2",
+                "v1",
+                Some("timeout"),
+                "{}",
+                "2026-01-01T00:00:01Z",
+                None,
+            )
             .unwrap();
         assert_ne!(id1, id2, "不同条目的事件应各自入队");
     }

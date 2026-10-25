@@ -1320,8 +1320,8 @@ fn sha256_hex(input: &str) -> String {
 #[cfg(test)]
 mod tenant_gate_tests {
     use super::*;
-    use crate::model::dataset::{DatasetKind, Meta};
     use crate::model::auth::Role;
+    use crate::model::dataset::{DatasetKind, Meta};
     use crate::store::RuleStore;
 
     fn test_state() -> AppState {
@@ -1372,7 +1372,9 @@ mod tenant_gate_tests {
         let state = test_state();
         seed_dataset(&state.store, "ds-a1", "tenant_a");
         let caller = ctx("u1", "tenant_a");
-        let ds = ensure_dataset_tenant(&state, &caller, "ds-a1").await.unwrap();
+        let ds = ensure_dataset_tenant(&state, &caller, "ds-a1")
+            .await
+            .unwrap();
         assert_eq!(ds.tenant_id, "tenant_a");
     }
 
