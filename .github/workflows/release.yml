@@ -159,7 +159,7 @@ jobs:
   # ==========================================================================
   release:
     name: release
-    needs: [build, compliance]
+    needs: [dist-gate, build, compliance]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -217,7 +217,7 @@ jobs:
   # ==========================================================================
   attach-gitee:
     name: attach-all-to-gitee
-    needs: [build, compliance]
+    needs: [dist-gate, build, compliance]
     runs-on: ubuntu-latest
     steps:
       - name: 下载 Linux 构建产物
@@ -291,3 +291,12 @@ jobs:
             echo ""
           done
           echo "DONE: https://gitee.com/${REPO}/releases/tag/${TAG}"
+
+  # Distribution-compliance gate (reusable workflow, pinned to root-repo commit)
+  dist-gate:
+    name: dist compliance gate
+    permissions:
+      contents: read
+    uses: evorule/evorule/.github/workflows/dist-gate.yml@a3aa299151fa3cfbf0d9fe6b659b5f91cb909807
+    with:
+      repo: evorule-rule
