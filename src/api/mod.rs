@@ -1491,7 +1491,7 @@ mod tests {
             .await
             .unwrap();
         let body: serde_json::Value =
-            serde_json::from_str(&String::from_utf8(bytes.to_vec()).unwrap()).unwrap();
+            serde_json::from_str(std::str::from_utf8(&bytes).expect("utf8 body")).unwrap();
         body["access_token"].as_str().unwrap().to_string()
     }
 
