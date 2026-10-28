@@ -46,14 +46,17 @@ impl KnowledgeEntry {
 
 /// 知识 kind 谱系合法值（知识资产化批次 A；总纲 §3.1 五分法 + `custom:{name}` 扩展位；
 /// 2026-10-11 增补第六谱系 `verdict`：LLM 判定事实条目，载荷结构权威=
-/// evorule-system-rules `_shared/v1.0#/$defs/llm_verdict`，内置壳 builtin:knowledge/verdict）
-pub const KNOWLEDGE_KINDS: [&str; 6] = [
+/// evorule-system-rules `_shared/v1.0#/$defs/llm_verdict`，内置壳 builtin:knowledge/verdict；
+/// 2026-10-29 增补第七谱系 `preference`：用户/通道级偏好条目（第五批记忆主权收官配套，
+/// 消费面=evo-agent 召回 user 域加权与 S2b 数据集注入），内置壳 builtin:knowledge/preference）
+pub const KNOWLEDGE_KINDS: [&str; 7] = [
     "fact",
     "procedure",
     "heuristic",
     "narrative",
     "model",
     "verdict",
+    "preference",
 ];
 
 /// trust_level 合法前缀：`human` | `llm` | `external:{source}`

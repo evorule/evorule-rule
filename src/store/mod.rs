@@ -572,7 +572,7 @@ impl RuleStore {
     }
 
     /// 内置领域 schema（知识域五件，知识资产化 A1-1b）：编译期内嵌
-    /// `src/store/schemas/knowledge/{fact,procedure,heuristic,narrative,model}.json`，
+    /// `src/store/schemas/knowledge/{fact,procedure,heuristic,narrative,model,verdict,preference}.json`，
     /// 惰性解析一次。以 `$id` 为键（缺省 `builtin:knowledge/{kind}`）。
     /// 内置件定位=最小结构壳（底座兜底，新部署/内存库开箱即用），领域严校验由
     /// 运行时目录件负责（同 `$id` 覆写内置）。
@@ -597,6 +597,7 @@ impl RuleStore {
                 ),
                 ("model", include_str!("schemas/knowledge/model.json")),
                 ("verdict", include_str!("schemas/knowledge/verdict.json")),
+                ("preference", include_str!("schemas/knowledge/preference.json")),
             ] {
                 let Ok(v) = serde_json::from_str::<serde_json::Value>(text) else {
                     // 内嵌资产损坏=工程错误：运行时静默跳过（与目录件损坏 continue 同型），
@@ -8141,7 +8142,15 @@ mod tests {
     fn test_builtin_domain_schemas_embedded() {
         // A1-1b：内存库无运行时目录，五件 builtin 壳仍可解析（开箱即用）
         let store = RuleStore::in_memory().unwrap();
-        for kind in ["fact", "procedure", "heuristic", "narrative", "model"] {
+        for kind in [
+            "fact",
+            "procedure",
+            "heuristic",
+            "narrative",
+            "model",
+            "verdict",
+            "preference",
+        ] {
             let uri = format!("builtin:knowledge/{kind}");
             let v = store
                 .lookup_domain_schema(&uri)
