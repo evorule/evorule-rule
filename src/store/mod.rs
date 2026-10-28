@@ -597,7 +597,10 @@ impl RuleStore {
                 ),
                 ("model", include_str!("schemas/knowledge/model.json")),
                 ("verdict", include_str!("schemas/knowledge/verdict.json")),
-                ("preference", include_str!("schemas/knowledge/preference.json")),
+                (
+                    "preference",
+                    include_str!("schemas/knowledge/preference.json"),
+                ),
             ] {
                 let Ok(v) = serde_json::from_str::<serde_json::Value>(text) else {
                     // 内嵌资产损坏=工程错误：运行时静默跳过（与目录件损坏 continue 同型），
