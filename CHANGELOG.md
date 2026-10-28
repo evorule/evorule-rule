@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 
+### Added — 第七知识谱系 preference（用户偏好条目,记忆主权收官配套）
+
+- `knowledge_kind` 谱系扩为七分法：新增 `preference`（用户/通道级偏好条目——应影响后续行为的持久喜好/厌恶）。消费面=evo-agent 召回 user 域加权（authority 1.0）与 S2b 数据集注入；LLM 产出的偏好候选仍走治理 Draft 管线（机器产出只到 Draft 红线不变）。
+- 内置知识壳第七件 `builtin:knowledge/preference`：最小结构门禁（required: statement），偏好本体字段（scope/applies_to/衰减策略）保持开放，严格校验归运行时 domain_schemas/ 覆写件——沿用七件壳哲学。
+- 内置壳嵌入解析测试循环补齐 verdict+preference 两件（此前 verdict 壳无内嵌解析覆盖——verdict 批欠账顺手清偿）；模块 doc 注记同步七件清单。零模型/零迁移变更。
+- 测试：内置壳嵌入循环七件全绿。
+
+
 ### Added — 数据集作用域单条目 GET 与生命周期审计过滤
 
 - 新增 `GET /v1/datasets/{id}/entries/{entry_id}`：数据集作用域单条目详情——鉴权（数据集存在+租户匹配，越权/不存在一律 404 不泄露存在性）与谱系分流（rule_set/knowledge 按 dataset_kind 取当前最新版本）对齐列表端点，载荷形态与列表单项一致。
