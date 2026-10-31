@@ -408,6 +408,8 @@ mod tests {
             ("verification_sat_solve", false, "CNF 命题可满足性判定(确定性 DPLL:变量首现序+正枝先行+单元传播,变量上限200子句上限2000;UNSAT 为完备判定,SAT 给出满足指派,确定性)"),
             ("verification_fsm_reachability", false, "显式有限状态机可达性分析(指定初始状态集与目标状态集,最短步数与一条 witness 路径,可选步数上界,返回接受语言空性,确定性)"),
             ("verification_fsm_equivalence", false, "两台完全确定有限自动机等价判定(乘积机同步遍历,等价=true;不等价给出最短区分反例词与两机轨迹,确定性)"),
+            ("verification_fsm_deadlock", false, "有限状态机死锁判定(活性语义:可达但从此无法到达任何接受态的状态集,卡死在非接受吸收域;给出到首个死锁态的最短witness路径,不可达态不判定,确定性)"),
+            ("verification_fsm_language_inclusion", false, "两台完全确定有限自动机语言包含判定 L(A)⊆L(B)(乘积可达闭包与补机构造,符号上限16;包含=完备判定;不包含给出A接受而B拒绝的反例词与两机轨迹,确定性)"),
         ];
 
         let seed = official_native_services();
