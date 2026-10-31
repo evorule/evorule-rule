@@ -136,6 +136,10 @@ const EMBEDDED_SERVICE_FILES: &[(&str, &str)] = &[
         "export-services",
         include_str!("official_native_services.export-services.embedded.json"),
     ),
+    (
+        "verification-services",
+        include_str!("official_native_services.verification-services.embedded.json"),
+    ),
 ];
 
 /// 官方预置原生服务种子（声明文件化；泛化至多插件聚合）。
@@ -400,6 +404,10 @@ mod tests {
             ("export_report_pdf", false, "报告PDF导出(审计/业务数据→纯Rust文本型PDF渲染→落盘导出目录,返回绝对路径与字节数及blake3内容哈希,幂等覆写)"),
             ("export_workbook_xlsx", false, "工作簿xlsx导出(多表+表头/整数字符串值域→rust_xlsxwriter确定性渲染,固定文档时间戳,落盘导出目录,返回绝对路径与字节数及blake3内容哈希,幂等覆写)"),
             ("export_document_docx", false, "文档docx导出(标题+段落+表格+溯源表→docx-rs确定性渲染(零时间戳内嵌),落盘导出目录,返回绝对路径与字节数及blake3内容哈希,幂等覆写)"),
+            // ---- verification-services ----
+            ("verification_sat_solve", false, "CNF 命题可满足性判定(确定性 DPLL:变量首现序+正枝先行+单元传播,变量上限200子句上限2000;UNSAT 为完备判定,SAT 给出满足指派,确定性)"),
+            ("verification_fsm_reachability", false, "显式有限状态机可达性分析(指定初始状态集与目标状态集,最短步数与一条 witness 路径,可选步数上界,返回接受语言空性,确定性)"),
+            ("verification_fsm_equivalence", false, "两台完全确定有限自动机等价判定(乘积机同步遍历,等价=true;不等价给出最短区分反例词与两机轨迹,确定性)"),
         ];
 
         let seed = official_native_services();
