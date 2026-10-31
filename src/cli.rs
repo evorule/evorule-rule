@@ -5,6 +5,7 @@
 //! - `entries bulk-import <dir>`（目录批 JSON → 构建 bundle → /v1/bundles/import，
 //!   同一 5 步校验链 SSOT 门禁，不绕行）
 //! - `entries bulk-export <dataset_id> <dir>`（bundle → 目录批 JSON）
+//! - `mcp-server-key`（本地计算 MCP 拉起批准条目的 server_key + 条目骨架）
 //!
 //! 认证：Bearer token（env `EVORULE_RULE_TOKEN` 或 --token）；
 //! 服务地址：env `EVORULE_RULE_URL` 或 --url，默认 `http://127.0.0.1:18081`。
@@ -106,6 +107,20 @@ pub enum Cmd {
         /// 版本号（缺省 = 当前版本）
         #[arg(long)]
         version: Option<String>,
+    },
+    /// 计算 MCP 拉起批准条目的 server_key（本地计算零网络）
+    ///
+    /// 输出键本体 + 一份可直接编辑提交的条目 JSON 骨架（schema_ref 固定
+    /// builtin:mcp/server，提交到 `org.evorule.mcp.servers` 数据集后走
+    /// Draft → Candidate → Active 审批链生效）。规范序列与执行侧装载门
+    /// 共用（黄金向量对齐）。
+    McpServerKey {
+        /// 拉起命令（如 npx / python / C:\path\server.exe）
+        #[arg(long)]
+        command: String,
+        /// args_pattern 段序列（逗号分隔；省略 = 仅匹配 command 的固定二进制）
+        #[arg(long, value_delimiter = ',')]
+        args_pattern: Vec<String>,
     },
 }
 
@@ -227,6 +242,39 @@ pub fn run(args: CliArgs) -> Result<(), CliError> {
                     .map_err(|e| CliError(format!("写入 {} 失败: {e}", path.display())))?;
             }
             println!("已导出 {} 条条目 → {dir}", entries.len());
+        }
+        Cmd::McpServerKey {
+            command,
+            args_pattern,
+        } => {
+            let pattern = if args_pattern.is_empty() {
+                None
+            } else {
+                Some(args_pattern)
+            };
+            crate::model::mcp_servers::validate_approval_entry(&command, pattern.as_deref())
+                .map_err(CliError)?;
+            let key = crate::model::mcp_servers::canonical_server_key(&command, pattern.as_deref());
+            println!("{key}");
+            println!();
+            let skeleton = json!({
+                "entry_id": key,
+                "schema_ref": crate::model::mcp_servers::MCP_SERVER_SCHEMA_REF,
+                "payload": {
+                    "server_key": key,
+                    "command": command,
+                    "args_pattern": pattern,
+                    "comment": "<谁为何登记（必填）>",
+                    "approved_by": "<治理账号>",
+                    "approved_at": "<ISO-8601>",
+                    "approval_ref": "<提案/条目版本锚>",
+                }
+            });
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&skeleton)
+                    .map_err(|e| CliError(format!("骨架序列化失败: {e}")))?
+            );
         }
     }
     Ok(())

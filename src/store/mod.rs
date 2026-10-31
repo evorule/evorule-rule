@@ -601,6 +601,9 @@ impl RuleStore {
                     "preference",
                     include_str!("schemas/knowledge/preference.json"),
                 ),
+                // MCP 拉起批准清单严格壳（治理原生线）：批准面是安全控制面，六必填
+                // 归因/身份字段开箱即严（区别于知识域最小壳）；跨字段语义闸在写核
+                ("server", include_str!("schemas/mcp/server.json")),
             ] {
                 let Ok(v) = serde_json::from_str::<serde_json::Value>(text) else {
                     // 内嵌资产损坏=工程错误：运行时静默跳过（与目录件损坏 continue 同型），
@@ -1675,7 +1678,26 @@ impl RuleStore {
                 ValidationError::CredentialScanFailed { hits },
             ));
         }
-        // 4) D3 门禁（SSOT）：payload 过领域 jsonschema 校验；resolver 未命中 = 拒绝
+        // 4) MCP 拉起批准清单硬规则（治理原生线）：约定数据集与约定 schema_ref 双分派，
+        //    任一命中即按批准条目校验；schema_ref 错挂一律拒绝（先于 D3 形状闸给出
+        //    精确报错，防错挂条目被领域 schema 以无关理由拒掉）。跨字段语义闸：
+        //    归因完整性 + server_key 重算比对（与执行侧装载门共用规范函数）。
+        if entry.dataset_id == crate::model::mcp_servers::MCP_SERVERS_DATASET_ID
+            || entry.schema_ref == crate::model::mcp_servers::MCP_SERVER_SCHEMA_REF
+        {
+            if entry.schema_ref != crate::model::mcp_servers::MCP_SERVER_SCHEMA_REF {
+                return Err(StoreError::Validation(ValidationError::Message(format!(
+                    "数据集 `{}` 为 MCP 拉起批准清单：条目必须挂 schema_ref `{}`，实际 `{}`",
+                    entry.dataset_id,
+                    crate::model::mcp_servers::MCP_SERVER_SCHEMA_REF,
+                    entry.schema_ref
+                ))));
+            }
+            crate::model::mcp_servers::validate_mcp_server_payload(&entry.payload)
+                .map_err(ValidationError::Message)
+                .map_err(StoreError::Validation)?;
+        }
+        // 5) D3 门禁（SSOT）：payload 过领域 jsonschema 校验；resolver 未命中 = 拒绝
         // 知识资产化批次 A：门禁视图流通四字段（与 knowledge_entry_to_bundle 同口径）
         let bundle_entry = BundleEntry {
             entry_id: entry.entry_id.clone(),
@@ -1693,7 +1715,7 @@ impl RuleStore {
         };
         let resolver = |uri: &str| self.lookup_domain_schema(uri);
         BundleImporter::validate_entry(&bundle_entry, &[], &resolver)?;
-        // 5) 唯一性（主键保证，此处显式检查以便友好报错）
+        // 6) 唯一性（主键保证，此处显式检查以便友好报错）
         let exists: bool = conn.query_row(
             "SELECT EXISTS(SELECT 1 FROM knowledge_entries WHERE dataset_id=?1 AND entry_id=?2 AND version=?3)",
             params![entry.dataset_id, entry.entry_id, entry.version],
@@ -1706,7 +1728,7 @@ impl RuleStore {
                 version: entry.version,
             });
         }
-        // 6) 写入（内容寻址快照去重落库，设计文档 §6/C1 同语义）
+        // 7) 写入（内容寻址快照去重落库，设计文档 §6/C1 同语义）
         conn.execute(
             "INSERT INTO knowledge_snapshots(dataset_id, content_hash, payload, created_at)
              VALUES (?1, ?2, ?3, ?4)
@@ -3082,7 +3104,20 @@ impl RuleStore {
                 ))
             }
             DatasetKind::Knowledge => {
-                let entries = self.list_knowledge_entries(dataset_id, None)?;
+                let mut entries = self.list_knowledge_entries(dataset_id, None)?;
+                // MCP 拉起批准清单：生效面只含已批准条目（Active/Published）。
+                // Draft/Candidate/Rejected 是提案/退回态——未审批条目最多存在于
+                // 提案队列，绝不进执行侧 enforce 名单（信任根基：会话写不进
+                // 审批链，未审批不生效）。仅收当前版导出面，历史快照导出
+                // （export_bundle_at）保持存档原样不过滤。
+                if ds.dataset_id == crate::model::mcp_servers::MCP_SERVERS_DATASET_ID {
+                    entries.retain(|e| {
+                        matches!(
+                            e.status,
+                            Some(LifecycleStatus::Active) | Some(LifecycleStatus::Published)
+                        )
+                    });
+                }
                 Ok(BundleExporter::export_knowledge(
                     &ds,
                     &entries,
@@ -4148,6 +4183,55 @@ impl RuleStore {
             tx.commit()?;
         }
         Ok(inserted)
+    }
+
+    /// 治理原生线：MCP server 拉起批准清单数据集预置（幂等 seed，服务启动时调用）。
+    ///
+    /// 约定数据集（`org.evorule.mcp.servers`，knowledge 类、public 可见）缺位时创建；
+    /// **不预置任何条目**——空清单 = 执行侧 enforce 下全部 stdio 拒载（fail-closed），
+    /// 批准必须逐条走治理审批链产生（条目 Draft → Candidate → Active，机器不代批）。
+    /// 执行侧经 `GET /v1/datasets/{id}/bundle`（X-Api-Key scope=pull）拉取生效清单。
+    /// 返回本次是否创建。
+    pub fn seed_mcp_servers_dataset_if_empty(
+        &self,
+        tenant_id: &str,
+        now: &str,
+    ) -> Result<bool, StoreError> {
+        if self
+            .get_dataset(crate::model::mcp_servers::MCP_SERVERS_DATASET_ID)?
+            .is_some()
+        {
+            return Ok(false);
+        }
+        let ds = RuleDataset {
+            dataset_id: crate::model::mcp_servers::MCP_SERVERS_DATASET_ID.to_string(),
+            name: "MCP server 拉起批准清单".to_string(),
+            description: Some(
+                "MCP stdio server 拉起许可的唯一治理事实源：意愿在项目目录（mcp.toml），\
+                 许可在治理面（本数据集）。条目 entry_id 约定 = server_key；\
+                 schema_ref 固定 builtin:mcp/server。"
+                    .to_string(),
+            ),
+            dataset_kind: DatasetKind::Knowledge,
+            domain: vec!["mcp".to_string()],
+            tags: vec!["mcp".to_string(), "spawn-allowlist".to_string()],
+            tenant_id: tenant_id.to_string(),
+            visibility: Visibility::Public,
+            lifecycle: Lifecycle::default(),
+            versioning: Versioning::default(),
+            law_ref: None,
+            version_selection: None,
+            data_dependencies: None,
+            event_schemas: vec![],
+            meta: Meta {
+                created_at: now.to_string(),
+                created_by: "system-seed".to_string(),
+                updated_at: None,
+                updated_by: None,
+            },
+        };
+        self.create_dataset(&ds)?;
+        Ok(true)
     }
 
     // ------------------------------------------------------------------
@@ -8328,6 +8412,275 @@ mod tests {
         missing.schema_ref = "  ".into();
         let err = store.add_knowledge_entry(&missing).unwrap_err();
         assert!(matches!(err, StoreError::KnowledgeMissingSchemaRef { .. }));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ==================================================================
+    // MCP 拉起批准清单（治理原生线）：写核闸 + seed + builtin 严格壳
+    // ==================================================================
+
+    use crate::model::mcp_servers::{
+        canonical_server_key, validate_mcp_server_payload, MCP_SERVERS_DATASET_ID,
+        MCP_SERVER_SCHEMA_REF,
+    };
+
+    fn mcp_entry(
+        dataset_id: &str,
+        payload: serde_json::Value,
+        schema_ref: &str,
+    ) -> crate::model::knowledge::KnowledgeEntry {
+        crate::model::knowledge::KnowledgeEntry {
+            entry_id: payload["server_key"].as_str().unwrap_or("mcp-001").into(),
+            dataset_id: dataset_id.into(),
+            version: 1,
+            status: Some(LifecycleStatus::Draft),
+            provenance: Provenance {
+                source: "store test".into(),
+                clause: None,
+                document_id: None,
+                effective_from: None,
+                effective_to: None,
+                last_verified: None,
+                verified_by: None,
+            },
+            domain: "mcp".into(),
+            tags: vec![],
+            payload,
+            schema_ref: schema_ref.into(),
+            governance: None,
+            knowledge_kind: None,
+            trust_level: None,
+            license_ref: None,
+            execution_contract: None,
+        }
+    }
+
+    fn mcp_approval_payload() -> serde_json::Value {
+        let key = canonical_server_key("npx", Some(&["-y".into(), "@scope/srv-*".into()]));
+        serde_json::json!({
+            "server_key": key,
+            "command": "npx",
+            "args_pattern": ["-y", "@scope/srv-*"],
+            "comment": "平台组登记",
+            "approved_by": "alice",
+            "approved_at": "2026-11-01T00:00:00Z",
+            "approval_ref": "org.evorule.mcp.servers@v1"
+        })
+    }
+
+    #[test]
+    fn test_mcp_builtin_schema_strict_shell() {
+        // 内存库无运行时目录：mcp 严格壳开箱可解析（批准面开箱即严，区别于知识最小壳）
+        let store = RuleStore::in_memory().unwrap();
+        let v = store
+            .lookup_domain_schema(MCP_SERVER_SCHEMA_REF)
+            .expect("builtin mcp shell missing");
+        assert_eq!(v["$id"], MCP_SERVER_SCHEMA_REF);
+        let required: Vec<&str> = v["required"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|x| x.as_str())
+            .collect();
+        for key in [
+            "server_key",
+            "command",
+            "comment",
+            "approved_by",
+            "approved_at",
+            "approval_ref",
+        ] {
+            assert!(required.contains(&key), "missing required field: {key}");
+        }
+        assert_eq!(v["additionalProperties"], serde_json::json!(false));
+    }
+
+    #[test]
+    fn test_mcp_seed_idempotent_and_empty() {
+        let store = RuleStore::in_memory().unwrap();
+        assert!(store
+            .seed_mcp_servers_dataset_if_empty("org-evorule", "t")
+            .unwrap());
+        assert!(!store
+            .seed_mcp_servers_dataset_if_empty("org-evorule", "t2")
+            .unwrap());
+        let ds = store
+            .get_dataset(MCP_SERVERS_DATASET_ID)
+            .unwrap()
+            .expect("seeded dataset");
+        assert_eq!(ds.dataset_kind, DatasetKind::Knowledge);
+        assert_eq!(ds.visibility, Visibility::Public);
+        // 空清单不预置条目（fail-closed：批准逐条走治理审批链产生）
+        let count: i64 = {
+            let conn = store.conn.lock().unwrap();
+            conn.query_row(
+                "SELECT COUNT(*) FROM knowledge_entries WHERE dataset_id=?1",
+                params![MCP_SERVERS_DATASET_ID],
+                |r| r.get(0),
+            )
+            .unwrap()
+        };
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn test_mcp_entry_write_core_gates() {
+        let (store, dir) = file_store_with_body_schema();
+        // 约定数据集（knowledge 类）
+        let mut ds = knowledge_dataset();
+        ds.dataset_id = MCP_SERVERS_DATASET_ID.into();
+        ds.domain = vec!["mcp".into()];
+        store.create_dataset(&ds).unwrap();
+
+        // 合法批准条目通过（entry_id = server_key 约定）
+        let payload = mcp_approval_payload();
+        let key = payload["server_key"].as_str().unwrap().to_string();
+        store
+            .add_knowledge_entry(&mcp_entry(
+                MCP_SERVERS_DATASET_ID,
+                payload,
+                MCP_SERVER_SCHEMA_REF,
+            ))
+            .unwrap();
+
+        // 约定数据集内 schema_ref 错挂 → 精确拒绝（先于领域形状闸）
+        let mut wrong = mcp_approval_payload();
+        wrong["statement"] = serde_json::json!("decoy to pass the fact shell");
+        let err = store
+            .add_knowledge_entry(&mcp_entry(
+                MCP_SERVERS_DATASET_ID,
+                wrong,
+                "builtin:knowledge/fact",
+            ))
+            .unwrap_err();
+        assert!(err.to_string().contains("schema_ref"));
+
+        // server_key 打错 → 重算比对拒绝
+        let mut bad_key = mcp_approval_payload();
+        bad_key["server_key"] = serde_json::Value::String(format!("blake3:{}", "0".repeat(64)));
+        let err = store
+            .add_knowledge_entry(&mcp_entry(
+                MCP_SERVERS_DATASET_ID,
+                bad_key,
+                MCP_SERVER_SCHEMA_REF,
+            ))
+            .unwrap_err();
+        assert!(err.to_string().contains("server_key 不匹配"));
+
+        // 裸解释器无 args_pattern → 拒绝
+        let bare = serde_json::json!({
+            "server_key": canonical_server_key("uvx", Option::<&[String]>::None),
+            "command": "uvx",
+            "comment": "c",
+            "approved_by": "a",
+            "approved_at": "t",
+            "approval_ref": "r"
+        });
+        let err = store
+            .add_knowledge_entry(&mcp_entry(
+                MCP_SERVERS_DATASET_ID,
+                bare,
+                MCP_SERVER_SCHEMA_REF,
+            ))
+            .unwrap_err();
+        assert!(err.to_string().contains("裸解释器"));
+
+        // schema_ref 分派面：其他数据集挂 mcp schema 同样过内容闸（坏键拒绝），
+        // 合法条目可入库（跨数据集装载不限于约定数据集）
+        store.create_dataset(&knowledge_dataset()).unwrap();
+        let mut other_bad = mcp_approval_payload();
+        other_bad["command"] = serde_json::Value::String("python".into());
+        let err = store
+            .add_knowledge_entry(&mcp_entry(
+                "ds-rpsm-assets",
+                other_bad,
+                MCP_SERVER_SCHEMA_REF,
+            ))
+            .unwrap_err();
+        assert!(err.to_string().contains("server_key 不匹配"));
+        let other_good = serde_json::json!({
+            "server_key": canonical_server_key("my-server.exe", Option::<&[String]>::None),
+            "command": "my-server.exe",
+            "comment": "c",
+            "approved_by": "a",
+            "approved_at": "t",
+            "approval_ref": "r"
+        });
+        store
+            .add_knowledge_entry(&mcp_entry(
+                "ds-rpsm-assets",
+                other_good,
+                MCP_SERVER_SCHEMA_REF,
+            ))
+            .unwrap();
+
+        // 非约定数据集 + 非 mcp schema 的既有通路不受影响（fact 壳最小形）
+        let fact = crate::model::knowledge::KnowledgeEntry {
+            schema_ref: "builtin:knowledge/fact".into(),
+            payload: serde_json::json!({ "statement": "demo" }),
+            ..knowledge_entry()
+        };
+        store.add_knowledge_entry(&fact).unwrap();
+
+        // 全量校验函数黄金自证（写核消费的同一函数）
+        assert!(validate_mcp_server_payload(&mcp_approval_payload()).is_ok());
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = key;
+    }
+
+    #[test]
+    fn test_mcp_export_surface_only_approved_entries() {
+        let (store, dir) = file_store_with_body_schema();
+        let mut ds = knowledge_dataset();
+        ds.dataset_id = MCP_SERVERS_DATASET_ID.into();
+        ds.domain = vec!["mcp".into()];
+        store.create_dataset(&ds).unwrap();
+        let payload = mcp_approval_payload();
+        let key = payload["server_key"].as_str().unwrap().to_string();
+        store
+            .add_knowledge_entry(&mcp_entry(
+                MCP_SERVERS_DATASET_ID,
+                payload,
+                MCP_SERVER_SCHEMA_REF,
+            ))
+            .unwrap();
+        let tests = crate::bundle::BundleTests::unverified();
+        // Draft：不导出（未审批不生效——提案态最多在队列，不进执行侧名单）
+        let b = store
+            .export_bundle(MCP_SERVERS_DATASET_ID, &tests, "t", "now", "inst", None)
+            .unwrap();
+        assert!(b.entries.is_empty(), "Draft entry must not be pullable");
+        // Candidate：仍不导出
+        store
+            .transition_knowledge_entry_status(
+                MCP_SERVERS_DATASET_ID,
+                &key,
+                LifecycleStatus::Candidate,
+                "u",
+                "t",
+                "评审",
+            )
+            .unwrap();
+        let b = store
+            .export_bundle(MCP_SERVERS_DATASET_ID, &tests, "t", "now", "inst", None)
+            .unwrap();
+        assert!(b.entries.is_empty(), "Candidate entry must not be pullable");
+        // Active：导出（生效）
+        store
+            .transition_knowledge_entry_status(
+                MCP_SERVERS_DATASET_ID,
+                &key,
+                LifecycleStatus::Active,
+                "u",
+                "t2",
+                "批准",
+            )
+            .unwrap();
+        let b = store
+            .export_bundle(MCP_SERVERS_DATASET_ID, &tests, "t", "now", "inst", None)
+            .unwrap();
+        assert_eq!(b.entries.len(), 1);
+        assert_eq!(b.entries[0].entry_id, key);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -15,6 +15,7 @@ pub mod governance;
 pub mod knowledge;
 pub mod lifecycle;
 pub mod llm_audit;
+pub mod mcp_servers;
 pub mod provenance;
 pub mod secret;
 pub mod service_catalog;

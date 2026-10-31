@@ -1,0 +1,29 @@
+{
+  "$id": "builtin:mcp/server",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "mcp/server approval entry",
+  "description": "MCP spawn approval list entry (governance dataset org.evorule.mcp.servers). Unlike the other builtin shells this one is intentionally strict: the approval list is a security control surface, so the six mandatory attribution and identity fields are required out of the box (fresh deployments and in-memory stores included). server_key must equal the canonical hash of command+args_pattern; the cross-field check is enforced in the store write core (this schema alone cannot express it). entry_id convention = server_key. The executor side (agent spawn gate) mirrors this contract and aligns via shared golden vector tests.",
+  "type": "object",
+  "properties": {
+    "server_key": { "type": "string", "pattern": "^blake3:[0-9a-f]{64}$" },
+    "command": { "type": "string", "minLength": 1 },
+    "args_pattern": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1
+    },
+    "comment": { "type": "string", "minLength": 1 },
+    "approved_by": { "type": "string", "minLength": 1 },
+    "approved_at": { "type": "string", "minLength": 1 },
+    "approval_ref": { "type": "string", "minLength": 1 }
+  },
+  "required": [
+    "server_key",
+    "command",
+    "comment",
+    "approved_by",
+    "approved_at",
+    "approval_ref"
+  ],
+  "additionalProperties": false
+}

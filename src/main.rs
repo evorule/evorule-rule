@@ -124,6 +124,17 @@ async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         tracing::info!("服务目录已存在，跳过官方预置");
     }
 
+    // 2.6 治理原生线：MCP server 拉起批准清单数据集（幂等 seed；空清单 = 执行侧
+    // enforce 全部 stdio 拒载，fail-closed——批准逐条走治理审批链产生，机器不代批）
+    if store.seed_mcp_servers_dataset_if_empty(&cli.tenant, &auth::iso_from_unix(now))? {
+        tracing::info!(
+            dataset = evorule_rule::model::mcp_servers::MCP_SERVERS_DATASET_ID,
+            "MCP 拉起批准清单数据集已预置"
+        );
+    } else {
+        tracing::info!("MCP 拉起批准清单数据集已存在，跳过预置");
+    }
+
     // 3. 密钥（：优先级 = --secret 显式 > 持久化密钥文件 > 随机生成并持久化；
     //    重启自动复用同一密钥，token 跨重启保持有效；密钥永不打印到日志——
     //    安全边界与 rule.db 一致：持有文件系统读权限即持有库内口令哈希，同级信任面）
