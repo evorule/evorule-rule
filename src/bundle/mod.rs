@@ -183,6 +183,7 @@ impl BundleExporter {
                 content_hash: String::new(),
                 hash_algo: "blake3".into(),
             },
+            publish_signature: None,
         };
         let hash = bundle.compute_content_hash();
         bundle.audit.content_hash = hash;

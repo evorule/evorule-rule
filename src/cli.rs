@@ -435,6 +435,7 @@ pub fn build_bundle_from_dir(
             content_hash: String::new(),
             hash_algo: "blake3".into(),
         },
+        publish_signature: None,
     };
     bundle.audit.content_hash = bundle.compute_content_hash();
     Ok(bundle)

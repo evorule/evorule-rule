@@ -8399,6 +8399,7 @@ mod tests {
                 content_hash: String::new(),
                 hash_algo: "blake3".into(),
             },
+            publish_signature: None,
         };
         bundle.audit.content_hash = bundle.compute_content_hash();
         bundle
