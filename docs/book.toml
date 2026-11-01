@@ -12,8 +12,8 @@ create-missing = true
 [output.html]
 default-theme = "light"
 preferred-dark-theme = "navy"
-git-repository-url = "https://gitee.com/evorule/evorule-rule"
-edit-url-template = "https://gitee.com/evorule/evorule-rule/edit/main/docs/{path}"
+git-repository-url = "https://github.com/evorule/evorule-rule"
+edit-url-template = "https://github.com/evorule/evorule-rule/edit/main/docs/{path}"
 site-url = "/evorule-rule/"
 mathjax-support = false
 

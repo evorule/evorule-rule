@@ -2,14 +2,14 @@
 #
 # 触发: 推送 v* tag
 # 产物: 双平台双 bin (GitHub Release 附件)
-#   - evorule-rule-serve  治理中心服务 (gitee/giteeGo agent 不可用 回归验证,由本链供养 gitee Release)
+#   - evorule-rule-serve  治理中心服务 (GitHub 权威源,由本链供养 GitHub Release)
 #   - evorule-rule-cli    数据集导入导出 CLI
 #   - Linux   x86_64 (ubuntu-latest, 静态 musl)
 #   - Windows x86_64 (windows-latest)
 #
 # 设计说明:
-# - 与 evorule / evorule-server 仓同构: gitee 是主仓/发布主入口, github 承担双平台
-#   构建并经 Gitee OpenAPI 回传附件 (幂等创建 Release)
+# - 与 evorule / evorule-server 仓同构: github 是权威源/发布主入口, 承担双平台
+#   构建并直发 Release (幂等创建)
 # - sanity check 不使用 >/dev/null 重定向: windows runner 默认 pwsh,该 Unix 语法
 #   会报 "Could not find a part of the path 'D:\dev\null'" (evorule-server 仓
 #   v0.4.1 首次 Release 已踩坑,回归验证 顺带发现) —— 输出直接进日志,兼作证据
@@ -120,8 +120,7 @@ jobs:
           | 字段 | 值 |
           |---|---|
           | 发布 tag | v@@VER@@ |
-          | 源码仓库（权威源） | <https://gitee.com/evorule/evorule-rule> |
-          | 源码仓库（GitHub 镜像） | <https://github.com/evorule/evorule-rule> |
+          | 源码仓库（权威源） | <https://github.com/evorule/evorule-rule> |
           | 源码 tarball | `evorule-rule-@@VER@@-source.tar.gz`（随本 Release 附件分发） |
           | 源码 tarball SHA256 | `@@SHA@@` |
 
