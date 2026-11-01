@@ -578,11 +578,16 @@ pub fn router(state: AppState) -> Router {
     let bundle = Router::new().route("/datasets/{id}/bundle", get(handlers_datasets::get_bundle));
 
     // 治理写通路（A2-3/A2-4）：服务级机器提议入账与机器行权，两个 handler 自管
-    // X-Api-Key(scope=entries:propose|entries:transition) 认证，同 bundle 先例不挂通用 Bearer 中间件
+    // X-Api-Key(scope=entries:propose|entries:transition) 认证，同 bundle 先例不挂通用 Bearer 中间件；
+    // propose_mcp_server 同 scope（entries:propose）第三端点：MCP 拉起批准提案上行（提案回流）
     let invoke = Router::new()
         .route(
             "/invoke/propose_knowledge_entry",
             post(handlers_datasets::propose_knowledge_entry),
+        )
+        .route(
+            "/invoke/propose_mcp_server",
+            post(handlers_datasets::propose_mcp_server),
         )
         .route(
             "/invoke/transition_entry",
@@ -4038,6 +4043,142 @@ mod tests {
     }
 
     /// A2-3 夹具：机器提议请求体（overrides 顶层覆盖，供冒充/伪造象限注入）
+    // ------------------------------------------------------------------
+    // MCP 拉起批准提案 E2E（治理原生线提案回流）：propose_mcp_server →
+    // submit-candidate（闸门一豁免）→ approve（归因按审批者身份补全）→
+    // 生效面可见。失败软红线由调用侧保证；本链验证治理侧收提案/去重/晋升。
+    // ------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_propose_mcp_server_end_to_end() {
+        use crate::model::mcp_servers::canonical_server_key;
+        let (app, state) = build_app();
+        state
+            .store
+            .seed_mcp_servers_dataset_if_empty("tenant_a", "2026-11-01T00:00:00Z")
+            .expect("seed");
+        let propose_key = a23_create_key(&app, &state, "entries:propose").await;
+        let pull_key = a23_create_key(&app, &state, "pull").await;
+        // admin 直建（公共注册固定 rule_engineer；approve 需审批者及以上）
+        let now = unix_now();
+        state
+            .auth
+            .register(
+                &state.store,
+                "tenant_a",
+                "root",
+                "password123",
+                crate::model::auth::Role::Admin,
+                now,
+            )
+            .expect("admin bootstrap");
+        let tokens = state
+            .auth
+            .login(&state.store, "tenant_a", "root", "password123", now)
+            .expect("admin login");
+        let admin = tokens.access_token;
+
+        let command = "my-server.exe";
+        let key = canonical_server_key(command, None);
+        let propose_body = json!({
+            "dataset_id": "org.evorule.mcp.servers",
+            "command": command,
+            "server_key": key,
+            "cause": "会话首次尝试拉起未登记 server",
+            "source_session_id": "sess-smoke",
+        });
+
+        // ① 提案上行：落无 llm 标记的 Draft
+        let (status, body) = send_api_key(
+            app.clone(),
+            "POST",
+            "/v1/invoke/propose_mcp_server",
+            Some(&propose_key),
+            Some(propose_body.clone()),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "{body}");
+        assert_eq!(body["outcome"], "proposed");
+        assert_eq!(body["lifecycle"], "Draft");
+
+        // ② 去重回执：同键重复提案如实返回 already_present
+        let (status, body) = send_api_key(
+            app.clone(),
+            "POST",
+            "/v1/invoke/propose_mcp_server",
+            Some(&propose_key),
+            Some(propose_body),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["outcome"], "already_present");
+
+        // ③ 提案态不进生效面
+        let (status, bundle) = send_api_key(
+            app.clone(),
+            "GET",
+            "/v1/datasets/org.evorule.mcp.servers/bundle",
+            Some(&pull_key),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(bundle["entries"].as_array().unwrap().len(), 0);
+
+        // ④ 候选提交：无沙箱报告（闸门一对 MCP 批准条目豁免）
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            &format!("/v1/entries/{key}/submit-candidate?dataset_id=org.evorule.mcp.servers"),
+            Some(&admin),
+            Some(json!({ "sandbox_report_id": "" })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+
+        // ⑤ approve：归因按审批者身份补全 + 晋升 Active（点一次批准）
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            &format!("/v1/entries/{key}/approve?dataset_id=org.evorule.mcp.servers"),
+            Some(&admin),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["status"], "Active");
+        // 归因身份 = 审批者的治理账号 id（与状态迁移审计 by 字段同口径）
+        assert!(
+            body["payload"]["approved_by"]
+                .as_str()
+                .unwrap_or("")
+                .starts_with("usr_"),
+            "{body}"
+        );
+
+        // ⑥ 生效面可见，生效条目携带补全归因
+        let (status, bundle) = send_api_key(
+            app.clone(),
+            "GET",
+            "/v1/datasets/org.evorule.mcp.servers/bundle",
+            Some(&pull_key),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        let entries = bundle["entries"].as_array().unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0]["entry_id"], key);
+        assert!(entries[0]["rule_body"]["approved_by"]
+            .as_str()
+            .unwrap_or("")
+            .starts_with("usr_"));
+        assert_eq!(
+            entries[0]["rule_body"]["approval_ref"],
+            format!("org.evorule.mcp.servers/{key}@v1")
+        );
+    }
+
     fn a23_propose_body(
         dataset_id: &str,
         entry_id: &str,

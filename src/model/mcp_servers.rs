@@ -26,9 +26,20 @@
 //! - `server_key` = command+args_pattern 的规范哈希（[`canonical_server_key`]，
 //!   与执行侧同形实现+黄金向量对齐测试）；录入时重算比对，防手打错键。
 //! - `entry_id` 约定 = server_key（同键同条目，版本递增=重新批准）。
+//! - **归因两态语义（P2b 提案回流）**：`comment` 恒必填；批准归因三态
+//!   （approved_by/approved_at/approval_ref）在**提案态（Draft/Candidate）可
+//!   缺席**——提案是请求不是批准，机器提案通路的条目不得预填批准归因（伪造
+//!   归因=绕过信任根基）；归因在人工批准动作时按审批者身份补全（approve 通路
+//!   [`fill_approval_attribution`]），**晋升 Active 的任何通路闸死完备性**
+//!   （写核对落账即 Active/Published 的写入强制齐全；迁移闸对 →Active 晋升
+//!   全量复检）。给出归因即必须完整（半空归因=损坏，拒绝）。
 //! - 生命周期照常走数据集五态（条目落 Draft → Candidate → Active 组织内生效
 //!   → Published 对外可拉取）；执行侧拉取端点 = `GET /v1/datasets/{id}/bundle`
 //!   （X-Api-Key scope=pull，同租户 Active 即可拉，跨租户须 public+Published）。
+//!   提案上行端点 = `POST /v1/invoke/propose_mcp_server`（X-Api-Key
+//!   scope=entries:propose；落无 llm 标记的普通 Draft——与 propose_knowledge_entry
+//!   的 trust=llm 强制语义分岔：本数据集的批准必须人工可达，而 llm 产出被
+//!   迁移闸锁死在 Draft 只能机器闸晋升）。
 //!
 //! ## 哈希域归属
 //!
@@ -50,8 +61,8 @@ use serde_json::Value;
 /// MCP 拉起批准清单数据集约定 id（dataset_id 租户内唯一；各租户可各有一份）
 pub const MCP_SERVERS_DATASET_ID: &str = "org.evorule.mcp.servers";
 
-/// 批准条目固定 schema_ref（builtin 严格壳：六必填字段+形态，见
-/// `src/store/schemas/mcp/server.json`）
+/// 批准条目固定 schema_ref（builtin 严格壳：三必填恒在+批准归因三态在生效面
+/// 强制（代码闸），见 `src/store/schemas/mcp/server.json`）
 pub const MCP_SERVER_SCHEMA_REF: &str = "builtin:mcp/server";
 
 /// 裸解释器清单：这类 command 是包管理器/运行时（npx 拉任意包=任意代码执行），
@@ -115,9 +126,20 @@ pub fn validate_approval_entry(
     Ok(())
 }
 
-/// 批准条目 payload 全量校验（写核统一消费点：schema 形状闸之上叠加跨字段
-/// 语义闸——归因完整性 + server_key 重算比对）。
+/// 批准条目 payload 校验（完备形态）：形状 + 批准归因三态齐全 + server_key
+/// 重算比对。→Active 迁移闸（任何晋升通路）与执行侧镜像校验共用——执行侧
+/// 拉到的生效条目（Active/Published）必为完备形态。
 pub fn validate_mcp_server_payload(payload: &Value) -> Result<(), String> {
+    validate_mcp_server_entry(payload, true)
+}
+
+/// 写核形态校验（按落账状态条件化）：归因三态在提案态可缺席（见模块文档
+/// 「归因两态语义」）；`require_approval_attribution=true` 用于落账即
+/// Active/Published 的写入。其余闸（形状/comment/server_key 重算）两态同闸。
+pub fn validate_mcp_server_entry(
+    payload: &Value,
+    require_approval_attribution: bool,
+) -> Result<(), String> {
     let obj = payload
         .as_object()
         .ok_or_else(|| "payload 须为对象".to_string())?;
@@ -139,11 +161,25 @@ pub fn validate_mcp_server_payload(payload: &Value) -> Result<(), String> {
         Some(_) => return Err("args_pattern 须为字符串数组".to_string()),
     };
     validate_approval_entry(command, args_pattern.as_deref())?;
-    // 归因完整性：无归因的放行不允许
-    for key in ["comment", "approved_by", "approved_at", "approval_ref"] {
-        match obj.get(key).and_then(|v| v.as_str()) {
-            Some(s) if !s.trim().is_empty() => {}
-            _ => return Err(format!("缺 {key}（或非非空字符串；批准必须带完整归因）")),
+    // comment 恒必填（登记/提案都必须带可读理由）
+    match obj.get("comment").and_then(|v| v.as_str()) {
+        Some(s) if !s.trim().is_empty() => {}
+        _ => return Err("缺 comment（或非非空字符串；登记必须带可读理由）".to_string()),
+    }
+    // 批准归因三态：生效形态必须齐全；提案态可缺席，但给出即必须完整
+    for key in ["approved_by", "approved_at", "approval_ref"] {
+        let present = obj.get(key).and_then(|v| v.as_str());
+        match (present, require_approval_attribution) {
+            (Some(s), _) if !s.trim().is_empty() => {}
+            (None, false) => {}
+            (None, true) => {
+                return Err(format!("缺 {key}（生效条目必须带完整批准归因）"));
+            }
+            (Some(_), _) => {
+                return Err(format!(
+                    "{key} 为空（归因给出即必须完整；提案态请整体省略）"
+                ));
+            }
         }
     }
     // server_key 重算比对（录入校验与执行侧共用规范函数的对齐锚点）
@@ -154,6 +190,43 @@ pub fn validate_mcp_server_payload(payload: &Value) -> Result<(), String> {
             "server_key 不匹配：期望 {expected}，实际 {other}（以 canonical_server_key 重算为准）"
         )),
         None => Err(format!("缺 server_key（本条目计算值：{expected}）")),
+    }
+}
+
+/// 提案态判定：payload 是否缺批准归因（approve 通路据此决定是否按审批者身份
+/// 补全——见 [`fill_approval_attribution`]；归因齐全的条目零改动直迁）。
+pub fn approval_attribution_missing(payload: &Value) -> bool {
+    ["approved_by", "approved_at", "approval_ref"]
+        .iter()
+        .any(|key| {
+            payload
+                .get(key)
+                .and_then(|v| v.as_str())
+                .is_none_or(|s| s.trim().is_empty())
+        })
+}
+
+/// 批准归因补全（人工批准动作的语义组成）：逐字段填补缺席/空白项，已有
+/// 归因零改动（补全的是「批准」这个事实的归属，不覆盖任何既有声明）。
+pub fn fill_approval_attribution(
+    payload: &mut Value,
+    approved_by: &str,
+    approved_at: &str,
+    approval_ref: &str,
+) {
+    if let Some(obj) = payload.as_object_mut() {
+        let fill = |obj: &mut serde_json::Map<String, Value>, key: &str, v: &str| {
+            let blank = obj
+                .get(key)
+                .and_then(|x| x.as_str())
+                .is_none_or(|s| s.trim().is_empty());
+            if blank {
+                obj.insert(key.to_string(), Value::String(v.to_string()));
+            }
+        };
+        fill(obj, "approved_by", approved_by);
+        fill(obj, "approved_at", approved_at);
+        fill(obj, "approval_ref", approval_ref);
     }
 }
 
@@ -258,5 +331,39 @@ mod tests {
         assert!(validate_mcp_server_payload(&p)
             .unwrap_err()
             .contains("裸解释器"));
+    }
+
+    // ===== 归因两态（P2b 提案回流）=====
+
+    #[test]
+    fn proposal_form_attribution_conditional() {
+        let key = canonical_server_key("my-server.exe", None as Option<&[String]>);
+        // 提案形态（无归因三态）：写核形态合法，完备形态拒绝
+        let proposal = payload_json(&format!(
+            r#"{{"server_key":"{key}","command":"my-server.exe","comment":"自动提案：会话首次尝试"}}"#
+        ));
+        assert!(validate_mcp_server_entry(&proposal, false).is_ok());
+        let err = validate_mcp_server_entry(&proposal, true).unwrap_err();
+        assert!(err.contains("缺 approved_by"));
+        // 半空归因：无论何态都拒绝
+        let half = payload_json(&format!(
+            r#"{{"server_key":"{key}","command":"my-server.exe","comment":"c","approved_by":""}}"#
+        ));
+        assert!(validate_mcp_server_entry(&half, false)
+            .unwrap_err()
+            .contains("approved_by 为空"));
+        // 补全闭环：缺席判定 → 按审批者身份补全 → 完备形态通过
+        let mut p = proposal.clone();
+        assert!(approval_attribution_missing(&p));
+        fill_approval_attribution(&mut p, "alice", "2026-11-01T00:00:00Z", "ref@v1");
+        assert!(!approval_attribution_missing(&p));
+        assert!(validate_mcp_server_entry(&p, true).is_ok());
+        // 已有归因零覆盖：approved_by 保留原值
+        let mut keep = payload_json(&format!(
+            r#"{{"server_key":"{key}","command":"my-server.exe","comment":"c","approved_by":"bob"}}"#
+        ));
+        fill_approval_attribution(&mut keep, "alice", "t", "r");
+        assert_eq!(keep["approved_by"], "bob");
+        assert_eq!(keep["approval_ref"], "r");
     }
 }

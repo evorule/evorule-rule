@@ -1173,6 +1173,186 @@ pub async fn propose_knowledge_entry(
     ))
 }
 
+/// POST /v1/invoke/propose_mcp_server 请求体（MCP 拉起批准提案上行）
+#[derive(Deserialize)]
+pub struct ProposeMcpServerReq {
+    /// 目标数据集（本端点唯一服务 MCP 约定数据集）
+    pub dataset_id: String,
+    /// 拉起命令（原样观测）
+    pub command: String,
+    /// 参数段序列（原样观测；裸解释器必填——形状闸同口径）
+    #[serde(default)]
+    pub args_pattern: Option<Vec<String>>,
+    /// 调用侧计算的规范键（**不采信**：服务端按 command+args_pattern 重算比对）
+    pub server_key: String,
+    /// 可读理由（缺省由 cause 组装；恒必填语义由写核闸保证）
+    #[serde(default)]
+    pub comment: Option<String>,
+    /// 提议事由（审计锚必填，与 propose_knowledge_entry 同纪律）
+    pub cause: String,
+    /// 触发会话/server 锚（审计回放）
+    #[serde(default)]
+    pub source_session_id: Option<String>,
+}
+
+/// POST /v1/invoke/propose_mcp_server —— MCP 拉起批准提案上行（治理原生线提案回流）：
+/// 执行侧装载门把未登记 server 的确定性观测转成提案，落**无 llm 标记的普通
+/// Draft**。与 [`propose_knowledge_entry`] 的 trust=llm 强制语义有意分岔：llm
+/// 产出被迁移闸锁死在 Draft（只能机器闸晋升），而本数据集的批准必须人工可达
+/// （approve 即归因补全+晋升，一次动作完成）——提案内容是装载门的机械观测
+/// （server/command/args 经固定代码规范化），非 LLM 产物，trust=llm 反而不实。
+/// 去重：entry_id=server_key+version 1，同键重复提案落 EntryExists → 如实返回
+/// already_present 回执（调用侧 fail-soft：本端点绝不参与拉起判定）。
+pub async fn propose_mcp_server(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    Json(body): Json<ProposeMcpServerReq>,
+) -> Result<(StatusCode, Json<Value>), ApiError> {
+    use crate::model::mcp_servers::{canonical_server_key, MCP_SERVERS_DATASET_ID};
+    // 1) 服务级 X-Api-Key（scope 收敛：仅 entries:propose，同 propose_knowledge_entry 口径）
+    let k = api_key_from_header(&headers)
+        .ok_or_else(|| ApiError::unauthorized("缺少认证：需 X-Api-Key"))?;
+    let hash = sha256_hex(k);
+    let key = state
+        .store
+        .get_api_key_by_hash(&hash)?
+        .ok_or_else(|| ApiError::unauthorized("API Key 非法"))?;
+    if key.revoked_at.is_some() {
+        return Err(ApiError::unauthorized("API Key 已吊销"));
+    }
+    if key.scope != API_KEY_SCOPE_PROPOSE {
+        return Err(ApiError::forbidden("API Key 无 entries:propose 权限"));
+    }
+    let tenant_id = key.tenant_id.clone();
+    let actor = format!("apikey:{}", key.key_id);
+    // 2) 数据集必须为 MCP 约定数据集（本端点唯一服务对象；租户校验同 add_entry 口径）
+    let ds = state
+        .store
+        .get_dataset(&body.dataset_id)?
+        .ok_or_else(|| ApiError::not_found("数据集不存在"))?;
+    if ds.tenant_id != tenant_id {
+        return Err(ApiError::not_found("数据集不存在"));
+    }
+    if ds.dataset_kind != DatasetKind::Knowledge {
+        return Err(ApiError::bad_request("仅 knowledge 数据集支持提议入账"));
+    }
+    if body.dataset_id != MCP_SERVERS_DATASET_ID {
+        return Err(ApiError::bad_request(format!(
+            "本端点仅服务 MCP 拉起批准清单数据集（{MCP_SERVERS_DATASET_ID}），收到 `{}`",
+            body.dataset_id
+        )));
+    }
+    // 3) server_key 服务端重算比对（调用方键值不采信——与条目写核同一信任纪律）
+    let expected = canonical_server_key(&body.command, body.args_pattern.as_deref());
+    if body.server_key != expected {
+        return Err(ApiError::bad_request(format!(
+            "server_key 不匹配：期望 {expected}，实际 {}（以 canonical_server_key 重算为准）",
+            body.server_key
+        )));
+    }
+    // 4) 组装提案（提案形态：无批准归因三态——归因在人工批准时按审批者身份补全）
+    let comment = body
+        .comment
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| format!("自动提案：{}", body.cause));
+    let mut payload = serde_json::Map::new();
+    payload.insert(
+        "server_key".into(),
+        serde_json::Value::String(expected.clone()),
+    );
+    payload.insert(
+        "command".into(),
+        serde_json::Value::String(body.command.clone()),
+    );
+    if let Some(pattern) = &body.args_pattern {
+        payload.insert(
+            "args_pattern".into(),
+            serde_json::Value::Array(
+                pattern
+                    .iter()
+                    .map(|s| serde_json::Value::String(s.clone()))
+                    .collect(),
+            ),
+        );
+    }
+    payload.insert("comment".into(), serde_json::Value::String(comment));
+    let mut source = format!("MCP spawn 自动提案 | propose_cause: {}", body.cause);
+    if let Some(sid) = &body.source_session_id {
+        source.push_str(&format!(" | source_session: {sid}"));
+    }
+    let entry = crate::model::knowledge::KnowledgeEntry {
+        entry_id: expected.clone(),
+        dataset_id: body.dataset_id.clone(),
+        version: 1,
+        status: Some(LifecycleStatus::Draft),
+        provenance: Provenance {
+            source,
+            clause: None,
+            document_id: None,
+            effective_from: None,
+            effective_to: None,
+            last_verified: None,
+            verified_by: None,
+        },
+        domain: ds
+            .domain
+            .first()
+            .cloned()
+            .unwrap_or_else(|| "mcp".to_string()),
+        tags: vec![],
+        payload: serde_json::Value::Object(payload),
+        schema_ref: crate::model::mcp_servers::MCP_SERVER_SCHEMA_REF.to_string(),
+        governance: None,
+        knowledge_kind: None,
+        trust_level: None,
+        license_ref: None,
+        execution_contract: None,
+    };
+    match state.store.add_knowledge_entry(&entry) {
+        Ok(()) => {
+            tracing::info!(
+                target: "evorule::invoke",
+                "propose_mcp_server: dataset={} entry={} v{} by {actor}",
+                entry.dataset_id,
+                entry.entry_id,
+                entry.version
+            );
+            Ok((
+                StatusCode::CREATED,
+                Json(serde_json::json!({
+                    "received": true,
+                    "outcome": "proposed",
+                    "dataset_id": entry.dataset_id,
+                    "entry_id": entry.entry_id,
+                    "version": entry.version,
+                    "lifecycle": "Draft",
+                })),
+            ))
+        }
+        Err(crate::store::StoreError::EntryExists {
+            dataset,
+            entry: entry_id,
+            version: 1,
+        }) => {
+            // 去重回执：同键提案已在库（任何状态）——调用侧据此停止重复提案
+            tracing::info!(
+                target: "evorule::invoke",
+                "propose_mcp_server: dedup dataset={dataset} entry={entry_id} by {actor}"
+            );
+            Ok((
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "received": true,
+                    "outcome": "already_present",
+                    "dataset_id": dataset,
+                    "entry_id": entry_id,
+                })),
+            ))
+        }
+        Err(e) => Err(e.into()),
+    }
+}
+
 /// POST /v1/invoke/transition_entry 请求体（A2-4 机器行权）
 #[derive(Deserialize)]
 pub struct TransitionEntryReq {

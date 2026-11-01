@@ -1680,8 +1680,10 @@ impl RuleStore {
         }
         // 4) MCP 拉起批准清单硬规则（治理原生线）：约定数据集与约定 schema_ref 双分派，
         //    任一命中即按批准条目校验；schema_ref 错挂一律拒绝（先于 D3 形状闸给出
-        //    精确报错，防错挂条目被领域 schema 以无关理由拒掉）。跨字段语义闸：
-        //    归因完整性 + server_key 重算比对（与执行侧装载门共用规范函数）。
+        //    精确报错，防错挂条目被领域 schema 以无关理由拒掉）。归因两态：落账即
+        //    生效（Active/Published）的写入必须带完整批准归因；提案态（Draft/
+        //    Candidate/Rejected）归因可缺席（提案=请求不是批准），→Active 晋升闸
+        //    另行复检完备性。server_key 重算比对两态同闸（与执行侧装载门共用规范函数）。
         if entry.dataset_id == crate::model::mcp_servers::MCP_SERVERS_DATASET_ID
             || entry.schema_ref == crate::model::mcp_servers::MCP_SERVER_SCHEMA_REF
         {
@@ -1693,9 +1695,16 @@ impl RuleStore {
                     entry.schema_ref
                 ))));
             }
-            crate::model::mcp_servers::validate_mcp_server_payload(&entry.payload)
-                .map_err(ValidationError::Message)
-                .map_err(StoreError::Validation)?;
+            let require_attribution = matches!(
+                entry.status,
+                Some(LifecycleStatus::Active) | Some(LifecycleStatus::Published)
+            );
+            crate::model::mcp_servers::validate_mcp_server_entry(
+                &entry.payload,
+                require_attribution,
+            )
+            .map_err(ValidationError::Message)
+            .map_err(StoreError::Validation)?;
         }
         // 5) D3 门禁（SSOT）：payload 过领域 jsonschema 校验；resolver 未命中 = 拒绝
         // 知识资产化批次 A：门禁视图流通四字段（与 knowledge_entry_to_bundle 同口径）
@@ -2097,6 +2106,17 @@ impl RuleStore {
                 from: Some(from),
                 to,
             });
+        }
+        // MCP 拉起批准清单：晋升 Active 即进入执行侧 enforce 名单——批准归因
+        // 完备性在此闸死（→Active 的任何通路共用本闸）：提案态归因可缺席，
+        // 生效必须齐全（人工 approve 通路会先按审批者身份补全再迁）；顺带全量
+        // 复检形状与 server_key（防草稿期编辑漂移）。
+        if to == LifecycleStatus::Active
+            && dataset_id == crate::model::mcp_servers::MCP_SERVERS_DATASET_ID
+        {
+            crate::model::mcp_servers::validate_mcp_server_payload(&entry.payload)
+                .map_err(ValidationError::Message)
+                .map_err(StoreError::Validation)?;
         }
         entry.status = Some(to);
         let mut gov = entry.governance.clone().unwrap_or_default();
@@ -3528,6 +3548,16 @@ impl RuleStore {
                 from: Some(from),
                 to,
             });
+        }
+        // MCP 拉起批准清单：与人工迁移闸同口径——晋升 Active 即进入执行侧
+        // enforce 名单，批准归因完备性闸死（机器闸对归因缺席的提案一致拒绝：
+        // 批准归因只能来自人工 approve 通路的身份补全，机器不放行不完整批准）。
+        if to == LifecycleStatus::Active
+            && dataset_id == crate::model::mcp_servers::MCP_SERVERS_DATASET_ID
+        {
+            crate::model::mcp_servers::validate_mcp_server_payload(&entry.payload)
+                .map_err(ValidationError::Message)
+                .map_err(StoreError::Validation)?;
         }
         entry.status = Some(to);
         let mut gov = entry.governance.clone().unwrap_or_default();
@@ -8482,15 +8512,20 @@ mod tests {
             .iter()
             .filter_map(|x| x.as_str())
             .collect();
-        for key in [
-            "server_key",
-            "command",
-            "comment",
-            "approved_by",
-            "approved_at",
-            "approval_ref",
-        ] {
+        // 恒必填三件；批准归因三态是状态条件闸（提案态缺席合法），在 properties
+        // 有类型但不在 schema required 里（归因两态语义，P2b 提案回流）
+        for key in ["server_key", "command", "comment"] {
             assert!(required.contains(&key), "missing required field: {key}");
+        }
+        for key in ["approved_by", "approved_at", "approval_ref"] {
+            assert!(
+                !required.contains(&key),
+                "attribution trio must stay status-conditional: {key}"
+            );
+            assert!(
+                v["properties"].get(key).is_some(),
+                "attribution field must stay typed in properties: {key}"
+            );
         }
         assert_eq!(v["additionalProperties"], serde_json::json!(false));
     }
@@ -8681,6 +8716,128 @@ mod tests {
             .unwrap();
         assert_eq!(b.entries.len(), 1);
         assert_eq!(b.entries[0].entry_id, key);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_mcp_proposal_lifecycle_gates() {
+        let (store, dir) = file_store_with_body_schema();
+        let mut ds = knowledge_dataset();
+        ds.dataset_id = MCP_SERVERS_DATASET_ID.into();
+        ds.domain = vec!["mcp".into()];
+        store.create_dataset(&ds).unwrap();
+        let tests = crate::bundle::BundleTests::unverified();
+        // 提案形态（无归因三态）落 Draft 合法；生效面不可见
+        let key = canonical_server_key("my-server.exe", None as Option<&[String]>);
+        let proposal = serde_json::json!({
+            "server_key": key,
+            "command": "my-server.exe",
+            "comment": "自动提案：会话首次尝试"
+        });
+        store
+            .add_knowledge_entry(&mcp_entry(
+                MCP_SERVERS_DATASET_ID,
+                proposal,
+                MCP_SERVER_SCHEMA_REF,
+            ))
+            .unwrap();
+        let b = store
+            .export_bundle(MCP_SERVERS_DATASET_ID, &tests, "t", "now", "inst", None)
+            .unwrap();
+        assert!(
+            b.entries.is_empty(),
+            "proposal must stay off the live surface"
+        );
+        // Draft→Candidate 合法（提案态流转）
+        store
+            .transition_knowledge_entry_status(
+                MCP_SERVERS_DATASET_ID,
+                &key,
+                LifecycleStatus::Candidate,
+                "u",
+                "t",
+                "候选提交",
+            )
+            .unwrap();
+        // 无归因晋升 Active → 完备性闸拒绝（人工迁移通路）
+        let err = store
+            .transition_knowledge_entry_status(
+                MCP_SERVERS_DATASET_ID,
+                &key,
+                LifecycleStatus::Active,
+                "u",
+                "t2",
+                "越级晋升",
+            )
+            .unwrap_err();
+        assert!(err.to_string().contains("approved_by"), "gate: {err}");
+        // 人工补全（approve 通路语义：Candidate 非 frozen 可编辑）→ 晋升通过
+        let mut e = store
+            .get_latest_knowledge_entry(MCP_SERVERS_DATASET_ID, &key)
+            .unwrap()
+            .unwrap();
+        assert!(!e.is_frozen());
+        crate::model::mcp_servers::fill_approval_attribution(
+            &mut e.payload,
+            "alice",
+            "2026-11-01T00:00:00Z",
+            "org.evorule.mcp.servers/…@v1",
+        );
+        store.update_draft_knowledge_entry(&e).unwrap();
+        store
+            .transition_knowledge_entry_status(
+                MCP_SERVERS_DATASET_ID,
+                &key,
+                LifecycleStatus::Active,
+                "alice",
+                "t3",
+                "批准",
+            )
+            .unwrap();
+        let b = store
+            .export_bundle(MCP_SERVERS_DATASET_ID, &tests, "t", "now", "inst", None)
+            .unwrap();
+        assert_eq!(b.entries.len(), 1);
+        assert_eq!(b.entries[0].rule_body["approved_by"], "alice");
+        // 机器闸对归因缺席的提案一致拒绝（第二条提案）
+        let key2 = canonical_server_key("other-server.exe", None as Option<&[String]>);
+        let proposal2 = serde_json::json!({
+            "server_key": key2,
+            "command": "other-server.exe",
+            "comment": "自动提案二"
+        });
+        store
+            .add_knowledge_entry(&mcp_entry(
+                MCP_SERVERS_DATASET_ID,
+                proposal2,
+                MCP_SERVER_SCHEMA_REF,
+            ))
+            .unwrap();
+        store
+            .transition_knowledge_entry_status(
+                MCP_SERVERS_DATASET_ID,
+                &key2,
+                LifecycleStatus::Candidate,
+                "u",
+                "t4",
+                "候选提交",
+            )
+            .unwrap();
+        let err = store
+            .transition_knowledge_entry_status_machine(
+                MCP_SERVERS_DATASET_ID,
+                &key2,
+                LifecycleStatus::Active,
+                "machine",
+                "t5",
+                "机器闸晋升",
+                "T1",
+            )
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("approved_by"),
+            "machine gate: {err}"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 

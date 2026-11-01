@@ -2,7 +2,7 @@
   "$id": "builtin:mcp/server",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "mcp/server approval entry",
-  "description": "MCP spawn approval list entry (governance dataset org.evorule.mcp.servers). Unlike the other builtin shells this one is intentionally strict: the approval list is a security control surface, so the six mandatory attribution and identity fields are required out of the box (fresh deployments and in-memory stores included). server_key must equal the canonical hash of command+args_pattern; the cross-field check is enforced in the store write core (this schema alone cannot express it). entry_id convention = server_key. The executor side (agent spawn gate) mirrors this contract and aligns via shared golden vector tests.",
+  "description": "MCP spawn approval list entry (governance dataset org.evorule.mcp.servers). Strict builtin: server_key/command/comment are always required; the approval attribution trio (approved_by/approved_at/approval_ref) is enforced by the store code gates rather than this schema, because it is status-conditional - proposal-form entries (Draft/Candidate, machine-proposed) legitimately omit it (a proposal is a request, not an approval), while promotion to Active (any path) and direct Active/Published writes require it complete (the human approve action fills it from the approver identity). server_key must equal the canonical hash of command+args_pattern; the cross-field checks live in the store write core and the Active promotion gate. entry_id convention = server_key. The executor side (agent spawn gate) mirrors this contract and aligns via shared golden vector tests.",
   "type": "object",
   "properties": {
     "server_key": { "type": "string", "pattern": "^blake3:[0-9a-f]{64}$" },
@@ -17,13 +17,6 @@
     "approved_at": { "type": "string", "minLength": 1 },
     "approval_ref": { "type": "string", "minLength": 1 }
   },
-  "required": [
-    "server_key",
-    "command",
-    "comment",
-    "approved_by",
-    "approved_at",
-    "approval_ref"
-  ],
+  "required": ["server_key", "command", "comment"],
   "additionalProperties": false
 }

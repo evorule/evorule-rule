@@ -201,23 +201,31 @@ pub async fn submit_candidate(
     if !can(ctx.role, Action::Edit) {
         return Err(ApiError::forbidden("需要规则工程师及以上角色"));
     }
+    let hint = scope.dataset_id.as_deref();
+    let (dataset_id, _) = locate_entry(&state, &ctx.tenant_id, &entry_id, hint)?;
     // 闸门一证据最低门槛：空串/纯空白报告 ID 拒绝（报告存在性与 verdict 的
-    // 深校验随沙箱报告账本落地后启用——历史批次边界，登记在案）
+    // 深校验随沙箱报告账本落地后启用——历史批次边界，登记在案）。
+    // 豁免：MCP 拉起批准清单条目非规则执行资产，沙箱验证对其无对象（闸门一
+    // 空转），候选提交不要求报告引用。
+    let mcp_exempt = dataset_id == crate::model::mcp_servers::MCP_SERVERS_DATASET_ID;
     let report_id = req.sandbox_report_id.trim().to_string();
-    if report_id.is_empty() {
+    if report_id.is_empty() && !mcp_exempt {
         return Err(ApiError::bad_request(
             "sandbox_report_id 不能为空：闸门一需沙箱验证报告引用（历史批次：报告账本未建，当前仅拒绝空证据）",
         ));
     }
-    let hint = scope.dataset_id.as_deref();
-    let (dataset_id, _) = locate_entry(&state, &ctx.tenant_id, &entry_id, hint)?;
+    let cause = if mcp_exempt {
+        "提交候选（MCP 拉起批准条目：闸门一沙箱证据面向规则执行资产，本类条目不适用）".to_string()
+    } else {
+        format!("闸门一通过，沙箱报告 {report_id}")
+    };
     transition_any(
         &state,
         &dataset_id,
         &entry_id,
         LifecycleStatus::Candidate,
         &ctx.user_id,
-        &format!("闸门一通过，沙箱报告 {report_id}"),
+        &cause,
     )?;
     let (_, updated) = locate_entry(&state, &ctx.tenant_id, &entry_id, hint)?;
     Ok(Json(updated.to_json()))
@@ -268,12 +276,30 @@ pub async fn approve(
     if !can(ctx.role, Action::Approve) {
         return Err(ApiError::forbidden("审批需审批者及以上角色"));
     }
-    let (dataset_id, _) = locate_entry(
+    let (dataset_id, located) = locate_entry(
         &state,
         &ctx.tenant_id,
         &entry_id,
         scope.dataset_id.as_deref(),
     )?;
+    // MCP 拉起批准清单：批准动作即归因——提案态（Draft/Candidate）的归因三态
+    // 可缺席（提案是请求不是批准，机器提案不得预填批准归因），approve 时按
+    // 审批者身份补全后晋升（「点一次批准」=补全+生效，一次动作完成）；归因
+    // 齐全的条目零改动直迁。→Active 迁移闸会复检完备性，缺补全即拒绝。
+    // （mcp 条目恒为 knowledge 表；Rule 臂不可能携带 mcp schema，不做补全）
+    if dataset_id == crate::model::mcp_servers::MCP_SERVERS_DATASET_ID {
+        if let crate::store::AnyEntry::Knowledge(mut e) = located {
+            if crate::model::mcp_servers::approval_attribution_missing(&e.payload) {
+                crate::model::mcp_servers::fill_approval_attribution(
+                    &mut e.payload,
+                    &ctx.user_id,
+                    &now_iso(),
+                    &format!("{dataset_id}/{entry_id}@v{}", e.version),
+                );
+                state.store.update_draft_knowledge_entry(&e)?;
+            }
+        }
+    }
     transition_any(
         &state,
         &dataset_id,
