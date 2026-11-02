@@ -4156,6 +4156,24 @@ mod tests {
             "{body}"
         );
 
+        // ⑤b task_ref 阻塞标记流：带 task_ref 的提案 → payload.task_ref + task tag
+        let (status, body) = send_api_key(
+            app.clone(),
+            "POST",
+            "/v1/invoke/propose_mcp_server",
+            Some(&propose_key),
+            Some(json!({
+                "dataset_id": "org.evorule.mcp.servers",
+                "command": "task-server.exe",
+                "server_key": canonical_server_key("task-server.exe", None),
+                "cause": "无人值守任务阻塞自动提案",
+                "task_ref": "nightly-maintenance",
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "{body}");
+        assert_eq!(body["outcome"], "proposed");
+
         // ⑥ 生效面可见，生效条目携带补全归因
         let (status, bundle) = send_api_key(
             app.clone(),

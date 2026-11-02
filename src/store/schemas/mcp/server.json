@@ -2,7 +2,7 @@
   "$id": "builtin:mcp/server",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "mcp/server approval entry",
-  "description": "MCP spawn approval list entry (governance dataset org.evorule.mcp.servers). Strict builtin: server_key/command/comment are always required; the approval attribution trio (approved_by/approved_at/approval_ref) is enforced by the store code gates rather than this schema, because it is status-conditional - proposal-form entries (Draft/Candidate, machine-proposed) legitimately omit it (a proposal is a request, not an approval), while promotion to Active (any path) and direct Active/Published writes require it complete (the human approve action fills it from the approver identity). server_key must equal the canonical hash of command+args_pattern; the cross-field checks live in the store write core and the Active promotion gate. entry_id convention = server_key. The executor side (agent spawn gate) mirrors this contract and aligns via shared golden vector tests.",
+  "description": "MCP spawn approval list entry (governance dataset org.evorule.mcp.servers). Strict builtin: server_key/command/comment are always required; the approval attribution trio (approved_by/approved_at/approval_ref) is enforced by the store code gates rather than this schema, because it is status-conditional - proposal-form entries (Draft/Candidate, machine-proposed) legitimately omit it (a proposal is a request, not an approval), while promotion to Active (any path) and direct Active/Published writes require it complete (the human approve action fills it from the approver identity). server_key must equal the canonical hash of command+args_pattern; the cross-field checks live in the store write core and the Active promotion gate. entry_id convention = server_key. The executor side (agent spawn gate) mirrors this contract and aligns via shared golden vector tests. task_ref (optional) marks proposals that originated from (or blocked) an unattended task - written by the proposal intake, consumed by approval-queue filtering.",
   "type": "object",
   "properties": {
     "server_key": { "type": "string", "pattern": "^blake3:[0-9a-f]{64}$" },
@@ -15,7 +15,8 @@
     "comment": { "type": "string", "minLength": 1 },
     "approved_by": { "type": "string", "minLength": 1 },
     "approved_at": { "type": "string", "minLength": 1 },
-    "approval_ref": { "type": "string", "minLength": 1 }
+    "approval_ref": { "type": "string", "minLength": 1 },
+    "task_ref": { "type": "string", "minLength": 1 }
   },
   "required": ["server_key", "command", "comment"],
   "additionalProperties": false

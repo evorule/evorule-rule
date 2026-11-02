@@ -1193,6 +1193,10 @@ pub struct ProposeMcpServerReq {
     /// 触发会话/server 锚（审计回放）
     #[serde(default)]
     pub source_session_id: Option<String>,
+    /// 无人值守任务标识（design-57：提案侧阻塞标记——批准队列可按任务
+    /// 关联过滤；执行侧 run 进程从能力包上下文携带）
+    #[serde(default)]
+    pub task_ref: Option<String>,
 }
 
 /// POST /v1/invoke/propose_mcp_server —— MCP 拉起批准提案上行（治理原生线提案回流）：
@@ -1276,6 +1280,18 @@ pub async fn propose_mcp_server(
         );
     }
     payload.insert("comment".into(), serde_json::Value::String(comment));
+    // 无人值守阻塞标记（design-57）：task_ref 入 payload（schema 可选属性）+
+    // tags（审批面 staleness/任务关联过滤用）——缺省任务不带
+    let mut tags = vec!["task".to_string()];
+    if let Some(task_ref) = body.task_ref.as_deref().filter(|t| !t.trim().is_empty()) {
+        payload.insert(
+            "task_ref".into(),
+            serde_json::Value::String(task_ref.to_string()),
+        );
+        tags.push(format!("task:{task_ref}"));
+    } else {
+        tags.push("task:none".to_string());
+    }
     let mut source = format!("MCP spawn 自动提案 | propose_cause: {}", body.cause);
     if let Some(sid) = &body.source_session_id {
         source.push_str(&format!(" | source_session: {sid}"));
@@ -1299,7 +1315,7 @@ pub async fn propose_mcp_server(
             .first()
             .cloned()
             .unwrap_or_else(|| "mcp".to_string()),
-        tags: vec![],
+        tags,
         payload: serde_json::Value::Object(payload),
         schema_ref: crate::model::mcp_servers::MCP_SERVER_SCHEMA_REF.to_string(),
         governance: None,
