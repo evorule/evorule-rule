@@ -4174,6 +4174,27 @@ mod tests {
         assert_eq!(status, StatusCode::CREATED, "{body}");
         assert_eq!(body["outcome"], "proposed");
 
+        // ⑤c T+1 审阅面：task_ref 标签过滤（tag 值含冒号由 split_once 兼容）
+        let (status, body) = send(
+            app.clone(),
+            "GET",
+            &format!(
+                "/v1/datasets/{}/entries?filter=tag:task:{}",
+                "org.evorule.mcp.servers", "nightly-maintenance"
+            ),
+            Some(&admin),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        let items = body["items"].as_array().cloned().unwrap_or_default();
+        assert_eq!(
+            items.len(),
+            1,
+            "task filter must isolate the blocked-task proposal"
+        );
+        assert_eq!(items[0]["payload"]["task_ref"], "nightly-maintenance");
+
         // ⑥ 生效面可见，生效条目携带补全归因
         let (status, bundle) = send_api_key(
             app.clone(),
