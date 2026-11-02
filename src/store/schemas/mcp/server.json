@@ -16,7 +16,11 @@
     "approved_by": { "type": "string", "minLength": 1 },
     "approved_at": { "type": "string", "minLength": 1 },
     "approval_ref": { "type": "string", "minLength": 1 },
-    "task_ref": { "type": "string", "minLength": 1 }
+    "task_ref": { "type": "string", "minLength": 1 },
+    "scan_report": {
+      "type": "object",
+      "description": "Optional inspection scan report attached to the proposal (executor mcp-inspect output: scanner_version/scanned_at/tools_listed/ioc_hits/llm_advisory/rules_source + report_hash). Optional - a proposal without a scan report is admitted as unscanned (visible to the approver). Shape and integrity hash are enforced by the model code gate (validate_scan_report), not this schema."
+    }
   },
   "required": ["server_key", "command", "comment"],
   "additionalProperties": false

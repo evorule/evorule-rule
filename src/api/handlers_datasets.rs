@@ -1197,6 +1197,11 @@ pub struct ProposeMcpServerReq {
     /// 关联过滤；执行侧 run 进程从能力包上下文携带）
     #[serde(default)]
     pub task_ref: Option<String>,
+    /// 可选检视扫描报告（执行侧 mcp-inspect 产出；形状与完整性哈希由
+    /// `model::mcp_servers::validate_scan_report` 服务端重算把关——不附报告
+    /// 照常入库，审批者可见「未扫描」状态）
+    #[serde(default)]
+    pub scan_report: Option<serde_json::Value>,
 }
 
 /// POST /v1/invoke/propose_mcp_server —— MCP 拉起批准提案上行（治理原生线提案回流）：
@@ -1254,6 +1259,12 @@ pub async fn propose_mcp_server(
             body.server_key
         )));
     }
+    // 3.5) 可选扫描报告：形状闸 + 完整性哈希服务端重算（签约后篡改即拒）。
+    // 无报告照常入库（v1 不强制），审批者据 payload 有无 scan_report 可见
+    // 「未扫描」灰标；报告只进条目与审批展示，不参与任何自动裁决。
+    if let Some(report) = &body.scan_report {
+        crate::model::mcp_servers::validate_scan_report(report).map_err(ApiError::bad_request)?;
+    }
     // 4) 组装提案（提案形态：无批准归因三态——归因在人工批准时按审批者身份补全）
     let comment = body
         .comment
@@ -1291,6 +1302,9 @@ pub async fn propose_mcp_server(
         tags.push(format!("task:{task_ref}"));
     } else {
         tags.push("task:none".to_string());
+    }
+    if let Some(report) = body.scan_report {
+        payload.insert("scan_report".into(), report);
     }
     let mut source = format!("MCP spawn 自动提案 | propose_cause: {}", body.cause);
     if let Some(sid) = &body.source_session_id {

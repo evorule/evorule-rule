@@ -314,7 +314,20 @@ pub async fn approve(
         &entry_id,
         scope.dataset_id.as_deref(),
     )?;
-    Ok(Json(updated.to_json()))
+    // MCP 拉起批准清单：approve 响应附带确定性扫描状态标（审批展示三色语义
+    // ——ioc_hit 红 / advisory 黄 / clean 绿 / unscanned 灰）。纯展示分类：
+    // 提案条目的 payload 已含完整 scan_report，本标只是批准者一眼可见的
+    // 判读面；裁决权始终在人。
+    let mut body = updated.to_json();
+    if dataset_id == crate::model::mcp_servers::MCP_SERVERS_DATASET_ID {
+        if let Some(payload) = body.get("payload") {
+            let marker = crate::model::mcp_servers::scan_marker(payload);
+            if let Some(obj) = body.as_object_mut() {
+                obj.insert("scan_marker".to_string(), marker);
+            }
+        }
+    }
+    Ok(Json(body))
 }
 
 /// POST /entries/{id}/reject —— 人工拒绝（终审 reject 腿，Approve 角色）：
