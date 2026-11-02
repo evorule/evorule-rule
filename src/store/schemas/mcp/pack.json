@@ -1,0 +1,21 @@
+{
+  "$id": "builtin:mcp/pack",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "mcp/pack unattended capability pack",
+  "description": "Unattended-task capability pack (governance dataset org.evorule.mcp.packs, standing delegation). Strict builtin: task_ref, servers (canonical blake3 server_key subset of the approval list), ttl_secs and on_gap (the only legal value is \"block\" - the design provides no improvise form) are required; budget_secs is an optional declaration consumed by the existing wall-clock budget mechanism. entry_id convention = task_ref; re-issuing a pack bumps the entry version. The executor intersects this pack with the approval list at spawn time (pack AND list).",
+  "type": "object",
+  "properties": {
+    "task_ref": { "type": "string", "minLength": 1 },
+    "servers": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^blake3:[0-9a-f]{64}$" },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "ttl_secs": { "type": "integer", "minimum": 1 },
+    "budget_secs": { "type": "integer", "minimum": 1 },
+    "on_gap": { "type": "string", "const": "block" }
+  },
+  "required": ["task_ref", "servers", "ttl_secs", "on_gap"],
+  "additionalProperties": false
+}

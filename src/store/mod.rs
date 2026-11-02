@@ -604,6 +604,7 @@ impl RuleStore {
                 // MCP 拉起批准清单严格壳（治理原生线）：批准面是安全控制面，六必填
                 // 归因/身份字段开箱即严（区别于知识域最小壳）；跨字段语义闸在写核
                 ("server", include_str!("schemas/mcp/server.json")),
+                ("pack", include_str!("schemas/mcp/pack.json")),
             ] {
                 let Ok(v) = serde_json::from_str::<serde_json::Value>(text) else {
                     // 内嵌资产损坏=工程错误：运行时静默跳过（与目录件损坏 continue 同型），
@@ -1705,6 +1706,24 @@ impl RuleStore {
             )
             .map_err(ValidationError::Message)
             .map_err(StoreError::Validation)?;
+        }
+        // 4b) MCP 任务能力包硬规则（无人值守防护层）：约定数据集与约定 schema_ref
+        //     双分派，任一命中即按能力包校验；包体语义闸（servers 规范键/非空/
+        //     on_gap 唯一合法值）+ 生命周期/审批链照常。
+        if entry.dataset_id == crate::model::mcp_packs::MCP_PACKS_DATASET_ID
+            || entry.schema_ref == crate::model::mcp_packs::MCP_PACK_SCHEMA_REF
+        {
+            if entry.schema_ref != crate::model::mcp_packs::MCP_PACK_SCHEMA_REF {
+                return Err(StoreError::Validation(ValidationError::Message(format!(
+                    "数据集 `{}` 为 MCP 任务能力包：条目必须挂 schema_ref `{}`，实际 `{}`",
+                    entry.dataset_id,
+                    crate::model::mcp_packs::MCP_PACK_SCHEMA_REF,
+                    entry.schema_ref
+                ))));
+            }
+            crate::model::mcp_packs::validate_mcp_pack_payload(&entry.payload)
+                .map_err(ValidationError::Message)
+                .map_err(StoreError::Validation)?;
         }
         // 5) D3 门禁（SSOT）：payload 过领域 jsonschema 校验；resolver 未命中 = 拒绝
         // 知识资产化批次 A：门禁视图流通四字段（与 knowledge_entry_to_bundle 同口径）
@@ -4245,6 +4264,54 @@ impl RuleStore {
             dataset_kind: DatasetKind::Knowledge,
             domain: vec!["mcp".to_string()],
             tags: vec!["mcp".to_string(), "spawn-allowlist".to_string()],
+            tenant_id: tenant_id.to_string(),
+            visibility: Visibility::Public,
+            lifecycle: Lifecycle::default(),
+            versioning: Versioning::default(),
+            law_ref: None,
+            version_selection: None,
+            data_dependencies: None,
+            event_schemas: vec![],
+            meta: Meta {
+                created_at: now.to_string(),
+                created_by: "system-seed".to_string(),
+                updated_at: None,
+                updated_by: None,
+            },
+        };
+        self.create_dataset(&ds)?;
+        Ok(true)
+    }
+
+    /// 无人值守防护层：MCP 任务能力包数据集预置（幂等 seed，服务启动时调用）。
+    ///
+    /// 约定数据集（`org.evorule.mcp.packs`，knowledge 类、public 可见）缺位时
+    /// 创建；**不预置任何条目**——能力包由运营方在人在线时经治理审批链逐个
+    /// 产生（standing delegation 授权面）。执行侧经 pull 通路按 task_ref 消费。
+    /// 返回本次是否创建。
+    pub fn seed_mcp_packs_dataset_if_empty(
+        &self,
+        tenant_id: &str,
+        now: &str,
+    ) -> Result<bool, StoreError> {
+        if self
+            .get_dataset(crate::model::mcp_packs::MCP_PACKS_DATASET_ID)?
+            .is_some()
+        {
+            return Ok(false);
+        }
+        let ds = RuleDataset {
+            dataset_id: crate::model::mcp_packs::MCP_PACKS_DATASET_ID.to_string(),
+            name: "MCP 任务能力包".to_string(),
+            description: Some(
+                "无人值守任务的能力授权面（standing delegation）：task_ref 绑定 schedule 任务，"
+                    .to_string()
+                    + "servers 为拉起批准清单键子集，ttl/budget 为授权时间与资源界。"
+                    + "entry_id 约定 = task_ref；schema_ref 固定 builtin:mcp/pack。",
+            ),
+            dataset_kind: DatasetKind::Knowledge,
+            domain: vec!["mcp".to_string()],
+            tags: vec!["mcp".to_string(), "capability-pack".to_string()],
             tenant_id: tenant_id.to_string(),
             visibility: Visibility::Public,
             lifecycle: Lifecycle::default(),
@@ -8716,6 +8783,85 @@ mod tests {
             .unwrap();
         assert_eq!(b.entries.len(), 1);
         assert_eq!(b.entries[0].entry_id, key);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_mcp_pack_builtin_shell_and_seed() {
+        // 内存库：pack 严格壳开箱可解析（四必填 + servers 规范键形态）
+        let store = RuleStore::in_memory().unwrap();
+        let v = store
+            .lookup_domain_schema(crate::model::mcp_packs::MCP_PACK_SCHEMA_REF)
+            .expect("builtin pack shell missing");
+        assert_eq!(v["$id"], crate::model::mcp_packs::MCP_PACK_SCHEMA_REF);
+        let required: Vec<&str> = v["required"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|x| x.as_str())
+            .collect();
+        for key in ["task_ref", "servers", "ttl_secs", "on_gap"] {
+            assert!(required.contains(&key), "missing required field: {key}");
+        }
+        // seed 幂等 + knowledge/public + 空包集
+        assert!(store
+            .seed_mcp_packs_dataset_if_empty("org-evorule", "t")
+            .unwrap());
+        assert!(!store
+            .seed_mcp_packs_dataset_if_empty("org-evorule", "t2")
+            .unwrap());
+        let ds = store
+            .get_dataset(crate::model::mcp_packs::MCP_PACKS_DATASET_ID)
+            .unwrap()
+            .expect("seeded pack dataset");
+        assert_eq!(ds.dataset_kind, DatasetKind::Knowledge);
+        assert_eq!(ds.visibility, Visibility::Public);
+    }
+
+    #[test]
+    fn test_mcp_pack_write_core_gates() {
+        let (store, dir) = file_store_with_body_schema();
+        let mut ds = knowledge_dataset();
+        ds.dataset_id = crate::model::mcp_packs::MCP_PACKS_DATASET_ID.into();
+        ds.domain = vec!["mcp".into()];
+        store.create_dataset(&ds).unwrap();
+
+        let key = canonical_server_key("my-server.exe", None as Option<&[String]>);
+        let payload = serde_json::json!({
+            "task_ref": "nightly-maintenance",
+            "servers": [key],
+            "ttl_secs": 3600,
+            "on_gap": "block"
+        });
+        // 合法包入库（entry_id 约定 = task_ref）
+        let mut pack = mcp_entry(
+            crate::model::mcp_packs::MCP_PACKS_DATASET_ID,
+            payload.clone(),
+            crate::model::mcp_packs::MCP_PACK_SCHEMA_REF,
+        );
+        pack.entry_id = "nightly-maintenance".to_string();
+        store.add_knowledge_entry(&pack).unwrap();
+
+        // 错 schema_ref 拒绝
+        let mut wrong = pack.clone();
+        wrong.schema_ref = "builtin:knowledge/fact".into();
+        wrong.version = 2;
+        let err = store.add_knowledge_entry(&wrong).unwrap_err();
+        assert!(err.to_string().contains("schema_ref"));
+
+        // on_gap 非法（improvise 形态）拒绝
+        let mut improvise = pack.clone();
+        improvise.payload["on_gap"] = serde_json::json!("improvise");
+        improvise.version = 3;
+        let err = store.add_knowledge_entry(&improvise).unwrap_err();
+        assert!(err.to_string().contains("on_gap"));
+
+        // 空 servers 拒绝
+        let mut empty = pack.clone();
+        empty.payload["servers"] = serde_json::json!([]);
+        empty.version = 4;
+        let err = store.add_knowledge_entry(&empty).unwrap_err();
+        assert!(err.to_string().contains("不能为空数组"));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
