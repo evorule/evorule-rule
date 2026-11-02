@@ -1193,7 +1193,7 @@ pub struct ProposeMcpServerReq {
     /// 触发会话/server 锚（审计回放）
     #[serde(default)]
     pub source_session_id: Option<String>,
-    /// 无人值守任务标识（design-57：提案侧阻塞标记——批准队列可按任务
+    /// 无人值守任务标识（无人值守防护层：提案侧阻塞标记——批准队列可按任务
     /// 关联过滤；执行侧 run 进程从能力包上下文携带）
     #[serde(default)]
     pub task_ref: Option<String>,
@@ -1280,7 +1280,7 @@ pub async fn propose_mcp_server(
         );
     }
     payload.insert("comment".into(), serde_json::Value::String(comment));
-    // 无人值守阻塞标记（design-57）：task_ref 入 payload（schema 可选属性）+
+    // 无人值守阻塞标记：task_ref 入 payload（schema 可选属性）+
     // tags（审批面 staleness/任务关联过滤用）——缺省任务不带
     let mut tags = vec!["task".to_string()];
     if let Some(task_ref) = body.task_ref.as_deref().filter(|t| !t.trim().is_empty()) {
