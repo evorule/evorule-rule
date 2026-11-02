@@ -230,6 +230,114 @@ pub fn fill_approval_attribution(
     }
 }
 
+/// 扫描报告完整性闸（提案 intake，mcp-inspect 报告随提案上行时的校验）。
+///
+/// 报告形态（执行侧 `mcp-inspect` 产出）：`{scanner_version, scanned_at,
+/// tools_listed, ioc_hits[], llm_advisory, rules_source, report_hash}`。
+/// `report_hash` = `blake3:` 前缀哈希（evorule-hash `json_digest`+`prefixed`
+/// 原语），对去除 `report_hash` 键后的报告对象重算——服务端重算比对，签约后
+/// 的任何篡改即拒（调用侧键值不采信，与 server_key 同一信任纪律）。
+/// `llm_advisory` 是 advisory 块：只进报告与审批展示，不参与任何自动裁决。
+pub fn validate_scan_report(report: &Value) -> Result<(), String> {
+    let obj = report
+        .as_object()
+        .ok_or_else(|| "scan_report 须为对象".to_string())?;
+    for key in ["scanner_version", "scanned_at"] {
+        match obj.get(key).and_then(|v| v.as_str()) {
+            Some(s) if !s.trim().is_empty() => {}
+            _ => return Err(format!("scan_report 缺 {key}（或非非空字符串）")),
+        }
+    }
+    match obj.get("tools_listed") {
+        Some(v) if v.is_u64() => {}
+        _ => return Err("scan_report 缺 tools_listed（或非非负整数）".to_string()),
+    }
+    let hits = obj
+        .get("ioc_hits")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| "scan_report 缺 ioc_hits（或非数组）".to_string())?;
+    for hit in hits {
+        let h = hit
+            .as_object()
+            .ok_or_else(|| "ioc_hits 含非对象项".to_string())?;
+        for key in [
+            "rule_id", "category", "severity", "tool", "field", "excerpt",
+        ] {
+            match h.get(key).and_then(|v| v.as_str()) {
+                Some(_) => {}
+                _ => return Err(format!("ioc_hits 项缺 {key}（或非字符串）")),
+            }
+        }
+        match h.get("severity").and_then(|v| v.as_str()) {
+            Some("high" | "medium" | "low") => {}
+            other => {
+                return Err(format!(
+                    "ioc_hits 项 severity 非法（{other:?}；只接受 high|medium|low）"
+                ))
+            }
+        }
+    }
+    match obj.get("llm_advisory").and_then(|v| v.as_object()) {
+        Some(a) => match a.get("status").and_then(|v| v.as_str()) {
+            Some(s) if !s.trim().is_empty() => {}
+            _ => return Err("llm_advisory 缺 status（或非非空字符串）".to_string()),
+        },
+        _ => return Err("scan_report 缺 llm_advisory（或非对象）".to_string()),
+    }
+    match obj.get("rules_source").and_then(|v| v.as_object()) {
+        Some(r) => match r.get("baseline_version").and_then(|v| v.as_str()) {
+            Some(s) if !s.trim().is_empty() => {}
+            _ => return Err("rules_source 缺 baseline_version（或非非空字符串）".to_string()),
+        },
+        _ => return Err("scan_report 缺 rules_source（或非对象）".to_string()),
+    }
+    match obj.get("report_hash").and_then(|v| v.as_str()) {
+        Some(h) if h.len() == 71 && h.starts_with("blake3:") => {}
+        _ => return Err("scan_report 缺 report_hash（或非 blake3:<64hex> 形态）".to_string()),
+    }
+    // 完整性重算：去除 report_hash 后的规范化摘要必须逐字节一致。
+    let mut content = obj.clone();
+    content.remove("report_hash");
+    let expected = evorule_hash::prefixed(&evorule_hash::json_digest(&content));
+    if obj["report_hash"] != expected {
+        return Err(format!(
+            "scan_report report_hash 不匹配：期望 {expected}，实际 {}（去除 report_hash 后重算为准）",
+            obj["report_hash"]
+        ));
+    }
+    Ok(())
+}
+
+/// 审批展示标（approve 响应附带的确定性扫描状态，三色语义）：
+/// `unscanned`（灰：提案未附扫描报告）/ `ioc_hit`（红：确定性命中≥1）/
+/// `advisory`（黄：LLM advisory 置 flagged）/ `clean`（绿：已扫描零命中）。
+/// 纯展示分类：不改变条目语义，裁决权始终在人。
+pub fn scan_marker(payload: &Value) -> Value {
+    match payload.get("scan_report") {
+        None => serde_json::json!({ "scan_status": "unscanned" }),
+        Some(report) => {
+            let hits = report
+                .get("ioc_hits")
+                .and_then(|v| v.as_array())
+                .map(Vec::len)
+                .unwrap_or(0);
+            if hits > 0 {
+                return serde_json::json!({ "scan_status": "ioc_hit", "ioc_hits": hits });
+            }
+            let advisory = report
+                .get("llm_advisory")
+                .and_then(|v| v.get("status"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            if advisory == "flagged" {
+                serde_json::json!({ "scan_status": "advisory" })
+            } else {
+                serde_json::json!({ "scan_status": "clean" })
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used)]
@@ -365,5 +473,97 @@ mod tests {
         fill_approval_attribution(&mut keep, "alice", "t", "r");
         assert_eq!(keep["approved_by"], "bob");
         assert_eq!(keep["approval_ref"], "r");
+    }
+
+    // ===== 扫描报告 intake（确定性层；fixture 与执行侧逐字面量对齐） =====
+
+    /// 跨仓黄金向量 fixture（无 report_hash 的报告本体；执行侧 mcp-inspect
+    /// 测试持同一字面量，任一侧修改必须双侧同步）。
+    fn report_fixture() -> Value {
+        serde_json::from_str(
+            r#"{
+                "scanner_version": "1",
+                "scanned_at": "2026-11-02T00:00:00Z",
+                "tools_listed": 2,
+                "ioc_hits": [
+                    {"rule_id": "TP-002", "category": "instruction_override", "severity": "high",
+                     "tool": "summarize", "field": "description", "excerpt": "never tell the user"}
+                ],
+                "llm_advisory": {"status": "unavailable",
+                                 "summary": "LLM semantic layer not wired in this scanner version; IOC findings stand alone"},
+                "rules_source": {"baseline_version": "1.0.0",
+                                 "extensions_file": null, "extensions_file_hash": null}
+            }"#,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn scan_report_intake_round_trip() {
+        let mut report = report_fixture();
+        let digest = evorule_hash::prefixed(&evorule_hash::json_digest(&report));
+        report["report_hash"] = serde_json::json!(digest.clone());
+        assert!(validate_scan_report(&report).is_ok());
+        // 签约后篡改即拒
+        let mut tampered = report.clone();
+        tampered["tools_listed"] = serde_json::json!(7);
+        assert!(validate_scan_report(&tampered)
+            .unwrap_err()
+            .contains("report_hash 不匹配"));
+        // 缺 report_hash 拒
+        let mut missing = report.clone();
+        missing.as_object_mut().unwrap().remove("report_hash");
+        assert!(validate_scan_report(&missing)
+            .unwrap_err()
+            .contains("缺 report_hash"));
+        // 非法 severity 拒
+        let mut bad_sev = report.clone();
+        bad_sev["ioc_hits"][0]["severity"] = serde_json::json!("loud");
+        assert!(validate_scan_report(&bad_sev)
+            .unwrap_err()
+            .contains("severity 非法"));
+        // 缺 llm_advisory 拒
+        let mut no_advisory = report;
+        no_advisory.as_object_mut().unwrap().remove("llm_advisory");
+        assert!(validate_scan_report(&no_advisory)
+            .unwrap_err()
+            .contains("llm_advisory"));
+    }
+
+    #[test]
+    fn scan_report_golden_vector_cross_repo() {
+        let report = report_fixture();
+        let digest = evorule_hash::prefixed(&evorule_hash::json_digest(&report));
+        assert_eq!(
+            digest, "blake3:0aa650a5bdf2c5998223c0f3c04500ef53a0b49faa5463ff69bb5812de42bdda",
+            "golden vector drift: report fixture or digest contract changed on this side"
+        );
+    }
+
+    #[test]
+    fn scan_marker_classification() {
+        // 无报告 = 灰标
+        let key = canonical_server_key("my-server.exe", None as Option<&[String]>);
+        let plain =
+            serde_json::json!({"server_key": key, "command": "my-server.exe", "comment": "c"});
+        assert_eq!(scan_marker(&plain)["scan_status"], "unscanned");
+        // IOC 命中 = 红标（携带命中数；advisory 同时 flagged 也不遮蔽红）
+        let red = serde_json::json!({"scan_report": {
+            "ioc_hits": [{"rule_id": "TP-002"}],
+            "llm_advisory": {"status": "flagged"}
+        }});
+        let marker = scan_marker(&red);
+        assert_eq!(marker["scan_status"], "ioc_hit");
+        assert_eq!(marker["ioc_hits"], 1);
+        // advisory flagged = 黄标
+        let yellow = serde_json::json!({"scan_report": {
+            "ioc_hits": [], "llm_advisory": {"status": "flagged"}
+        }});
+        assert_eq!(scan_marker(&yellow)["scan_status"], "advisory");
+        // 已扫描零命中 = 绿标
+        let green = serde_json::json!({"scan_report": {
+            "ioc_hits": [], "llm_advisory": {"status": "clear"}
+        }});
+        assert_eq!(scan_marker(&green)["scan_status"], "clean");
     }
 }

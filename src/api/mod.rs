@@ -4218,6 +4218,159 @@ mod tests {
         );
     }
 
+    /// 检视扫描报告随提案入库链（提案准入内容检测）：propose_mcp_server 附
+    /// scan_report（完整性哈希服务端重算）→ 篡改报告 400 → 无报告提案灰标 →
+    /// 附报告提案 approve 展示扫描状态标（ioc_hit 红）。报告只进条目与审批
+    /// 展示，不参与任何自动裁决（裁决权在人）。
+    #[tokio::test]
+    async fn test_propose_mcp_server_scan_report_chain() {
+        use crate::model::mcp_servers::canonical_server_key;
+        let (app, state) = build_app();
+        state
+            .store
+            .seed_mcp_servers_dataset_if_empty("tenant_a", "2026-11-01T00:00:00Z")
+            .expect("seed");
+        let propose_key = a23_create_key(&app, &state, "entries:propose").await;
+        let now = unix_now();
+        state
+            .auth
+            .register(
+                &state.store,
+                "tenant_a",
+                "root",
+                "password123",
+                crate::model::auth::Role::Admin,
+                now,
+            )
+            .expect("admin bootstrap");
+        let tokens = state
+            .auth
+            .login(&state.store, "tenant_a", "root", "password123", now)
+            .expect("admin login");
+        let admin = tokens.access_token;
+
+        // 无 report_hash 的报告本体（与执行侧黄金向量 fixture 同构）
+        let mut report = json!({
+            "scanner_version": "1",
+            "scanned_at": "2026-11-02T00:00:00Z",
+            "tools_listed": 1,
+            "ioc_hits": [
+                {"rule_id": "TP-002", "category": "instruction_override", "severity": "high",
+                 "tool": "summarize", "field": "description", "excerpt": "never tell the user"}
+            ],
+            "llm_advisory": {"status": "unavailable", "summary": "advisory layer not wired"},
+            "rules_source": {"baseline_version": "1.0.0",
+                             "extensions_file": null, "extensions_file_hash": null}
+        });
+        let digest = evorule_hash::prefixed(&evorule_hash::json_digest(&report));
+        report["report_hash"] = json!(digest);
+
+        let command = "scan-report-server.exe";
+        let key = canonical_server_key(command, None);
+        let propose_body = json!({
+            "dataset_id": "org.evorule.mcp.servers",
+            "command": command,
+            "server_key": key,
+            "cause": "inspection proposal with scan report",
+            "scan_report": report,
+        });
+
+        // ① 附报告提案：入库（Draft），payload 携带完整 scan_report
+        let (status, body) = send_api_key(
+            app.clone(),
+            "POST",
+            "/v1/invoke/propose_mcp_server",
+            Some(&propose_key),
+            Some(propose_body.clone()),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "{body}");
+        assert_eq!(body["outcome"], "proposed");
+
+        // ② 篡改报告（签约后改 tools_listed）→ 服务端重算不匹配 400
+        let mut tampered_body = propose_body.clone();
+        tampered_body["scan_report"]["tools_listed"] = json!(7);
+        let (status, body) = send_api_key(
+            app.clone(),
+            "POST",
+            "/v1/invoke/propose_mcp_server",
+            Some(&propose_key),
+            Some(tampered_body),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+        assert!(
+            body["error"]["message"]
+                .as_str()
+                .unwrap_or("")
+                .contains("report_hash"),
+            "{body}"
+        );
+
+        // ③ 无报告提案照常入库（未扫描灰标可见）
+        let command_plain = "unscanned-server.exe";
+        let key_plain = canonical_server_key(command_plain, None);
+        let plain_body = json!({
+            "dataset_id": "org.evorule.mcp.servers",
+            "command": command_plain,
+            "server_key": key_plain,
+            "cause": "proposal without a scan report",
+        });
+        let (status, body) = send_api_key(
+            app.clone(),
+            "POST",
+            "/v1/invoke/propose_mcp_server",
+            Some(&propose_key),
+            Some(plain_body),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "{body}");
+
+        // ④ 附报告条目 candidate → approve：响应携带扫描状态标（红 = ioc_hit）
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            &format!("/v1/entries/{key}/submit-candidate?dataset_id=org.evorule.mcp.servers"),
+            Some(&admin),
+            Some(json!({ "sandbox_report_id": "" })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            &format!("/v1/entries/{key}/approve?dataset_id=org.evorule.mcp.servers"),
+            Some(&admin),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["scan_marker"]["scan_status"], "ioc_hit");
+        assert_eq!(body["scan_marker"]["ioc_hits"], 1);
+        assert_eq!(body["payload"]["scan_report"]["scanner_version"], "1");
+
+        // ⑤ 无报告条目 approve：灰标 unscanned
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            &format!("/v1/entries/{key_plain}/submit-candidate?dataset_id=org.evorule.mcp.servers"),
+            Some(&admin),
+            Some(json!({ "sandbox_report_id": "" })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            &format!("/v1/entries/{key_plain}/approve?dataset_id=org.evorule.mcp.servers"),
+            Some(&admin),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["scan_marker"]["scan_status"], "unscanned");
+    }
+
     fn a23_propose_body(
         dataset_id: &str,
         entry_id: &str,
