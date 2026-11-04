@@ -4481,6 +4481,86 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_propose_resolver_miss_maps_to_bad_request() {
+        let (app, state) = build_app();
+        let key = a23_create_key(&app, &state, "entries:propose").await;
+        let token = register_login(&app).await;
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/datasets",
+            Some(&token),
+            Some(json!({
+                "dataset_id": "ds-prop-resolver",
+                "name": "resolver 未命中映射集",
+                "domain": ["tax"],
+                "dataset_kind": "knowledge"
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "{body}");
+
+        // 未注册 schema_ref = 客户端输入错误 → 400 bad_request
+        //（不按服务端故障 500 上报，与 bundle 导入通路映射口径一致）
+        let (status, body) = send_api_key(
+            app.clone(),
+            "POST",
+            "/v1/invoke/propose_knowledge_entry",
+            Some(&key),
+            Some(a23_propose_body(
+                "ds-prop-resolver",
+                "k-resolver-miss",
+                json!({
+                    "entry": {
+                        "entry_id": "k-resolver-miss",
+                        "version": 1,
+                        "payload": { "statement": "LLM 提取的事实条目" },
+                        "schema_ref": "builtin:no-such-resolver-schema",
+                        "knowledge_kind": "fact",
+                        "trust_level": "llm",
+                        "provenance": { "source": "resolver miss E2E" }
+                    }
+                }),
+            )),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+        assert_eq!(body["error"]["code"], "bad_request", "{body}");
+        assert!(
+            body["error"]["message"]
+                .as_str()
+                .unwrap()
+                .contains("未在解析器注册"),
+            "{body}"
+        );
+
+        // console 入账通路（JWT，同一写核）：未注册 schema_ref 同样映射 400
+        let (status, body) = send(
+            app,
+            "POST",
+            "/v1/datasets/ds-prop-resolver/entries",
+            Some(&token),
+            Some(json!({
+                "entry_id": "k-console-miss",
+                "version": 1,
+                "payload": { "statement": "控制台收录的事实条目" },
+                "schema_ref": "builtin:no-such-resolver-schema",
+                "knowledge_kind": "fact"
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+        assert_eq!(body["error"]["code"], "bad_request", "{body}");
+        assert!(
+            body["error"]["message"]
+                .as_str()
+                .unwrap()
+                .contains("未在解析器注册"),
+            "{body}"
+        );
+    }
+
+    #[tokio::test]
     async fn test_a23_propose_trust_impersonation_rejected() {
         let (app, state) = build_app();
         let key = a23_create_key(&app, &state, "entries:propose").await;

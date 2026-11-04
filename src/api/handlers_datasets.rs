@@ -790,7 +790,10 @@ pub async fn add_entry(
             entry
                 .validate_ingest_contract()
                 .map_err(ApiError::bad_request)?;
-            state.store.add_knowledge_entry(&entry)?;
+            state
+                .store
+                .add_knowledge_entry(&entry)
+                .map_err(knowledge_write_err)?;
             Ok((
                 StatusCode::CREATED,
                 Json(serde_json::to_value(&entry).unwrap_or(Value::Null)),
@@ -1045,6 +1048,19 @@ pub struct ProposeKnowledgeEntryReq {
     pub source_session_id: Option<String>,
 }
 
+/// 知识条目写通路错误映射（console 入账 add_entry 与机器提议 propose_knowledge_entry
+/// 同一写核共用）：校验链失败 = 客户端 400（显式、不静默），其余走统一映射。
+/// store 写核 D3 门禁的 resolver 未命中（BundleError 族）属客户端 schema_ref 输入错误，
+/// 与 bundle 导入通路两处错误映射同口径——修正前落统一映射兜底分支按 5xx 上报，语义失真。
+fn knowledge_write_err(e: crate::store::StoreError) -> ApiError {
+    match e {
+        crate::store::StoreError::Bundle(b) => {
+            ApiError::bad_request(format!("入账校验失败（不静默降级）: {b}"))
+        }
+        other => ApiError::from(other),
+    }
+}
+
 /// POST /v1/invoke/propose_knowledge_entry —— 服务级机器提议入账（RuleEngineer 写权映射）：
 /// X-Api-Key(scope=entries:propose) 认证（get_bundle pull 先例同构）→ 数据集存在 + 租户
 /// 匹配 → trust 冒充拒绝 → governance 强制构造 → provenance cause 锚 → 复用既有闸链
@@ -1154,7 +1170,10 @@ pub async fn propose_knowledge_entry(
     entry
         .validate_ingest_contract()
         .map_err(ApiError::bad_request)?;
-    state.store.add_knowledge_entry(&entry)?;
+    state
+        .store
+        .add_knowledge_entry(&entry)
+        .map_err(knowledge_write_err)?;
     tracing::info!(
         target: "evorule::invoke",
         "propose_knowledge_entry: dataset={} entry={} v{} by {actor}",
