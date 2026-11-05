@@ -34,9 +34,10 @@ param(
   [string]$TaskName = 'EvoRuleRuleServe',
   [string]$AdminUser = 'admin',
   [string]$AdminPassword = '',
-  # Reserved hook for the console integration batch: value to be finalized
-  # later; empty = same-origin only (current production default).
-  [string]$AllowedOrigins = '',
+  # Console integration: loopback dev origins of the console frontend dev
+  # server. Loopback-only, so the CORS allowance does not widen the reachable
+  # surface beyond the local machine; pass '' to stay same-origin only.
+  [string]$AllowedOrigins = 'http://localhost:5174,http://127.0.0.1:5174',
   [switch]$SkipSeed,
   [switch]$SkipGateCopy
 )
