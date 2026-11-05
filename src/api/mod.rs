@@ -835,7 +835,10 @@ pub fn serve_router(state: AppState, console_dir: Option<&std::path::Path>) -> R
         app = app
             .nest_service("/console/_app", assets)
             .nest_service("/console", shell)
-            .route("/", get(|| async { axum::response::Redirect::to("/console/") }));
+            .route(
+                "/",
+                get(|| async { axum::response::Redirect::to("/console/") }),
+            );
     }
     app
 }
@@ -5398,7 +5401,11 @@ mod tests {
         let (s1, b1) = send(app.clone(), "GET", "/v1/health", None, None).await;
         let (s2, b2) = send(app.clone(), "GET", "/rule-serve/v1/health", None, None).await;
         assert_eq!(s1, StatusCode::OK);
-        assert_eq!(s2, StatusCode::OK, "alias response must equal direct status");
+        assert_eq!(
+            s2,
+            StatusCode::OK,
+            "alias response must equal direct status"
+        );
         assert_eq!(b1, b2, "alias response body must equal direct response");
     }
 
@@ -5413,7 +5420,11 @@ mod tests {
     async fn console_static_disabled_by_default() {
         let app = build_serve_app(None);
         let (s, _) = send(app.clone(), "GET", "/console/", None, None).await;
-        assert_eq!(s, StatusCode::NOT_FOUND, "default invariant: no static face");
+        assert_eq!(
+            s,
+            StatusCode::NOT_FOUND,
+            "default invariant: no static face"
+        );
         // API still live (absent static face never blocks the governance API)
         let (s2, _) = send(app, "GET", "/v1/health", None, None).await;
         assert_eq!(s2, StatusCode::OK);
@@ -5440,11 +5451,16 @@ mod tests {
         let app = build_serve_app(Some(&dir));
 
         // Shell file served directly + no-cache
-        let req = Request::builder().uri("/console/").body(Body::empty()).unwrap();
+        let req = Request::builder()
+            .uri("/console/")
+            .body(Body::empty())
+            .unwrap();
         let resp = app.clone().oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
         assert_eq!(
-            resp.headers().get(axum::http::header::CACHE_CONTROL).unwrap(),
+            resp.headers()
+                .get(axum::http::header::CACHE_CONTROL)
+                .unwrap(),
             "no-cache"
         );
 
@@ -5467,7 +5483,9 @@ mod tests {
         let resp = app.clone().oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
         assert_eq!(
-            resp.headers().get(axum::http::header::CACHE_CONTROL).unwrap(),
+            resp.headers()
+                .get(axum::http::header::CACHE_CONTROL)
+                .unwrap(),
             "public, max-age=31536000, immutable"
         );
 
