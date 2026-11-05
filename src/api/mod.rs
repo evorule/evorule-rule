@@ -784,6 +784,62 @@ pub fn router(state: AppState) -> Router {
         .with_state(state)
 }
 
+/// Assembles the externally served Router: governance API (`/v1/*`) +
+/// same-origin alias prefix (`/rule-serve/*`) + optional static console
+/// (`/console`).
+///
+/// - The `/rule-serve` prefix is a same-origin alias of the governance API
+///   (in-process route mapping, not a network proxy): `/rule-serve/v1/...`
+///   and `/v1/...` share handlers, state and middleware — matching the
+///   console frontend dev proxy (prefix stripped, forwarded to this port),
+///   so frontend paths stay identical between dev and static hosting.
+///   Always mounted (purely additive routing, no existing behavior to break).
+/// - When `console_dir` is given and the directory exists: `/console` serves
+///   the static console build output (SPA fallback = index.html), the root
+///   path `/` redirects to `/console/` (303); `_app/*` content-hashed
+///   assets get immutable cache headers, the shell gets no-cache. A missing
+///   directory = warn + `/console` stays 404 (fail-soft: an absent static
+///   face never blocks the governance API).
+pub fn serve_router(state: AppState, console_dir: Option<&std::path::Path>) -> Router {
+    use tower_http::services::{ServeDir, ServeFile};
+    use tower_http::set_header::SetResponseHeaderLayer;
+
+    let api = router(state);
+    let mut app = Router::new().nest("/rule-serve", api.clone()).merge(api);
+    if let Some(dir) = console_dir {
+        if !dir.is_dir() {
+            tracing::warn!(
+                dir = %dir.display(),
+                "console static directory not found; /console stays 404"
+            );
+            return app;
+        }
+        // nest_service strips the prefix before ServeDir sees the rest of the
+        // path, so the _app asset service root is dir/_app.
+        let assets = tower::ServiceBuilder::new()
+            .layer(SetResponseHeaderLayer::overriding(
+                axum::http::header::CACHE_CONTROL,
+                axum::http::HeaderValue::from_static("public, max-age=31536000, immutable"),
+            ))
+            .service(ServeDir::new(dir.join("_app")));
+        let shell = tower::ServiceBuilder::new()
+            .layer(SetResponseHeaderLayer::overriding(
+                axum::http::header::CACHE_CONTROL,
+                axum::http::HeaderValue::from_static("no-cache"),
+            ))
+            .service(
+                ServeDir::new(dir)
+                    .append_index_html_on_directories(true)
+                    .fallback(ServeFile::new(dir.join("index.html"))),
+            );
+        app = app
+            .nest_service("/console/_app", assets)
+            .nest_service("/console", shell)
+            .route("/", get(|| async { axum::response::Redirect::to("/console/") }));
+    }
+    app
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -5320,5 +5376,110 @@ mod tests {
         .await;
         assert_eq!(status, StatusCode::OK, "{body}");
         assert_eq!(body.as_array().map(|a| a.len()), Some(0));
+    }
+
+    // ===== serve_router: /rule-serve same-origin alias + /console static face =====
+
+    fn build_serve_app(console_dir: Option<&std::path::Path>) -> Router {
+        let store = RuleStore::in_memory().expect("store");
+        store
+            .ensure_default_tenant("tenant_a", "示例组织", "inst-001", "2026-08-22T00:00:00Z")
+            .expect("tenant");
+        store
+            .ensure_default_org("tenant_a", "示例组织", "2026-08-22T00:00:00Z")
+            .expect("org");
+        let state = AppState::new(store, "test-secret", "inst-001", "http://127.0.0.1:9");
+        serve_router(state, console_dir)
+    }
+
+    #[tokio::test]
+    async fn rule_serve_alias_matches_direct_api() {
+        let app = build_serve_app(None);
+        let (s1, b1) = send(app.clone(), "GET", "/v1/health", None, None).await;
+        let (s2, b2) = send(app.clone(), "GET", "/rule-serve/v1/health", None, None).await;
+        assert_eq!(s1, StatusCode::OK);
+        assert_eq!(s2, StatusCode::OK, "alias response must equal direct status");
+        assert_eq!(b1, b2, "alias response body must equal direct response");
+    }
+
+    #[tokio::test]
+    async fn api_unknown_path_stays_404() {
+        let app = build_serve_app(None);
+        let (s, _) = send(app, "GET", "/v1/unknown", None, None).await;
+        assert_eq!(s, StatusCode::NOT_FOUND, "API semantics unchanged");
+    }
+
+    #[tokio::test]
+    async fn console_static_disabled_by_default() {
+        let app = build_serve_app(None);
+        let (s, _) = send(app.clone(), "GET", "/console/", None, None).await;
+        assert_eq!(s, StatusCode::NOT_FOUND, "default invariant: no static face");
+        // API still live (absent static face never blocks the governance API)
+        let (s2, _) = send(app, "GET", "/v1/health", None, None).await;
+        assert_eq!(s2, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn console_dir_missing_fail_soft() {
+        let app = build_serve_app(Some(std::path::Path::new(
+            "Z:/evorule-definitely-missing-console-dir",
+        )));
+        let (s, _) = send(app.clone(), "GET", "/console/", None, None).await;
+        assert_eq!(s, StatusCode::NOT_FOUND, "missing dir = fail-soft 404");
+        let (s2, _) = send(app, "GET", "/v1/health", None, None).await;
+        assert_eq!(s2, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn console_static_shell_spa_fallback_and_cache_headers() {
+        let dir = std::env::temp_dir().join(format!("evorule-console-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("_app")).expect("mkdir");
+        std::fs::write(dir.join("index.html"), "<html>shell</html>").expect("shell");
+        std::fs::write(dir.join("_app/app.js"), "console.log(1)").expect("asset");
+        let app = build_serve_app(Some(&dir));
+
+        // Shell file served directly + no-cache
+        let req = Request::builder().uri("/console/").body(Body::empty()).unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert_eq!(
+            resp.headers().get(axum::http::header::CACHE_CONTROL).unwrap(),
+            "no-cache"
+        );
+
+        // SPA fallback: unknown paths fall back to index.html (client-side
+        // routing takes over), also no-cache
+        let req = Request::builder()
+            .uri("/console/governance")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK, "SPA fallback returns shell");
+        let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+        assert_eq!(std::str::from_utf8(&bytes).unwrap(), "<html>shell</html>");
+
+        // Content-hashed assets get immutable
+        let req = Request::builder()
+            .uri("/console/_app/app.js")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert_eq!(
+            resp.headers().get(axum::http::header::CACHE_CONTROL).unwrap(),
+            "public, max-age=31536000, immutable"
+        );
+
+        // Root path redirects to /console/ (Redirect::to = 303 See Other)
+        let req = Request::builder().uri("/").body(Body::empty()).unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::SEE_OTHER);
+        assert_eq!(
+            resp.headers().get(axum::http::header::LOCATION).unwrap(),
+            "/console/"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

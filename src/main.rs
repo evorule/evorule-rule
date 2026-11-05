@@ -22,7 +22,7 @@ use std::net::SocketAddr;
 
 use axum::http::{header, HeaderName, Method};
 use clap::Parser;
-use evorule_rule::{auth, router, AppState, AuthError, AuthService, Role, RuleStore};
+use evorule_rule::{auth, serve_router, AppState, AuthError, AuthService, Role, RuleStore};
 use tower_http::cors::CorsLayer;
 
 /// evorule-rule 独立治理服务
@@ -76,6 +76,12 @@ struct Cli {
     /// 引导管理员密码（与 --admin-user 同时提供才创建）
     #[arg(long)]
     admin_password: Option<String>,
+
+    /// Console static assets directory (optional). When present, the web console
+    /// is served at /console (SPA fallback) and / redirects to /console/.
+    /// Missing directory = warn + /console stays 404 (governance API unaffected).
+    #[arg(long)]
+    console_dir: Option<String>,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -204,8 +210,11 @@ async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
     let state = state.bootstrap_backend().await;
     tracing::info!(backend = %state.backend.as_str(), "存储后端已激活");
 
-    // 6. CORS（浏览器跨源接入 console-cloud:5174 / evo-agent-ui:5173 等）
-    let app = router(state);
+    // 6. App assembly (governance API /v1 + same-origin alias /rule-serve +
+    //    optional static console /console) + CORS (browser cross-origin access
+    //    for console-cloud:5174 / evo-agent-ui:5173 etc.; empty allowed-origins
+    //    = same-origin only, same-origin restriction invariant)
+    let app = serve_router(state, cli.console_dir.as_deref().map(std::path::Path::new));
     let app = if cli.allowed_origins.is_empty() {
         app
     } else {

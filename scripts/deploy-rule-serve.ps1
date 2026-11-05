@@ -14,11 +14,13 @@
 #   .\scripts\deploy-rule-serve.ps1 [-ExeSource <path-to-exe>] `
 #       [-DeployRoot <dir>] [-Port 18081] [-TaskName EvoRuleRuleServe] `
 #       [-AdminUser admin] [-AdminPassword <pw>] [-AllowedOrigins "a,b"] `
+#       [-ConsoleSource <path-to-console-build>] `
 #       [-SkipSeed] [-SkipGateCopy]
 #
 # What it does, in order:
 #   1. create deployment directory layout
 #   2. place the server executable (copy from -ExeSource, or reuse in-place)
+#   2.5 place the console static assets (copy from -ConsoleSource, optional)
 #   3. bootstrap credential (reuse file, or take -AdminPassword, or prompt)
 #   4. one-shot admin initialization on a fresh database, then shut down
 #   5. register the resident scheduled task (logon trigger, auto-restart,
@@ -26,6 +28,12 @@
 #   6. seed the four governance knowledge datasets (idempotent)
 #   7. ensure the uplink API key exists (reuse after a liveness probe)
 #   8. inject the service registry copy (+ gate copy for the desktop side)
+#
+# Console static face: when -ConsoleSource is given (a console frontend
+# `vite build` output built with its base path set to /console/), the assets
+# are placed under <DeployRoot>\console and the resident command line gains
+# `--console-dir`, serving the web console same-origin at /console (the
+# governance API is also aliased under /rule-serve by the server itself).
 #
 param(
   [string]$ExeSource = '',
@@ -38,6 +46,9 @@ param(
   # server. Loopback-only, so the CORS allowance does not widen the reachable
   # surface beyond the local machine; pass '' to stay same-origin only.
   [string]$AllowedOrigins = 'http://localhost:5174,http://127.0.0.1:5174',
+  # Console static assets source (optional): a console frontend build output
+  # directory (built with base path /console/). Placed under <DeployRoot>\console.
+  [string]$ConsoleSource = '',
   [switch]$SkipSeed,
   [switch]$SkipGateCopy
 )
@@ -120,6 +131,17 @@ if ($ExeSource -ne '') {
   throw 'no executable in place and no -ExeSource given'
 }
 
+# ---- 2.5 console static assets (optional) ------------------------------------
+$consoleDir = Join-Path $DeployRoot 'console'
+if ($ConsoleSource -ne '') {
+  if (-not (Test-Path $ConsoleSource)) { throw "ConsoleSource not found: $ConsoleSource" }
+  if (Test-Path $consoleDir) { Remove-Item $consoleDir -Recurse -Force }
+  Copy-Item $ConsoleSource $consoleDir -Recurse -Force
+  Write-Host "[2.5] console static assets placed from $ConsoleSource"
+} elseif (Test-Path $consoleDir) {
+  Write-Host '[2.5] console static assets already in place, reused'
+}
+
 # ---- 3. bootstrap credential ------------------------------------------------
 if (Test-Path $pwPath) {
   $adminPassword = (Get-Content $pwPath -Raw).Trim()
@@ -144,6 +166,7 @@ if ($freshDb) {
   $bootArgs = @("--db", "`"$dbPath`"", "--port", "$Port",
                 "--admin-user", $AdminUser, "--admin-password", $AdminPassword)
   if ($AllowedOrigins -ne '') { $bootArgs += @('--allowed-origins', "`"$AllowedOrigins`"") }
+  if (Test-Path $consoleDir) { $bootArgs += @('--console-dir', "`"$consoleDir`"") }
   $proc = Start-Process -FilePath $exePath -ArgumentList $bootArgs -WorkingDirectory $DeployRoot -WindowStyle Hidden -PassThru
   try {
     if (-not (Wait-Health $Base 60)) { throw 'bootstrap instance did not become healthy in 60s' }
@@ -159,6 +182,7 @@ if ($freshDb) {
 # ---- 5. resident scheduled task (zero-credential command line) --------------
 $taskArgs = @('--db', "`"$dbPath`"", '--port', "$Port")
 if ($AllowedOrigins -ne '') { $taskArgs += @('--allowed-origins', "`"$AllowedOrigins`"") }
+if (Test-Path $consoleDir) { $taskArgs += @('--console-dir', "`"$consoleDir`"") }
 $taskArgLine = ($taskArgs -join ' ')
 $existing = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
 if ($existing) {
@@ -318,5 +342,6 @@ Write-Host "task:        $TaskName (zero-credential command line)"
 Write-Host "datasets:    $($datasets.id -join ', ')"
 Write-Host "uplink key:  $keyPath"
 Write-Host "registry:    $registryPath"
+if (Test-Path $consoleDir) { Write-Host "console:     $Base/console/ (same-origin static face)" }
 if (-not $SkipGateCopy) { Write-Host "gate copy:   $(Join-Path $env:LOCALAPPDATA 'com.evorule.evo-agent-desktop\service_registry.json')" }
 Write-Host '=========================='

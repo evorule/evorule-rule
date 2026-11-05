@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 
+### Added — Same-origin web console static face and `/rule-serve` API alias
+
+- New `serve_router` assembly: the governance API (`/v1/*`) is additionally mounted under the `/rule-serve` prefix (in-process route alias, no network hop) — `/rule-serve/v1/...` and `/v1/...` share handlers, state and middleware, matching the console frontend dev proxy semantics so frontend paths stay identical between dev and static hosting. Always mounted (purely additive routing).
+- New `--console-dir <path>` option: when the directory is present, a console frontend build output is served at `/console` (SPA fallback to `index.html`), `/` redirects to `/console/`, content-hashed `_app/*` assets get `immutable` cache headers and the shell gets `no-cache`. A missing directory = warning + `/console` stays 404 (fail-soft: an absent static face never blocks the governance API).
+- Deployment kit: `deploy-rule-serve.ps1` gains `-ConsoleSource` (static asset placement + `--console-dir` in the resident command line); `upgrade-rule-serve.ps1` gains `-NewConsoleDir` (same-window asset swap with `console.bak` rollback) and re-registers the resident task when its command line lacks `--console-dir`.
+- Tests: alias equivalence, unchanged API 404 semantics, default no-static-face invariant, fail-soft missing directory, shell/SPA-fallback/cache-headers/root-redirect coverage.
+
+
 ### Added — 第七知识谱系 preference（用户偏好条目,记忆主权收官配套）
 
 - `knowledge_kind` 谱系扩为七分法：新增 `preference`（用户/通道级偏好条目——应影响后续行为的持久喜好/厌恶）。消费面=evo-agent 召回 user 域加权（authority 1.0）与 S2b 数据集注入；LLM 产出的偏好候选仍走治理 Draft 管线（机器产出只到 Draft 红线不变）。

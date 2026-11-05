@@ -21,7 +21,7 @@ pub mod resolve;
 pub mod store;
 pub mod validate;
 
-pub use api::{router, ApiError, AppState, AuthContext};
+pub use api::{router, serve_router, ApiError, AppState, AuthContext};
 pub use auth::{
     AuthError, AuthService, AuthTokens, ACCESS_TOKEN_TTL_SECS, DEFAULT_PBKDF2_ITERATIONS,
     REFRESH_TOKEN_TTL_SECS,
