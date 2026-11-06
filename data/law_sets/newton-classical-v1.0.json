@@ -1,0 +1,142 @@
+{
+  "$schema": "https://evorule.org/schemas/law_set/v1.0.json",
+  "kind": "law_set",
+  "id": "newton-classical",
+  "version": "1.0.0",
+  "metadata": {
+    "title": "Newton classical mechanics golden law set",
+    "description": "Five classical mechanics laws (golden G1 family): equation-always-true semantics only, no condition/then decision semantics. Tier coverage: 4x full (primary statements) + 1x light (algebraic inverse form).",
+    "domain": "mechanics",
+    "source": "Newton, Philosophiae Naturalis Principia Mathematica (1687); standard classical mechanics formulation",
+    "unit_system": "SI",
+    "verified": "2026-11-06 dimensional consistency check (SI seven-base dimension vectors)"
+  },
+  "laws": [
+    {
+      "id": "newton_second_law",
+      "formula": "F = m * a",
+      "symbols": {
+        "F": "net force on the body",
+        "m": "mass of the body",
+        "a": "acceleration of the body"
+      },
+      "si_units": {
+        "F": "newton",
+        "m": "kilogram",
+        "a": "m*s^-2"
+      },
+      "domain": "mechanics",
+      "solvable": ["F", "m", "a"],
+      "derivation": [
+        "second-order motion law in inertial frames",
+        "dimensional identity: N == kg*m*s^-2 (both sides expand to [M=1, L=1, T=-2])"
+      ],
+      "tier": "full",
+      "metadata": {
+        "source": "Newton, Principia (1687), Lex II",
+        "verified": "dimensional: N == kg*m*s^-2"
+      }
+    },
+    {
+      "id": "gravitational_weight",
+      "formula": "W = m * g",
+      "symbols": {
+        "W": "weight (gravitational force)",
+        "m": "mass of the body",
+        "g": "local gravitational acceleration"
+      },
+      "si_units": {
+        "W": "newton",
+        "m": "kilogram",
+        "g": "m*s^-2"
+      },
+      "domain": "mechanics",
+      "solvable": ["W", "m", "g"],
+      "derivation": [
+        "weight as the gravitational force on a mass in a uniform gravitational field",
+        "dimensional identity: N == kg*m*s^-2 (both sides expand to [M=1, L=1, T=-2])"
+      ],
+      "tier": "full",
+      "metadata": {
+        "source": "Newton, Principia (1687); standard gravity formulation",
+        "verified": "dimensional: N == kg*m*s^-2"
+      }
+    },
+    {
+      "id": "linear_momentum",
+      "formula": "p = m * v",
+      "symbols": {
+        "p": "linear momentum",
+        "m": "mass of the body",
+        "v": "velocity of the body"
+      },
+      "si_units": {
+        "p": "kg*m*s^-1",
+        "m": "kilogram",
+        "v": "m*s^-1"
+      },
+      "domain": "mechanics",
+      "solvable": ["p", "m", "v"],
+      "derivation": [
+        "quantity of motion definition (Principia, Definitio II)",
+        "dimensional identity: p == kg*m*s^-1 (both sides expand to [M=1, L=1, T=-1])"
+      ],
+      "tier": "full",
+      "metadata": {
+        "source": "Newton, Principia (1687), Definitio II",
+        "verified": "dimensional: kg*m*s^-1"
+      }
+    },
+    {
+      "id": "kinetic_energy",
+      "formula": "E_k = 0.5 * m * v^2",
+      "symbols": {
+        "E_k": "kinetic energy of the body",
+        "m": "mass of the body",
+        "v": "speed of the body"
+      },
+      "si_units": {
+        "E_k": "joule",
+        "m": "kilogram",
+        "v": "m*s^-1"
+      },
+      "domain": "mechanics",
+      "solvable": ["E_k", "m", "v"],
+      "derivation": [
+        "work-energy theorem: integral of F over displacement for a body accelerated from rest",
+        "numeric factor 0.5 is dimension-neutral (dimensional grammar: number leaves are dimensionless)",
+        "dimensional identity: J == kg*m^2*s^-2 (both sides expand to [M=1, L=2, T=-2])"
+      ],
+      "tier": "full",
+      "metadata": {
+        "source": "classical mechanics (Leibniz vis viva; standard formulation via Coriolis)",
+        "verified": "dimensional: J == kg*m^2*s^-2"
+      }
+    },
+    {
+      "id": "acceleration_inverse",
+      "formula": "a = F / m",
+      "symbols": {
+        "a": "acceleration of the body",
+        "F": "net force on the body",
+        "m": "mass of the body"
+      },
+      "si_units": {
+        "a": "m*s^-2",
+        "F": "newton",
+        "m": "kilogram"
+      },
+      "domain": "mechanics",
+      "solvable": ["a", "F", "m"],
+      "derivation": [
+        "algebraic inverse form of law:newton_second_law (F = m * a); not an independent physical statement",
+        "dimensional identity: m*s^-2 == N/kg (both sides expand to [M=0, L=1, T=-2])"
+      ],
+      "tier": "light",
+      "metadata": {
+        "source": "Newton, Principia (1687), Lex II (inverse algebraic form)",
+        "verified": "dimensional: m*s^-2 == N/kg"
+      }
+    }
+  ]
+}
