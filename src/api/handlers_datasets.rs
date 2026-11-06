@@ -643,7 +643,8 @@ pub async fn list_entries(
     if ds.tenant_id != ctx.tenant_id {
         return Err(ApiError::not_found("数据集不存在"));
     }
-    // Q12 R4：按数据集类型分流（rule_set → 规则条目；knowledge → 数据条目）
+    // Q12 R4：按数据集类型分流（rule_set → 规则条目；knowledge/law_set → 数据/定律条目，
+    // law_set 条目以知识条目同型通道承载，视图与列表复用同一映射）
     // B3（段B 历史批次）：filter=... 条目查询表达式（SSOT 过滤核 = evorule-bundle EntryFilter，
     // 与 bundle subset 语法同族）；过滤视图走 BundleEntry 映射，命中后回留原始 JSON（保留治理上下文）。
     let (entries, view): (Vec<Value>, Vec<crate::bundle::BundleEntry>) = match ds.dataset_kind {
@@ -659,7 +660,7 @@ pub async fn list_entries(
                 .collect();
             (raw, view)
         }
-        DatasetKind::Knowledge => {
+        DatasetKind::Knowledge | DatasetKind::LawSet => {
             let es = state.store.list_knowledge_entries(&id, None)?;
             let view = es
                 .iter()
@@ -722,7 +723,8 @@ pub async fn get_dataset_entry(
             .store
             .get_latest_entry(&id, &entry_id)?
             .map(|e| serde_json::to_value(e).unwrap_or(Value::Null)),
-        DatasetKind::Knowledge => state
+        // law_set 条目与知识条目同型通道（存储/详情同映射）
+        DatasetKind::Knowledge | DatasetKind::LawSet => state
             .store
             .get_latest_knowledge_entry(&id, &entry_id)?
             .map(|e| serde_json::to_value(e).unwrap_or(Value::Null)),
@@ -747,12 +749,13 @@ pub async fn add_entry(
     if ds.tenant_id != ctx.tenant_id {
         return Err(ApiError::not_found("数据集不存在"));
     }
-    // Q12 R4：按数据集类型分流校验（同一端点，两类条目互斥、显式报错）
+    // Q12 R4：按数据集类型分流校验（同一端点，两类条目互斥、显式报错；
+    // law_set 数据集条目与知识条目同型通道承载，载荷由 law_set 域 schema 强校验）
     match ds.dataset_kind {
-        DatasetKind::Knowledge => {
+        DatasetKind::Knowledge | DatasetKind::LawSet => {
             let req: AddKnowledgeEntryReq = serde_json::from_value(body).map_err(|e| {
                 ApiError::bad_request(format!(
-                    "knowledge 数据集条目须为 {{entry_id, version, payload, schema_ref, ...}}: {e}"
+                    "knowledge/law_set 数据集条目须为 {{entry_id, version, payload, schema_ref, ...}}: {e}"
                 ))
             })?;
             let domain = req.domain.unwrap_or_else(|| {

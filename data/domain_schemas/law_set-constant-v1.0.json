@@ -1,0 +1,32 @@
+{
+  "$id": "https://evorule.org/schemas/domain/law_set/constant/v1.0.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "version": "1.0",
+  "owner": "Mr. Damu Zheng",
+  "reviewed_by": "Mr. Damu Zheng",
+  "consumer": "law_set dataset governance chain (gate + bundle export + distribution consumers)",
+  "title": "Evorule verification constant entry (law_set dataset payload)",
+  "description": "Verification constant entry payload contract for law_set datasets. Carries a physical/verification constant as value + SI unit plus provenance metadata (source required; uncertainty and verified optional). Dataset version snapshots and push-event mechanisms are reused as-is; this contract defines the entry-level metadata shape only.",
+  "type": "object",
+  "required": ["value", "si_unit", "metadata"],
+  "properties": {
+    "value": {
+      "type": "number"
+    },
+    "si_unit": {
+      "type": "string",
+      "minLength": 1,
+      "description": "SI unit expression (unit-engine parseable), e.g. \"m*s^-1\""
+    },
+    "metadata": {
+      "type": "object",
+      "required": ["source"],
+      "properties": {
+        "source": { "type": "string" },
+        "uncertainty": { "type": "string" },
+        "verified": { "type": "string" }
+      }
+    }
+  },
+  "additionalProperties": false
+}

@@ -226,6 +226,146 @@ impl Validator {
         Ok(())
     }
 
+    /// law_set 条目结构校验（定律集条目准入结构面，纯函数零依赖）：
+    ///
+    /// - 七要素必填（机器闸准入从严口径）：formula / symbols / si_units / domain /
+    ///   solvable / derivation / tier，外加条目 id（域 schema required 面）；
+    /// - 公式仅允许「等式恒真」语义：恰好一个等式分隔符（`==` 或 `=`），两侧非空
+    ///   （裸 `=` = 分隔符缺侧，显式拒绝）；缺分隔符/多分隔符同样拒绝；
+    /// - condition/then 判定语义属 rule_set 分野，由 law 载荷不含 transform 结构保证
+    ///   （域 schema additionalProperties=false 同向收紧）。
+    ///
+    /// 载荷 schema 级校验走 D3 领域 schema resolver（law_set 域件）；本方法为机器闸
+    /// M1 分支的准入结构面，从严于 schema required 面（七要素全数在场）。
+    pub fn validate_law_structure(payload: &serde_json::Value) -> Result<(), ValidationError> {
+        let obj = payload
+            .as_object()
+            .ok_or_else(|| ValidationError::Message("law 条目载荷须为 JSON 对象".into()))?;
+
+        let id = obj
+            .get("id")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ValidationError::Message("law 条目缺 id（或非字符串）".into()))?;
+        let id_ok = {
+            let mut chars = id.chars();
+            match chars.next() {
+                Some(c) if c.is_ascii_lowercase() => {
+                    chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+                }
+                _ => false,
+            }
+        };
+        if !id_ok {
+            return Err(ValidationError::Message(format!(
+                "law 条目 id 非法（须 ^[a-z][a-z0-9_]*$）: {id}"
+            )));
+        }
+
+        let formula = obj
+            .get("formula")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ValidationError::Message("law 条目缺 formula（或非字符串）".into()))?;
+        Self::validate_law_formula(formula)?;
+
+        let symbols = obj
+            .get("symbols")
+            .and_then(|v| v.as_object())
+            .ok_or_else(|| ValidationError::Message("law 条目缺 symbols（或非对象）".into()))?;
+        if symbols.len() < 2 {
+            return Err(ValidationError::Message(format!(
+                "law 条目 symbols 须至少 2 项（当前 {}）",
+                symbols.len()
+            )));
+        }
+        if symbols.values().any(|v| !v.is_string()) {
+            return Err(ValidationError::Message(
+                "law 条目 symbols 值须全为字符串".into(),
+            ));
+        }
+
+        let si_units = obj
+            .get("si_units")
+            .and_then(|v| v.as_object())
+            .ok_or_else(|| ValidationError::Message("law 条目缺 si_units（或非对象）".into()))?;
+        if si_units
+            .values()
+            .any(|v| v.as_str().map(|s| s.trim().is_empty()).unwrap_or(true))
+        {
+            return Err(ValidationError::Message(
+                "law 条目 si_units 值须全为非空字符串（SI 单位表达式）".into(),
+            ));
+        }
+
+        let domain = obj
+            .get("domain")
+            .and_then(|v| v.as_str())
+            .map(|s| s.trim().is_empty())
+            .unwrap_or(true);
+        if domain {
+            return Err(ValidationError::Message(
+                "law 条目缺 domain（或非非空字符串）".into(),
+            ));
+        }
+
+        for key in ["solvable", "derivation"] {
+            match obj.get(key).and_then(|v| v.as_array()) {
+                None => {
+                    return Err(ValidationError::Message(format!(
+                        "law 条目缺 {key}（或非数组）"
+                    )))
+                }
+                Some(items) => {
+                    if items.iter().any(|v| !v.is_string()) {
+                        return Err(ValidationError::Message(format!(
+                            "law 条目 {key} 项须全为字符串"
+                        )));
+                    }
+                }
+            }
+        }
+
+        match obj.get("tier").and_then(|v| v.as_str()) {
+            Some(t) if t == "light" || t == "full" => {}
+            _ => {
+                return Err(ValidationError::Message(
+                    "law 条目缺 tier（或非 light|full 枚举值）".into(),
+                ))
+            }
+        }
+        Ok(())
+    }
+
+    /// law 公式等式恒真结构检查：恰好一个等式分隔符（`==`/`=` 归一后），两侧非空。
+    /// 裸 `=`（分隔符缺侧）、缺分隔符、多分隔符均显式拒绝（不静默放行）。
+    fn validate_law_formula(formula: &str) -> Result<(), ValidationError> {
+        let f = formula.trim();
+        if f.chars().count() < 3 {
+            return Err(ValidationError::Message(format!(
+                "law 公式过短（minLength 3）: {formula}"
+            )));
+        }
+        let normalized = f.replace("==", "=");
+        let parts: Vec<&str> = normalized.split('=').collect();
+        match parts.len() {
+            2 => {
+                let (lhs, rhs) = (parts[0].trim(), parts[1].trim());
+                if lhs.is_empty() || rhs.is_empty() {
+                    Err(ValidationError::Message(format!(
+                        "law 公式裸 `=`（等式分隔符一侧为空，等式恒真语义须两侧非空）: {formula}"
+                    )))
+                } else {
+                    Ok(())
+                }
+            }
+            1 => Err(ValidationError::Message(format!(
+                "law 公式缺等式分隔符（等式恒真语义须 LHS=RHS 形态）: {formula}"
+            ))),
+            _ => Err(ValidationError::Message(format!(
+                "law 公式含多个等式分隔符（等式恒真语义须恰好一个）: {formula}"
+            ))),
+        }
+    }
+
     /// LLM 边界（§9-6 / 历史批次）：llm_generated=true → status 只能是 Draft
     ///
     /// 兼容包装：等价于 [`Self::validate_llm_boundary_gated`] 传 `None` 闸上下文
@@ -801,5 +941,102 @@ mod tests {
         assert!(
             scan_credentials("api_key: abcd1234efgh").contains(&"api_key=abcd1234efgh".to_string())
         );
+    }
+
+    // ---------- law 条目结构校验（law_set 条目准入结构面） ----------
+
+    fn law_payload() -> serde_json::Value {
+        serde_json::json!({
+            "id": "newton_second_law",
+            "formula": "F = m * a",
+            "symbols": {"F": "force", "m": "mass", "a": "acceleration"},
+            "si_units": {"F": "kg*m*s^-2", "m": "kg", "a": "m*s^-2"},
+            "domain": "mechanics",
+            "solvable": ["F", "m", "a"],
+            "derivation": ["second-order motion law in inertial frames"],
+            "tier": "full"
+        })
+    }
+
+    #[test]
+    fn test_law_structure_golden_pass() {
+        // 黄金正例：等式恒真公式 + 七要素齐备
+        Validator::validate_law_structure(&law_payload()).unwrap();
+        let mut einstein = law_payload();
+        einstein["id"] = serde_json::json!("mass_energy_equivalence");
+        einstein["formula"] = serde_json::json!("E = m * c^2");
+        Validator::validate_law_structure(&einstein).unwrap();
+        let mut gas = law_payload();
+        gas["id"] = serde_json::json!("ideal_gas_law");
+        gas["formula"] = serde_json::json!("P * V = n * R * T");
+        Validator::validate_law_structure(&gas).unwrap();
+        // `==` 分隔符同型放行（等式恒真语义等价形态）
+        let mut eq_eq = law_payload();
+        eq_eq["formula"] = serde_json::json!("F == m * a");
+        Validator::validate_law_structure(&eq_eq).unwrap();
+    }
+
+    #[test]
+    fn test_law_structure_bare_equals_rejected() {
+        // 裸 `=`（分隔符缺侧）显式拒绝；缺分隔符/多分隔符同拒
+        for formula in ["= m * a", "F =", "F ==", "m * a", "a = b = c"] {
+            let mut p = law_payload();
+            p["formula"] = serde_json::json!(formula);
+            let err = Validator::validate_law_structure(&p)
+                .expect_err(&format!("formula `{formula}` 应被拒"));
+            let msg = format!("{err}");
+            assert!(
+                msg.contains("公式"),
+                "formula `{formula}` 应以公式语义拒绝: {msg}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_law_structure_seven_elements_required() {
+        // 七要素缺一即拒（机器闸准入从严口径）
+        for key in [
+            "formula",
+            "symbols",
+            "si_units",
+            "domain",
+            "solvable",
+            "derivation",
+            "tier",
+        ] {
+            let mut p = law_payload();
+            p.as_object_mut().unwrap().remove(key);
+            let err = Validator::validate_law_structure(&p).expect_err(&format!("缺 {key} 应被拒"));
+            assert!(format!("{err}").contains("law 条目"), "{err}");
+        }
+        // id 缺失同拒
+        let mut p = law_payload();
+        p.as_object_mut().unwrap().remove("id");
+        assert!(Validator::validate_law_structure(&p).is_err());
+    }
+
+    #[test]
+    fn test_law_structure_field_shapes_rejected() {
+        // id 模式 / symbols 项数 / si_units 非字符串 / tier 枚举 / 非对象载荷
+        let cases: Vec<(serde_json::Value, &str)> = vec![
+            (serde_json::json!("Bad_Id"), "id"),
+            (serde_json::json!("9law"), "id"),
+            (serde_json::json!({"F": "force"}), "symbols"), // 仅 1 项
+            (serde_json::json!({"F": "force", "m": 2}), "symbols"),
+            (
+                serde_json::json!({"F": "", "m": "kg", "a": "m*s^-2"}),
+                "si_units",
+            ),
+            (serde_json::json!("medium"), "tier"),
+        ];
+        for (value, key) in cases {
+            let mut p = law_payload();
+            p[key] = value;
+            assert!(
+                Validator::validate_law_structure(&p).is_err(),
+                "字段 {key} 非法形态应被拒"
+            );
+        }
+        assert!(Validator::validate_law_structure(&serde_json::json!("not-an-object")).is_err());
     }
 }
