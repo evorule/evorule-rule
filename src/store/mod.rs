@@ -325,6 +325,13 @@ impl RuleStore {
         Ok(store)
     }
 
+    /// 领域 schema 目录只读视图（D3 resolver 数据源）：`{db 同级}/domain_schemas/`；
+    /// 内存库无目录返回 `None`。供 API 报因层指路（schema_ref 未注册时指引补件
+    /// 位置），只读零语义影响。
+    pub fn domain_schema_dir(&self) -> Option<&std::path::Path> {
+        self.domain_schema_dir.as_deref()
+    }
+
     /// 领域 schema 解析（D3，bundle SSOT 门禁注入点）：
     /// 两源合并——运行时目录索引优先，未命中落内置五件兜底（`builtin:knowledge/{kind}`，
     /// 见 [`Self::builtin_schema`]）；目录同 `$id` 覆写内置（内置为底、目录覆写）。

@@ -4592,6 +4592,11 @@ mod tests {
                 .contains("未在解析器注册"),
             "{body}"
         );
+        // resolver 未命中报因须含补件位置指引（in-memory 无目录 → <db_dir> 占位形态）
+        let msg = body["error"]["message"].as_str().unwrap();
+        assert!(msg.contains("expected contract file under"), "{msg}");
+        assert!(msg.contains("<db_dir>/domain_schemas/"), "{msg}");
+        assert!(msg.contains("data/domain_schemas/ in repo"), "{msg}");
 
         // console 入账通路（JWT，同一写核）：未注册 schema_ref 同样映射 400
         let (status, body) = send(
@@ -4617,6 +4622,59 @@ mod tests {
                 .contains("未在解析器注册"),
             "{body}"
         );
+        assert!(
+            body["error"]["message"]
+                .as_str()
+                .unwrap()
+                .contains("expected contract file under"),
+            "{body}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_knowledge_resolver_miss_reports_schema_dir_hint() {
+        // 文件库 + domain_schemas 目录存在但缺件：resolver 未命中报因含真实
+        // 补件目录路径（{db 同级}/domain_schemas/），可直接定位落件位置
+        let (app, _state) = build_app_with_domain_schema();
+        let token = register_login(&app).await;
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/datasets",
+            Some(&token),
+            Some(json!({
+                "dataset_id": "ds-hint-dir",
+                "name": "缺件指路集",
+                "domain": ["tax"],
+                "dataset_kind": "knowledge"
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "{body}");
+
+        let (status, body) = send(
+            app,
+            "POST",
+            "/v1/datasets/ds-hint-dir/entries",
+            Some(&token),
+            Some(json!({
+                "entry_id": "k-hint-dir",
+                "version": 1,
+                "payload": { "statement": "事实条目" },
+                "schema_ref": "https://evorule.org/schemas/domain/test/missing/v1.0.json",
+                "knowledge_kind": "fact"
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+        assert_eq!(body["error"]["code"], "bad_request", "{body}");
+        let msg = body["error"]["message"].as_str().unwrap();
+        assert!(msg.contains("未在解析器注册"), "{msg}");
+        assert!(msg.contains("expected contract file under"), "{msg}");
+        // 真实目录分支：报因含 db 同级 domain_schemas 目录路径（非 <db_dir> 占位）
+        assert!(!msg.contains("<db_dir>"), "{msg}");
+        assert!(msg.contains("domain_schemas"), "{msg}");
+        assert!(msg.contains("data/domain_schemas/ in repo"), "{msg}");
     }
 
     #[tokio::test]
