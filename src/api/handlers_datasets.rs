@@ -796,7 +796,7 @@ pub async fn add_entry(
             state
                 .store
                 .add_knowledge_entry(&entry)
-                .map_err(knowledge_write_err)?;
+                .map_err(|e| knowledge_write_err(e, state.store.domain_schema_dir()))?;
             Ok((
                 StatusCode::CREATED,
                 Json(serde_json::to_value(&entry).unwrap_or(Value::Null)),
@@ -1055,10 +1055,27 @@ pub struct ProposeKnowledgeEntryReq {
 /// 同一写核共用）：校验链失败 = 客户端 400（显式、不静默），其余走统一映射。
 /// store 写核 D3 门禁的 resolver 未命中（BundleError 族）属客户端 schema_ref 输入错误，
 /// 与 bundle 导入通路两处错误映射同口径——修正前落统一映射兜底分支按 5xx 上报，语义失真。
-fn knowledge_write_err(e: crate::store::StoreError) -> ApiError {
+/// resolver 未命中（SchemaNotResolved）额外追加补件位置指引：领域 schema 合同文件
+/// 须落 `{db 同级}/domain_schemas/`，仓库托管资产见 data/domain_schemas/。
+fn knowledge_write_err(
+    e: crate::store::StoreError,
+    schema_dir: Option<&std::path::Path>,
+) -> ApiError {
     match e {
         crate::store::StoreError::Bundle(b) => {
-            ApiError::bad_request(format!("入账校验失败（不静默降级）: {b}"))
+            let mut msg = format!("入账校验失败（不静默降级）: {b}");
+            if matches!(b, crate::bundle::BundleError::SchemaNotResolved { .. }) {
+                let hint = match schema_dir {
+                    Some(dir) => format!(
+                        "expected contract file under `{}` — see data/domain_schemas/ in repo",
+                        dir.display()
+                    ),
+                    None => "expected contract file under <db_dir>/domain_schemas/ (no db-side directory for in-memory store) — see data/domain_schemas/ in repo".to_string(),
+                };
+                msg.push_str("; ");
+                msg.push_str(&hint);
+            }
+            ApiError::bad_request(msg)
         }
         other => ApiError::from(other),
     }
@@ -1176,7 +1193,7 @@ pub async fn propose_knowledge_entry(
     state
         .store
         .add_knowledge_entry(&entry)
-        .map_err(knowledge_write_err)?;
+        .map_err(|e| knowledge_write_err(e, state.store.domain_schema_dir()))?;
     tracing::info!(
         target: "evorule::invoke",
         "propose_knowledge_entry: dataset={} entry={} v{} by {actor}",
