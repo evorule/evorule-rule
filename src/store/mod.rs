@@ -1645,13 +1645,16 @@ impl RuleStore {
         conn: &Connection,
         entry: &KnowledgeEntry,
     ) -> Result<(), StoreError> {
-        // 1) 数据集存在 + 类型匹配（数据条目只进 knowledge 数据集）
+        // 1) 数据集存在 + 类型匹配（数据/定律条目只进 knowledge / law_set 数据集）
         let ds = Self::query_dataset_conn(conn, &entry.dataset_id)?
             .ok_or_else(|| StoreError::DatasetNotFound(entry.dataset_id.clone()))?;
-        if ds.dataset_kind != DatasetKind::Knowledge {
+        if !matches!(
+            ds.dataset_kind,
+            DatasetKind::Knowledge | DatasetKind::LawSet
+        ) {
             return Err(StoreError::DatasetKindMismatch {
                 dataset: ds.dataset_id.clone(),
-                expected: "数据（knowledge）",
+                expected: "数据（knowledge/law_set）",
                 actual: ds.dataset_kind.as_str(),
             });
         }
@@ -3168,6 +3171,22 @@ impl RuleStore {
                     recipe_snapshot,
                 ))
             }
+            DatasetKind::LawSet => {
+                // law hosting 扩型：law_set 数据集条目 = 定律/常量件（知识条目同型
+                // 通道承载，schema_ref 指向 law_set 域 schema）；导出面与规则/数据
+                // 同一 SSOT，audit.content_hash 机制原样继承。
+                let entries = self.list_knowledge_entries(dataset_id, None)?;
+                Ok(BundleExporter::export_law(
+                    &ds,
+                    &entries,
+                    tests,
+                    by,
+                    at,
+                    instance_id,
+                    &catalog,
+                    recipe_snapshot,
+                ))
+            }
         }
     }
 
@@ -3249,6 +3268,18 @@ impl RuleStore {
                 BundleExporter::export(&ds_hist, &rules, tests, by, at, instance_id, &catalog, None)
             }
             DatasetKind::Knowledge => BundleExporter::export_knowledge(
+                &ds_hist,
+                &knowledges,
+                tests,
+                by,
+                at,
+                instance_id,
+                &catalog,
+                None,
+            ),
+            // law_set 历史重建：快照行以知识条目同型通道留档（kind=knowledge），
+            // 导出走 law 面（条目即 law 件）。
+            DatasetKind::LawSet => BundleExporter::export_law(
                 &ds_hist,
                 &knowledges,
                 tests,
@@ -10046,5 +10077,229 @@ mod writeback_dedup_tests {
             )
             .unwrap();
         assert_ne!(id1, id2, "不同条目的事件应各自入队");
+    }
+
+    // ---------- law hosting（law_set 数据集 store 层专项） ----------
+
+    /// 文件库 + 领域 schema 目录：直接复制仓内 data/domain_schemas 的 law_set 两件
+    /// 预置件（兼验预置件本身过 C3 运行时元校验与 jsonschema 装载）
+    fn file_store_with_law_schemas() -> (RuleStore, std::path::PathBuf) {
+        static SEQ: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let n = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!("law-store-test-{}-{n}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("domain_schemas")).unwrap();
+        let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        for name in ["law_set-v1.0.json", "law_set-constant-v1.0.json"] {
+            std::fs::copy(
+                manifest.join("data").join("domain_schemas").join(name),
+                dir.join("domain_schemas").join(name),
+            )
+            .unwrap();
+        }
+        let store = RuleStore::open(dir.join("db.sqlite").to_str().unwrap()).unwrap();
+        (store, dir)
+    }
+
+    fn law_dataset() -> RuleDataset {
+        RuleDataset {
+            dataset_id: "ds-laws-mechanics".into(),
+            name: "力学定律集".into(),
+            description: None,
+            dataset_kind: crate::model::DatasetKind::LawSet,
+            domain: vec!["mechanics".into()],
+            tags: vec![],
+            tenant_id: "org-evorule".into(),
+            visibility: Visibility::Private,
+            lifecycle: Lifecycle::default(),
+            versioning: Default::default(),
+            law_ref: None,
+            version_selection: None,
+            data_dependencies: None,
+            event_schemas: vec![],
+            meta: crate::model::Meta {
+                created_at: "t".into(),
+                created_by: "u".into(),
+                updated_at: None,
+                updated_by: None,
+            },
+        }
+    }
+
+    fn law_payload() -> serde_json::Value {
+        serde_json::json!({
+            "id": "newton_second_law",
+            "formula": "F = m * a",
+            "symbols": {"F": "force", "m": "mass", "a": "acceleration"},
+            "si_units": {"F": "kg*m*s^-2", "m": "kg", "a": "m*s^-2"},
+            "domain": "mechanics",
+            "solvable": ["F", "m", "a"],
+            "derivation": ["second-order motion law in inertial frames"],
+            "tier": "full"
+        })
+    }
+
+    fn law_entry() -> KnowledgeEntry {
+        KnowledgeEntry {
+            entry_id: "law-newton-2nd".into(),
+            dataset_id: "ds-laws-mechanics".into(),
+            version: 1,
+            status: Some(LifecycleStatus::Draft),
+            provenance: crate::model::Provenance {
+                source: "standard mechanics reference".into(),
+                clause: None,
+                document_id: None,
+                effective_from: None,
+                effective_to: None,
+                last_verified: None,
+                verified_by: None,
+            },
+            domain: "mechanics".into(),
+            tags: vec![],
+            payload: law_payload(),
+            schema_ref: "https://evorule.org/schemas/domain/law_set/law/v1.0.json".into(),
+            governance: None,
+            knowledge_kind: None,
+            trust_level: None,
+            license_ref: None,
+            execution_contract: None,
+        }
+    }
+
+    #[test]
+    fn test_law_dataset_domain_schemas_resolve() {
+        // 预置件（law/constant 两件）过 C3 元校验 + jsonschema 装载，resolver 命中
+        let (store, dir) = file_store_with_law_schemas();
+        for uri in [
+            "https://evorule.org/schemas/domain/law_set/law/v1.0.json",
+            "https://evorule.org/schemas/domain/law_set/constant/v1.0.json",
+        ] {
+            let v = store
+                .lookup_domain_schema(uri)
+                .unwrap_or_else(|| panic!("law_set domain schema missing: {uri}"));
+            assert_eq!(v.get("$id").and_then(|i| i.as_str()), Some(uri));
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_law_entry_write_and_bundle_export() {
+        // law_set 数据集：定律条目入账（D3 领域 schema 闸）→ law 面 bundle 导出
+        // （条目即 law 件；audit.content_hash 机制与规则/数据导出同源）
+        use crate::bundle::{BundleTests, TestVerdict};
+        let (store, dir) = file_store_with_law_schemas();
+        store.create_dataset(&law_dataset()).unwrap();
+        store.add_knowledge_entry(&law_entry()).unwrap();
+
+        let bundle = store
+            .export_bundle(
+                "ds-laws-mechanics",
+                &BundleTests {
+                    subset: vec!["sandbox:eng-01".into()],
+                    fixtures: vec![],
+                    verdict: TestVerdict::Pass,
+                },
+                "eng",
+                "t",
+                "org-evorule",
+                None,
+            )
+            .unwrap();
+        assert_eq!(bundle.entries.len(), 1);
+        let be = &bundle.entries[0];
+        assert_eq!(be.entry_id, "law-newton-2nd");
+        assert_eq!(
+            be.schema_ref.as_deref(),
+            Some("https://evorule.org/schemas/domain/law_set/law/v1.0.json"),
+            "law 条目型打标随条目携带"
+        );
+        assert_eq!(be.rule_body, law_payload(), "载荷零转译进 rule_body 字段");
+        assert!(!bundle.audit.content_hash.is_empty());
+        assert_eq!(bundle.audit.hash_algo, "blake3");
+
+        // 升版 → 历史版本导出（快照以知识条目同型通道留档，law 面重建）
+        store
+            .create_dataset_version("ds-laws-mechanics", BumpKind::Major, "eng", "t")
+            .unwrap();
+        let hist = store
+            .export_bundle_at(
+                "ds-laws-mechanics",
+                "v1",
+                &BundleTests::unverified(),
+                "eng",
+                "t",
+                "org-evorule",
+                None,
+            )
+            .unwrap();
+        assert_eq!(hist.entries.len(), 1);
+        assert_eq!(hist.entries[0].entry_id, "law-newton-2nd");
+        assert!(!hist.audit.content_hash.is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_constant_entry_schema_gate() {
+        // constant 条目型（值+SI 单位+溯源元数据）：合法入账；缺 si_unit 被 D3 闸拒
+        let (store, dir) = file_store_with_law_schemas();
+        store.create_dataset(&law_dataset()).unwrap();
+        let mut e = law_entry();
+        e.entry_id = "const-gn".into();
+        e.schema_ref = "https://evorule.org/schemas/domain/law_set/constant/v1.0.json".into();
+        e.payload = serde_json::json!({
+            "value": 9.80665,
+            "si_unit": "m*s^-2",
+            "metadata": {"source": "standard gravity reference", "uncertainty": "exact", "verified": "1990"}
+        });
+        store.add_knowledge_entry(&e).unwrap();
+
+        let mut bad = e.clone();
+        bad.entry_id = "const-bad".into();
+        bad.payload = serde_json::json!({
+            "value": 9.80665,
+            "metadata": {"source": "missing si_unit"}
+        });
+        let err = store.add_knowledge_entry(&bad).unwrap_err();
+        assert!(
+            format!("{err}").contains("si_unit"),
+            "缺 si_unit 应被领域 schema 闸拒绝: {err}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_rule_entry_rejected_in_law_dataset() {
+        // 类型分野：rule 条目不得进 law_set 数据集（显式报错不静默）
+        let (store, dir) = file_store_with_law_schemas();
+        store.create_dataset(&law_dataset()).unwrap();
+        let re = RuleEntry {
+            entry_id: "rule-001".into(),
+            dataset_id: "ds-laws-mechanics".into(),
+            version: 1,
+            status: Some(LifecycleStatus::Draft),
+            provenance: crate::model::Provenance {
+                source: "s".into(),
+                clause: None,
+                document_id: None,
+                effective_from: None,
+                effective_to: None,
+                last_verified: None,
+                verified_by: None,
+            },
+            domain: "mechanics".into(),
+            tags: vec![],
+            data_source_binding: vec![],
+            consumed_inputs: vec![],
+            rule_body: serde_json::json!({
+                "transform": [{"type": "set", "params": {"x": 1}}]
+            }),
+            governance: None,
+        };
+        let err = store.add_entry(&re).unwrap_err();
+        assert!(
+            matches!(err, StoreError::DatasetKindMismatch { .. }),
+            "rule 条目进 law_set 数据集应被类型闸拒绝: {err}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

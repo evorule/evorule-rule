@@ -118,7 +118,39 @@ impl BundleExporter {
         )
     }
 
-    /// 公共收尾：服务契约下沉补齐 + 哈希覆盖（规则/数据导出共用，防逻辑漂移）
+    /// law_set 数据集导出（law hosting 扩型）：定律/常量条目 → DatasetBundle。
+    /// 条目即 law 件：载荷零转译进 `rule_body` 字段（同知识条目通道，`EntryKind`
+    /// 为快照包契约枚举）；law/constant 条目型打标由 `schema_ref`（law_set 域
+    /// schema URI）随条目携带。audit.content_hash 机制与规则/数据导出完全同源
+    /// （finish() 单一权威实现）。
+    #[allow(clippy::too_many_arguments)] // 同 export
+    pub fn export_law(
+        dataset: &RuleDataset,
+        entries: &[crate::model::knowledge::KnowledgeEntry],
+        tests: &BundleTests,
+        by: &str,
+        at: &str,
+        instance_id: &str,
+        catalog: &std::collections::BTreeMap<String, ServiceCatalogEntry>,
+        recipe_snapshot: Option<RecipeSnapshot>,
+    ) -> DatasetBundle {
+        let bundle_entries = entries
+            .iter()
+            .map(Self::knowledge_entry_to_bundle)
+            .collect();
+        Self::finish(
+            dataset,
+            bundle_entries,
+            tests,
+            by,
+            at,
+            instance_id,
+            catalog,
+            recipe_snapshot,
+        )
+    }
+
+    /// 公共收尾：服务契约下沉补齐 + 哈希覆盖（规则/数据/定律导出共用，防逻辑漂移）
     ///
     /// `recipe_snapshot`：策略快照——由调用方如实附带（带证据导出链），
     /// 缺省 None 不序列化（字节兼容）；GET 历史重建链不携带（历史版本不关联当前策略）。

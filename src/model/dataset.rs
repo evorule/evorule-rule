@@ -14,7 +14,11 @@ use super::version::{LawRef, VersionSelection, Versioning};
 ///
 /// - `RuleSet`（默认）：规则集数据集，条目为 transform 指令集 → 进 TCB 确定性执行；
 /// - `Knowledge`：知识/数据资产数据集，条目为领域结构化 payload + schema_ref
-///   → 不进 TCB，供领域服务消费（治理链 5 态/双闸门/版本/发布完全复用）。
+///   → 不进 TCB，供领域服务消费（治理链 5 态/双闸门/版本/发布完全复用）；
+/// - `LawSet`：定律集数据集，条目为定律/验证常量结构化 payload（formula/symbols/
+///   si_units 等七要素）→ 不进 TCB，机器闸走 law 结构校验分支，随包分发给
+///   消费端装载。条目存储与知识条目同型通道（payload + schema_ref），类型分野
+///   由本枚举与域 schema_ref 承载。
 ///
 /// serde default = `RuleSet`：存量数据集（无 dataset_kind 列/字段）零迁移成本。
 /// 类型在创建时确定，创建后不可变更（防规则/数据载荷混装同一数据集）。
@@ -24,14 +28,16 @@ pub enum DatasetKind {
     #[default]
     RuleSet,
     Knowledge,
+    LawSet,
 }
 
 impl DatasetKind {
-    /// SQLite 列存储值（'rule_set' | 'knowledge'）
+    /// SQLite 列存储值（'rule_set' | 'knowledge' | 'law_set'）
     pub fn as_str(&self) -> &'static str {
         match self {
             DatasetKind::RuleSet => "rule_set",
             DatasetKind::Knowledge => "knowledge",
+            DatasetKind::LawSet => "law_set",
         }
     }
 
@@ -39,6 +45,7 @@ impl DatasetKind {
         match s {
             "rule_set" => Some(DatasetKind::RuleSet),
             "knowledge" => Some(DatasetKind::Knowledge),
+            "law_set" => Some(DatasetKind::LawSet),
             _ => None,
         }
     }
