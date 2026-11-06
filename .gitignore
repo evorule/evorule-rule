@@ -28,6 +28,7 @@
 #   /data/ASSET-INVENTORY.json  asset inventory manifest
 /data/*
 !/data/domain_schemas
+!/data/law_sets
 !/data/ASSET-INVENTORY.json
 
 # OS 临时文件
