@@ -1,0 +1,151 @@
+{
+  "$schema": "https://evorule.org/schemas/law_set/v1.0.json",
+  "kind": "law_set",
+  "id": "ideal-gas",
+  "version": "1.0.0",
+  "metadata": {
+    "title": "Ideal gas thermodynamics golden law set",
+    "description": "Five classical ideal-gas laws (golden G3 family): equation-always-true semantics only, no condition/then decision semantics. Tier coverage: 2x full (primary statements) + 3x light (isothermal/isobaric/isochoric algebraic forms).",
+    "domain": "thermodynamics",
+    "source": "Clapeyron 1834 ideal gas law; Boyle 1662; Charles 1787 (published Gay-Lussac 1802); Gay-Lussac 1802; Avogadro 1811; standard thermodynamics formulation",
+    "unit_system": "SI",
+    "verified": "2026-11-06 dimensional consistency check (SI seven-base dimension vectors)"
+  },
+  "laws": [
+    {
+      "id": "ideal_gas_law",
+      "formula": "P * V = n * R * T",
+      "symbols": {
+        "P": "pressure of the gas",
+        "V": "volume occupied by the gas",
+        "n": "amount of substance (moles)",
+        "R": "universal gas constant",
+        "T": "absolute temperature"
+      },
+      "si_units": {
+        "P": "pascal",
+        "V": "m^3",
+        "n": "mol",
+        "R": "joule*mol^-1*K^-1",
+        "T": "K"
+      },
+      "domain": "thermodynamics",
+      "solvable": ["P", "V", "n", "T"],
+      "derivation": [
+        "combined form of Boyle, Charles and Avogadro relations (Clapeyron 1834)",
+        "dimensional identity: Pa*m^3 == mol*(J*mol^-1*K^-1)*K (both sides expand to [M=1, L=2, T=-2])"
+      ],
+      "tier": "full",
+      "metadata": {
+        "source": "Clapeyron, Mmoire sur la puissance motrice de la chaleur (1834)",
+        "verified": "dimensional: Pa*m^3 == J"
+      }
+    },
+    {
+      "id": "boyle_law",
+      "formula": "P1 * V1 = P2 * V2",
+      "symbols": {
+        "P1": "initial pressure",
+        "V1": "initial volume",
+        "P2": "final pressure",
+        "V2": "final volume"
+      },
+      "si_units": {
+        "P1": "pascal",
+        "V1": "m^3",
+        "P2": "pascal",
+        "V2": "m^3"
+      },
+      "domain": "thermodynamics",
+      "solvable": ["P1", "V1", "P2", "V2"],
+      "derivation": [
+        "isothermal process invariant for fixed gas amount (Boyle 1662)",
+        "dimensional identity: both sides expand to Pa*m^3 == [M=1, L=2, T=-2]"
+      ],
+      "tier": "light",
+      "metadata": {
+        "source": "Boyle, New Experiments Physico-Mechanical (1662)",
+        "verified": "dimensional: Pa*m^3 == Pa*m^3"
+      }
+    },
+    {
+      "id": "charles_law",
+      "formula": "V1 / T1 = V2 / T2",
+      "symbols": {
+        "V1": "initial volume",
+        "T1": "initial absolute temperature",
+        "V2": "final volume",
+        "T2": "final absolute temperature"
+      },
+      "si_units": {
+        "V1": "m^3",
+        "T1": "K",
+        "V2": "m^3",
+        "T2": "K"
+      },
+      "domain": "thermodynamics",
+      "solvable": ["V1", "T1", "V2", "T2"],
+      "derivation": [
+        "isobaric process invariant for fixed gas amount (Charles 1787)",
+        "dimensional identity: both sides expand to m^3*K^-1 == [L=3, Theta=-1]"
+      ],
+      "tier": "light",
+      "metadata": {
+        "source": "Charles, unpublished 1787 lectures (published by Gay-Lussac 1802)",
+        "verified": "dimensional: m^3/K == m^3/K"
+      }
+    },
+    {
+      "id": "gay_lussac_law",
+      "formula": "P1 / T1 = P2 / T2",
+      "symbols": {
+        "P1": "initial pressure",
+        "T1": "initial absolute temperature",
+        "P2": "final pressure",
+        "T2": "final absolute temperature"
+      },
+      "si_units": {
+        "P1": "pascal",
+        "T1": "K",
+        "P2": "pascal",
+        "T2": "K"
+      },
+      "domain": "thermodynamics",
+      "solvable": ["P1", "T1", "P2", "T2"],
+      "derivation": [
+        "isochoric process invariant for fixed gas amount (Gay-Lussac 1802)",
+        "dimensional identity: both sides expand to Pa*K^-1 == [M=1, L=-1, T=-2, Theta=-1]"
+      ],
+      "tier": "light",
+      "metadata": {
+        "source": "Gay-Lussac, Annales de Chimie (1802)",
+        "verified": "dimensional: Pa/K == Pa/K"
+      }
+    },
+    {
+      "id": "avogadro_law",
+      "formula": "V = n * V_m",
+      "symbols": {
+        "V": "volume occupied by the gas",
+        "n": "amount of substance (moles)",
+        "V_m": "molar volume"
+      },
+      "si_units": {
+        "V": "m^3",
+        "n": "mol",
+        "V_m": "m^3*mol^-1"
+      },
+      "domain": "thermodynamics",
+      "solvable": ["V", "n", "V_m"],
+      "derivation": [
+        "equal volumes of gases contain equal molecule counts at equal T and P (Avogadro 1811)",
+        "dimensional identity: mol*m^3*mol^-1 == m^3 == [L=3]"
+      ],
+      "tier": "full",
+      "metadata": {
+        "source": "Avogadro, Essai d'une manire de dterminer les masses relatives (1811)",
+        "verified": "dimensional: mol*m^3/mol == m^3"
+      }
+    }
+  ]
+}
