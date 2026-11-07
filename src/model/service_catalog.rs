@@ -140,6 +140,10 @@ const EMBEDDED_SERVICE_FILES: &[(&str, &str)] = &[
         "verification-services",
         include_str!("official_native_services.verification-services.embedded.json"),
     ),
+    (
+        "video-services",
+        include_str!("official_native_services.video-services.embedded.json"),
+    ),
 ];
 
 /// 官方预置原生服务种子（声明文件化；泛化至多插件聚合）。
@@ -360,6 +364,7 @@ mod tests {
             ("geometry_iso_project", false, "等距投影(三维点集→屏幕坐标,方位角/仰角/视口适配,契约化变换,确定性)"),
             ("geometry_tube_route", false, "管路走线校核(转折点序列→段长/转角/弯径切线需求,弯径超限违规,确定性)"),
             ("geometry_figure_audit", false, "图样场景审计(棱柱/管路成对间隙下界+端点承托,保守方向声明,确定性)"),
+            ("geometry_safe_zone_check", false, "安全区版式合规检查(画布+命名安全区+待检元素,元素须完全落在必选区内,越界量与越界边如实报告,容差显式入参,确定性)"),
             // ---- numeric-services ----
             ("numeric_rational_eval", false, "有理数表达式精确求值(整数与四则/整数幂,支持 vars 变量绑定,既约分数输出,确定性)"),
             ("numeric_decimal_eval", false, "定点十进制表达式求值(支持 vars 变量绑定,全程精确有理运算,输出端按 scale+rounding 单次舍入,确定性)"),
@@ -410,6 +415,7 @@ mod tests {
             ("verification_fsm_equivalence", false, "两台完全确定有限自动机等价判定(乘积机同步遍历,等价=true;不等价给出最短区分反例词与两机轨迹,确定性)"),
             ("verification_fsm_deadlock", false, "有限状态机死锁判定(活性语义:可达但从此无法到达任何接受态的状态集,卡死在非接受吸收域;给出到首个死锁态的最短witness路径,不可达态不判定,确定性)"),
             ("verification_fsm_language_inclusion", false, "两台完全确定有限自动机语言包含判定 L(A)⊆L(B)(乘积可达闭包与补机构造,符号上限16;包含=完备判定;不包含给出A接受而B拒绝的反例词与两机轨迹,确定性)"),
+            ("video_service_skeleton_probe", false, "插件组骨架探针(回显输入并恒返固定结构,验证装载与路由链路;无业务语义,确定性)"),
         ];
 
         let seed = official_native_services();
