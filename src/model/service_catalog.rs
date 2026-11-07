@@ -419,6 +419,7 @@ mod tests {
             ("video_timeline_consistency_check", false, "字幕时间轴一致性校验(镜头时间轴+字幕cue,整数毫秒判定:出镜/重叠/缝隙/超总时长;overlap_policy显式入参;确定性)"),
             ("color_contrast_ratio_eval", false, "颜色对比度判定核(WCAG 2.x 相对亮度+对比度比值,sRGB 三元组字符串入参,定点整数运算;字幕可读性 QC 判定用;确定性)"),
             ("video_frame_sequence_eval", false, "帧序列异常事件判定核(逐帧亮度摘要序列→黑帧/闪帧/静止段,阈值显式入参缺省16/60/24帧,帧号=数组下标;解码抽帧统计留引擎侧;确定性)"),
+            ("video_track_consistency_eval", false, "主体轨迹守恒判定核(参考 bbox+逐帧 bbox 序列→位移/尺度漂移越限判定,l2/linf 度量缺省 l2,l2 判定面平方整比较零开方,1e6 定点精确;感知检出留引擎侧显式喂入;确定性)"),
         ];
 
         let seed = official_native_services();
