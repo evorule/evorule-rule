@@ -364,6 +364,7 @@ mod tests {
             ("geometry_iso_project", false, "等距投影(三维点集→屏幕坐标,方位角/仰角/视口适配,契约化变换,确定性)"),
             ("geometry_tube_route", false, "管路走线校核(转折点序列→段长/转角/弯径切线需求,弯径超限违规,确定性)"),
             ("geometry_figure_audit", false, "图样场景审计(棱柱/管路成对间隙下界+端点承托,保守方向声明,确定性)"),
+            ("geometry_safe_zone_check", false, "安全区版式合规检查(画布+命名安全区+待检元素,元素须完全落在必选区内,越界量与越界边如实报告,容差显式入参,确定性)"),
             // ---- numeric-services ----
             ("numeric_rational_eval", false, "有理数表达式精确求值(整数与四则/整数幂,支持 vars 变量绑定,既约分数输出,确定性)"),
             ("numeric_decimal_eval", false, "定点十进制表达式求值(支持 vars 变量绑定,全程精确有理运算,输出端按 scale+rounding 单次舍入,确定性)"),
