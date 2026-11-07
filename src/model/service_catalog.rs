@@ -417,6 +417,8 @@ mod tests {
             ("verification_fsm_language_inclusion", false, "两台完全确定有限自动机语言包含判定 L(A)⊆L(B)(乘积可达闭包与补机构造,符号上限16;包含=完备判定;不包含给出A接受而B拒绝的反例词与两机轨迹,确定性)"),
             ("video_service_skeleton_probe", false, "插件组骨架探针(回显输入并恒返固定结构,验证装载与路由链路;无业务语义,确定性)"),
             ("video_timeline_consistency_check", false, "字幕时间轴一致性校验(镜头时间轴+字幕cue,整数毫秒判定:出镜/重叠/缝隙/超总时长;overlap_policy显式入参;确定性)"),
+            ("color_contrast_ratio_eval", false, "颜色对比度判定核(WCAG 2.x 相对亮度+对比度比值,sRGB 三元组字符串入参,定点整数运算;字幕可读性 QC 判定用;确定性)"),
+            ("video_frame_sequence_eval", false, "帧序列异常事件判定核(逐帧亮度摘要序列→黑帧/闪帧/静止段,阈值显式入参缺省16/60/24帧,帧号=数组下标;解码抽帧统计留引擎侧;确定性)"),
         ];
 
         let seed = official_native_services();
