@@ -34,10 +34,14 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 ureq = { version = "2", features = ["json"] }
 axum = "0.8"
 tokio = { version = "1", features = ["full"] }
-tower = { version = "0.5", features = ["util"] }
+tower = { version = "0.5", features = ["util", "limit"] }
 http-body-util = "0.1"
 clap = { version = "4", features = ["derive", "env"] }
-tower-http = { version = "0.6", features = ["cors", "fs", "set-header"] }
+tower-http = { version = "0.6", features = ["cors", "fs", "set-header", "limit"] }
+# serve 面节流（与 evorule-server 同模具）：请求体上限走 tower-http limit，
+# 按 IP 速率限制走 tower-governor（令牌桶；per_sec=0 完全禁用）
+tower_governor = "0.8"
+governor = "0.10"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [dev-dependencies]

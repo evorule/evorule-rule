@@ -38,6 +38,7 @@ pub mod handlers_orgs;
 pub mod handlers_search;
 pub mod handlers_services;
 pub mod handlers_writeback;
+pub mod quota;
 
 /// 活跃存储后端（历史批次1 配置化双后端 · 最小接线）
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -47,6 +48,11 @@ pub enum BackendKind {
     /// PostgreSQL（仅 `--features postgres` 且成功建池/迁移后）
     Postgres,
 }
+
+/// serve 面请求体上限（与 evorule-server 同档缺省：1MB）
+pub const MAX_REQUEST_BODY_BYTES: usize = 1024 * 1024;
+/// serve 面并发连接上限（与 evorule-server 同档缺省：1000）
+pub const MAX_CONCURRENCY: usize = 1000;
 
 impl BackendKind {
     pub fn as_str(&self) -> &'static str {
@@ -73,6 +79,8 @@ pub struct AppState {
     /// K3 writeback 消费器配置（回写消费接线批）：new 时 env 一次读取（测试可直改）。
     /// None=off——收件行为与消费器上线前逐字节一致。
     pub k3_propose: Option<crate::api::handlers_writeback::K3ProposeConfig>,
+    /// 机器行权频次配额（per-tenant 滑窗；超限 429 降级人工，fail-visible）
+    pub transition_quota: Arc<quota::TransitionQuota>,
     /// Idempotency-Key 幂等缓存（设计文档 §14 / 历史批次 P1-B4，单实例内存版）
     idem: Arc<Mutex<HashMap<String, IdemEntry>>>,
 }
@@ -103,6 +111,7 @@ impl AppState {
             backend: BackendKind::Sqlite,
             pg_smoke: None,
             k3_propose: crate::api::handlers_writeback::read_k3_env_config(),
+            transition_quota: Arc::new(quota::TransitionQuota::with_defaults()),
             idem: Arc::new(Mutex::new(HashMap::new())),
         }
     }
@@ -241,6 +250,15 @@ impl ApiError {
         Self {
             status: StatusCode::UNPROCESSABLE_ENTITY,
             code: "unprocessable_entity",
+            message: msg.into(),
+        }
+    }
+    /// 429 Too Many Requests（机器行权频次配额：超限拒绝，fail-visible 不丢弃——
+    /// 调用方降级人工提案路径入闸）
+    pub fn too_many_requests(msg: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::TOO_MANY_REQUESTS,
+            code: "too_many_requests",
             message: msg.into(),
         }
     }
@@ -693,6 +711,10 @@ pub fn router(state: AppState) -> Router {
             post(handlers_entries::machine_gate_promote),
         )
         .route(
+            "/entries/{id}/ratify",
+            post(handlers_entries::ratify_post_review),
+        )
+        .route(
             "/audit/machine-gate/post-review-queue",
             get(handlers_entries::machine_gate_post_review_queue),
         )
@@ -782,6 +804,12 @@ pub fn router(state: AppState) -> Router {
         // 保证进程级 liveness 在认证体系异常时仍可探测
         .nest("/v1", Router::new().route("/health", get(health)))
         .with_state(state)
+        // serve 面节流（与 evorule-server 同模具，内→外：体限→并发限）；
+        // IP 速率限（GovernorLayer）在 bin 装配段（依赖 ConnectInfo 客户端地址）
+        .layer(tower_http::limit::RequestBodyLimitLayer::new(
+            MAX_REQUEST_BODY_BYTES,
+        ))
+        .layer(tower::limit::ConcurrencyLimitLayer::new(MAX_CONCURRENCY))
 }
 
 /// Assembles the externally served Router: governance API (`/v1/*`) +
@@ -5129,6 +5157,375 @@ mod tests {
         .await;
         assert_eq!(status, StatusCode::OK, "{body}");
         assert_eq!(body.as_array().unwrap().len(), 0, "{body}");
+    }
+
+    // ==================================================================
+    // P5 tiered adjudication E2E: law_set kind widening / proposal_class
+    // gate / transition quota (429 fail-visible) / T1 ratify / body limit
+    // ==================================================================
+
+    /// law_set domain-schema file store variant (D3 resolver needs the two
+    /// law_set schema files): temp dir + copied repo schemas + file store
+    fn build_app_with_law_schemas() -> (Router, AppState, std::path::PathBuf) {
+        static SEQ: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let n = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!("law-api-test-{}-{n}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("domain_schemas")).unwrap();
+        let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        for name in ["law_set-v1.0.json", "law_set-constant-v1.0.json"] {
+            std::fs::copy(
+                manifest.join("data").join("domain_schemas").join(name),
+                dir.join("domain_schemas").join(name),
+            )
+            .unwrap();
+        }
+        let store = RuleStore::open(dir.join("db.sqlite").to_str().unwrap()).expect("store");
+        store
+            .ensure_default_tenant("tenant_a", "示例组织", "inst-001", "2026-08-22T00:00:00Z")
+            .expect("tenant");
+        store
+            .ensure_default_org("tenant_a", "示例组织", "2026-08-22T00:00:00Z")
+            .expect("org");
+        let state = AppState::new(store, "test-secret", "inst-001", "http://127.0.0.1:9");
+        let app = router(state.clone());
+        (app, state, dir)
+    }
+
+    /// law entry fixture (mechanics domain, always-true equation, 7 fields)
+    fn p5_law_entry_body(entry_id: &str) -> serde_json::Value {
+        json!({
+            "entry_id": entry_id,
+            "version": 1,
+            "payload": {
+                "id": "newton_second_law",
+                "formula": "F = m * a",
+                "symbols": { "F": "force", "m": "mass", "a": "acceleration" },
+                "si_units": { "F": "kg*m*s^-2", "m": "kg", "a": "m*s^-2" },
+                "domain": "mechanics",
+                "solvable": ["F", "m", "a"],
+                "derivation": ["second-order motion law in inertial frames"],
+                "tier": "full"
+            },
+            "schema_ref": "https://evorule.org/schemas/domain/law_set/law/v1.0.json",
+            "provenance": { "source": "matrix drill" }
+        })
+    }
+
+    #[tokio::test]
+    async fn test_p5_transition_entry_law_set_kind_and_class_audit() {
+        let (app, state, dir) = build_app_with_law_schemas();
+        let transition_key = a23_create_key(&app, &state, "entries:transition").await;
+        let token = register_login(&app).await;
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/datasets",
+            Some(&token),
+            Some(json!({
+                "dataset_id": "ds-p5-law",
+                "name": "law set",
+                "domain": ["mechanics"],
+                "dataset_kind": "law_set"
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "{body}");
+        // law entry enters via the human path as Draft (creation = mid risk)
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/datasets/ds-p5-law/entries",
+            Some(&token),
+            Some(p5_law_entry_body("law-newton-2nd")),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "{body}");
+
+        // machine transition endpoint accepts law_set datasets now
+        let mut req = a24_transition_body("ds-p5-law", "law-newton-2nd", "unit fix drill");
+        req["proposal_class"] = json!("unit_fix");
+        let (status, body) = send_api_key(
+            app.clone(),
+            "POST",
+            "/v1/invoke/transition_entry",
+            Some(&transition_key),
+            Some(req),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["lifecycle"], "Active");
+        assert_eq!(body["tier"], "T0");
+        assert_eq!(body["proposal_class"], "unit_fix");
+
+        // audit trail: gate=machine + tier + class on every hop
+        let (status, body) = send(
+            app.clone(),
+            "GET",
+            "/v1/entries/law-newton-2nd/history",
+            Some(&token),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        let hist = body.as_array().unwrap();
+        assert_eq!(hist.len(), 2, "{body}");
+        for h in hist {
+            assert_eq!(h["gate"], "machine", "{body}");
+            assert_eq!(h["tier"], "T0", "{body}");
+            assert!(
+                h["cause"].as_str().unwrap().contains("class=unit_fix"),
+                "{body}"
+            );
+        }
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn test_p5_proposal_class_gate_wordlist_and_veto() {
+        let (app, state) = build_app();
+        let propose_key = a23_create_key(&app, &state, "entries:propose").await;
+        let transition_key = a23_create_key(&app, &state, "entries:transition").await;
+        let token = register_login(&app).await;
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/datasets",
+            Some(&token),
+            Some(json!({
+                "dataset_id": "ds-p5-cls",
+                "name": "class gate",
+                "domain": ["tax"],
+                "dataset_kind": "knowledge"
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "{body}");
+        for id in ["k-p5-1", "k-p5-2", "k-p5-3"] {
+            let (status, body) = send_api_key(
+                app.clone(),
+                "POST",
+                "/v1/invoke/propose_knowledge_entry",
+                Some(&propose_key),
+                Some(a23_propose_body("ds-p5-cls", id, serde_json::Value::Null)),
+            )
+            .await;
+            assert_eq!(status, StatusCode::CREATED, "{body}");
+        }
+
+        // out-of-vocabulary class → 400 (fail-fast)
+        let mut req = a24_transition_body("ds-p5-cls", "k-p5-1", "unknown class drill");
+        req["proposal_class"] = json!("unknown_class");
+        let (status, body) = send_api_key(
+            app.clone(),
+            "POST",
+            "/v1/invoke/transition_entry",
+            Some(&transition_key),
+            Some(req),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+
+        // mid-risk class → 422 one-vote veto even with tier=T0 (human chain)
+        let mut req = a24_transition_body("ds-p5-cls", "k-p5-2", "mid class drill");
+        req["proposal_class"] = json!("entry_create");
+        let (status, body) = send_api_key(
+            app.clone(),
+            "POST",
+            "/v1/invoke/transition_entry",
+            Some(&transition_key),
+            Some(req),
+        )
+        .await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+        assert!(
+            body["error"]["message"]
+                .as_str()
+                .unwrap()
+                .contains("一票否决"),
+            "{body}"
+        );
+
+        // low-risk class → allowed (tier double condition lives in the gate)
+        let mut req = a24_transition_body("ds-p5-cls", "k-p5-3", "low class drill");
+        req["proposal_class"] = json!("constant_update");
+        let (status, body) = send_api_key(
+            app.clone(),
+            "POST",
+            "/v1/invoke/transition_entry",
+            Some(&transition_key),
+            Some(req),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["proposal_class"], "constant_update");
+    }
+
+    #[tokio::test]
+    async fn test_p5_transition_quota_429_fail_visible() {
+        let (app, state) = build_app();
+        let propose_key = a23_create_key(&app, &state, "entries:propose").await;
+        let transition_key = a23_create_key(&app, &state, "entries:transition").await;
+        let token = register_login(&app).await;
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/datasets",
+            Some(&token),
+            Some(json!({
+                "dataset_id": "ds-p5-quota",
+                "name": "quota",
+                "domain": ["tax"],
+                "dataset_kind": "knowledge"
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "{body}");
+        let (status, body) = send_api_key(
+            app.clone(),
+            "POST",
+            "/v1/invoke/propose_knowledge_entry",
+            Some(&propose_key),
+            Some(a23_propose_body(
+                "ds-p5-quota",
+                "k-p5-q",
+                serde_json::Value::Null,
+            )),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "{body}");
+
+        // pre-fill the shared quota window → next transition exceeds quota
+        for _ in 0..crate::api::quota::DEFAULT_MAX_TRANSITIONS_PER_HOUR {
+            state.transition_quota.acquire("tenant_a").unwrap();
+        }
+        let (status, body) = send_api_key(
+            app.clone(),
+            "POST",
+            "/v1/invoke/transition_entry",
+            Some(&transition_key),
+            Some(a24_transition_body(
+                "ds-p5-quota",
+                "k-p5-q",
+                "over quota drill",
+            )),
+        )
+        .await;
+        assert_eq!(status, StatusCode::TOO_MANY_REQUESTS, "{body}");
+        // fail-visible, nothing dropped: entry still Draft, chain untouched
+        let (status, body) =
+            send(app.clone(), "GET", "/v1/entries/k-p5-q", Some(&token), None).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["status"], "Draft", "{body}");
+    }
+
+    #[tokio::test]
+    async fn test_p5_ratify_post_review_end_to_end() {
+        let (app, state) = build_app();
+        let token = register_login(&app).await;
+        machine_gate_seed_dataset(&app, &token, "ds-p5-rat").await;
+        machine_gate_llm_entry(&state, "ds-p5-rat", "mg-p5-t1");
+        for i in 0..51 {
+            machine_gate_llm_entry(&state, "ds-p5-rat", &format!("filler-r-{i}"));
+        }
+        let admin = admin_token(&state).await;
+        // machine promote → tier T1 downgrade → enters post-review queue
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/entries/mg-p5-t1/machine-gate-promote",
+            Some(&admin),
+            Some(json!({ "target": "active" })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["tier"], "T1");
+        let (status, body) = send(
+            app.clone(),
+            "GET",
+            "/v1/audit/machine-gate/post-review-queue",
+            Some(&admin),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body.as_array().unwrap().len(), 1, "{body}");
+
+        // non-approver → 403
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/entries/mg-p5-t1/ratify",
+            Some(&token),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+        // ratify → overwrites ratified_by/at, row leaves the queue
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/entries/mg-p5-t1/ratify",
+            Some(&admin),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert!(body["ratified_rows"].as_u64().unwrap() >= 1);
+        let (status, body) = send(
+            app.clone(),
+            "GET",
+            "/v1/audit/machine-gate/post-review-queue",
+            Some(&admin),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body.as_array().unwrap().len(), 0, "{body}");
+        // ratify again → 422 fail-visible (no silent success)
+        let (status, body) = send(
+            app.clone(),
+            "POST",
+            "/v1/entries/mg-p5-t1/ratify",
+            Some(&admin),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+        // audit replay: promoted row carries ratified_by (zero-gap chain)
+        let (status, body) = send(
+            app.clone(),
+            "GET",
+            "/v1/entries/mg-p5-t1/history",
+            Some(&admin),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert!(
+            body.as_array().unwrap().iter().any(|h| h["ratified_by"]
+                .as_str()
+                .unwrap_or("")
+                .starts_with("user:")
+                && h["ratified_at"].as_str().is_some()),
+            "{body}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_p5_request_body_limit_413() {
+        let (app, _state) = build_app();
+        let huge = "x".repeat(crate::api::MAX_REQUEST_BODY_BYTES + 1024);
+        let (status, _body) = send(
+            app,
+            "POST",
+            "/v1/auth/register",
+            None,
+            Some(json!({ "username": huge, "password": "pw", "tenant_id": "tenant_a" })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::PAYLOAD_TOO_LARGE);
     }
 
     #[tokio::test]

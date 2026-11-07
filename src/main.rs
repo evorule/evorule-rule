@@ -82,6 +82,10 @@ struct Cli {
     /// Missing directory = warn + /console stays 404 (governance API unaffected).
     #[arg(long)]
     console_dir: Option<String>,
+
+    /// 禁用按 IP 速率限制（令牌桶缺省 200 req/s / burst 200；体限+并发限不受此旗标影响）
+    #[arg(long)]
+    no_rate_limit: bool,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -247,13 +251,78 @@ async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             app.layer(cors)
         }
     };
+    // serve 面节流第三层（与 evorule-server 同模具）：按 IP 令牌桶速率限，
+    // 置于最外层（cors 之外）；依赖 ConnectInfo<SocketAddr> 提取客户端地址，
+    // 因此 serve 必须 into_make_service_with_connect_info（见下方 axum::serve）
+    let app = match resolve_governor_config(
+        if cli.no_rate_limit {
+            0
+        } else {
+            RATE_LIMIT_PER_SEC
+        },
+        RATE_LIMIT_BURST,
+    ) {
+        Some(cfg) => {
+            tracing::info!(
+                "速率限制已启用：{} req/s（burst={RATE_LIMIT_BURST}）",
+                if cli.no_rate_limit {
+                    0
+                } else {
+                    RATE_LIMIT_PER_SEC
+                }
+            );
+            app.layer(tower_governor::GovernorLayer::new(cfg))
+        }
+        None => {
+            tracing::info!("速率限制已禁用（--no-rate-limit）");
+            app
+        }
+    };
 
     // 7. 监听
     let addr: SocketAddr = format!("{}:{}", cli.host, cli.port).parse()?;
     let listener = tokio::net::TcpListener::bind(addr).await?;
     tracing::info!(addr = %addr, db = %cli.db, "evorule-rule 治理服务已启动");
-    axum::serve(listener, app).await?;
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await?;
     Ok(())
+}
+
+/// 按 IP 速率限制缺省档（与 evorule-server 同档）：持续 200 req/s，突发容量 200
+const RATE_LIMIT_PER_SEC: u64 = 200;
+/// 令牌桶容量（=突发上限，与 evorule-server 同档）
+const RATE_LIMIT_BURST: u32 = 200;
+
+/// 构造按 IP 令牌桶限速配置（与 evorule-server 同模具）：
+/// - `per_sec == 0` → `None`（调用方完全跳过 GovernorLayer，真禁用不假禁用）；
+/// - 其余 → tower_governor 0.8 语义换算：`per_second(n)` = 每 n 秒回补 1 个令牌，
+///   故持续速率 per_sec req/s 换算为 period = 1000/per_sec 毫秒（≥1ms 下限防零）。
+fn resolve_governor_config(
+    per_sec: u64,
+    burst: u32,
+) -> Option<
+    tower_governor::governor::GovernorConfig<
+        tower_governor::key_extractor::PeerIpKeyExtractor,
+        governor::middleware::NoOpMiddleware,
+    >,
+> {
+    if per_sec == 0 {
+        return None;
+    }
+    let period_ms = (1000 / per_sec).max(1);
+    tower_governor::governor::GovernorConfigBuilder::default()
+        .per_millisecond(period_ms)
+        .burst_size(burst)
+        .finish()
+        .or_else(|| {
+            tracing::warn!(
+                "GovernorConfigBuilder::finish() 返回 None，fallback 到 GovernorConfig::default()"
+            );
+            Some(tower_governor::governor::GovernorConfig::default())
+        })
 }
 
 /// 随机生成 HS256 签名密钥（32 字节 base64url）
@@ -347,5 +416,12 @@ mod tests {
         );
 
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// 速率限制配置：per_sec=0 → 完全禁用（None，不假禁用）；缺省档 → Some
+    #[test]
+    fn test_governor_config_resolve() {
+        assert!(resolve_governor_config(0, 200).is_none());
+        assert!(resolve_governor_config(RATE_LIMIT_PER_SEC, RATE_LIMIT_BURST).is_some());
     }
 }

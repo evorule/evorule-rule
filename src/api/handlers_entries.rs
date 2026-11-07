@@ -594,6 +594,49 @@ pub async fn machine_gate_post_review_queue(
     )?))
 }
 
+/// POST /entries/{id}/ratify —— 机器闸 T1 事后追认（行权动作，Approve 角色）：
+/// 仅对存在「机器放行 Active + tier=T1 + 未追认」审计行的条目生效
+/// （gate=machine 语义由 tier+post_review_required 标记承载——仅机器放行行置位，
+/// 人工审批行不带此标记）；覆写 ratified_by/at，追认后行退出队列（审计 only-append
+/// 可回查）。无待追认项 → 422 如实上抛（fail-visible，不静默成功）。
+pub async fn ratify_post_review(
+    State(state): State<AppState>,
+    Extension(ctx): Extension<AuthContext>,
+    Path(entry_id): Path<String>,
+    Query(scope): Query<EntryScopeQuery>,
+) -> Result<Json<Value>, ApiError> {
+    if !can(ctx.role, Action::Approve) {
+        return Err(ApiError::forbidden("追认=行权动作，需审批者及以上角色"));
+    }
+    let hint = scope.dataset_id.as_deref();
+    let (dataset_id, _) = locate_entry(&state, &ctx.tenant_id, &entry_id, hint)?;
+    let actor = format!("user:{}", ctx.user_id);
+    let at = crate::api::handlers_auth::now_iso();
+    let rows = state
+        .store
+        .ratify_post_review(&dataset_id, &entry_id, &actor, &at)?;
+    if rows == 0 {
+        return Err(ApiError::unprocessable_entity(
+            "无待追认项：该条目不存在未追认的机器放行（Active + tier=T1）审计行",
+        ));
+    }
+    tracing::info!(
+        target: "evorule::machine_gate",
+        "ratify_post_review: dataset={} entry={} rows={} by {actor}",
+        dataset_id,
+        entry_id,
+        rows
+    );
+    Ok(Json(serde_json::json!({
+        "status": "ratified",
+        "entry_id": entry_id,
+        "dataset_id": dataset_id,
+        "ratified_rows": rows,
+        "ratified_by": actor,
+        "ratified_at": at,
+    })))
+}
+
 /// GET /entries/{id}/deps —— 条目级 data_source_binding（设计文档 §3 层 2 绑定）
 pub async fn deps(
     State(state): State<AppState>,
