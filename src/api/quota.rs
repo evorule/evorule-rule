@@ -18,6 +18,10 @@ pub const QUOTA_WINDOW: Duration = Duration::from_secs(3600);
 /// 缺省配额：每租户每小时机器行权次数上限。
 pub const DEFAULT_MAX_TRANSITIONS_PER_HOUR: usize = 100;
 
+/// 配额耗尽信号（受端 429 fail-visible 的具名载体）。
+#[derive(Debug, Clone, Copy)]
+pub struct QuotaExhausted;
+
 /// 每租户滑窗配额闸（线程安全；AppState 共享单例）。
 #[derive(Debug)]
 pub struct TransitionQuota {
@@ -42,7 +46,7 @@ impl TransitionQuota {
 
     /// 配额检查+占位（原子）：窗口内余量充足则记一笔并返回 Ok；
     /// 超限返回 Err（调用方如实上抛 429，不静默）。
-    pub fn acquire(&self, tenant_id: &str) -> Result<(), ()> {
+    pub fn acquire(&self, tenant_id: &str) -> Result<(), QuotaExhausted> {
         if self.max_per_hour == 0 {
             return Ok(());
         }
@@ -58,7 +62,7 @@ impl TransitionQuota {
             }
         }
         if q.len() >= self.max_per_hour {
-            return Err(());
+            return Err(QuotaExhausted);
         }
         q.push_back(now);
         Ok(())
