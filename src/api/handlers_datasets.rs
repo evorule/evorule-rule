@@ -1431,14 +1431,33 @@ pub struct TransitionEntryReq {
     pub to: String,
     /// 审计 cause（必填，溯源锚——与 propose 同纪律）
     pub cause: String,
+    /// 危害类别（分级裁决治理矩阵词汇，可选）：缺省=None 兼容存量调用方；
+    /// 显式传入时 fail-fast 校验——词表外 400；中/高危类别一票否决 422
+    /// （人工闸链，机器行权不受端）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proposal_class: Option<String>,
 }
+
+/// 危害类别词表（治理矩阵立法：五档，扩词=改代码过 PR+裁定留痕）
+pub const PROPOSAL_CLASSES: [&str; 5] = [
+    "constant_update",
+    "unit_fix",
+    "entry_create",
+    "conflict_delete",
+    "contract_change",
+];
+/// 低危档（类别层×机器闸 tier 双条件与后可自动集成的类别）
+pub const PROPOSAL_CLASSES_LOW_RISK: [&str; 2] = ["constant_update", "unit_fix"];
 
 /// POST /v1/invoke/transition_entry —— 服务级机器行权（A2-4 接线，「机器行权，人工追认」
 /// 最小闭环的受端）：X-Api-Key(scope=entries:transition) 认证 → 数据集存在 + 租户匹配 +
-/// knowledge 域 → external 来源不给机器闸（同 machine-gate-promote 口径）→ 服务端现场跑
-/// 六检执行器（不信任客户端「检查通过」声明）→ 非全过/T2 = 422 附 MachineGateReport 全文
-/// （fail-visible，不静默降级，不落状态不落链）；全过按状态机合法路径逐跳机器放行
-/// （Draft 起点两跳各自独立落链，gate=machine + tier 审计留痕；T1 进追认队列）。
+/// knowledge / law_set 域 → external 来源不给机器闸（同 machine-gate-promote 口径）→
+/// 危害类别闸（词表 fail-fast + 中/高危一票否决 422）→ 行权频次配额（超限 429，
+/// 调用方降级人工提案路径）→ 服务端现场跑六检执行器（不信任客户端「检查通过」声明）→
+/// 非全过/T2 = 422 附 MachineGateReport 全文（fail-visible，不静默降级，不落状态不落链）；
+/// 全过按状态机合法路径逐跳机器放行（Draft 起点两跳各自独立落链，gate=machine + tier +
+/// class 审计留痕；T1 进追认队列）。LLM 产出条目由 store 层 LLM 边界闸结构性拒迁
+/// （llm_generated 不入机器行权通道）；Published 永远人工（to 仅 active）。
 pub async fn transition_entry(
     State(state): State<AppState>,
     headers: axum::http::HeaderMap,
@@ -1469,8 +1488,13 @@ pub async fn transition_entry(
     if ds.tenant_id != tenant_id {
         return Err(ApiError::not_found("数据集不存在"));
     }
-    if ds.dataset_kind != DatasetKind::Knowledge {
-        return Err(ApiError::bad_request("仅 knowledge 数据集支持机器行权"));
+    if !matches!(
+        ds.dataset_kind,
+        DatasetKind::Knowledge | DatasetKind::LawSet
+    ) {
+        return Err(ApiError::bad_request(
+            "仅 knowledge / law_set 数据集支持机器行权（law 条目与知识条目同型通道承载）",
+        ));
     }
     // 3) 目标状态：首版仅 Active（机器闸行权上限=Active，结构性立宪不松动）
     if body.to != "active" {
@@ -1482,6 +1506,35 @@ pub async fn transition_entry(
     if body.cause.trim().is_empty() {
         return Err(ApiError::bad_request("cause 必填（溯源锚）"));
     }
+    // 3.5) 危害类别闸（治理矩阵类别层：词表 fail-fast + 中/高危一票否决；
+    // 机器闸 tier 双条件由第 5 步六检执行器承载——类别层在这里独立拦截）
+    let proposal_class = match body.proposal_class.as_deref() {
+        None => None,
+        Some(c) => {
+            if !PROPOSAL_CLASSES.contains(&c) {
+                return Err(ApiError::bad_request(format!(
+                    "proposal_class `{c}` 词表外（合法词汇：{}）",
+                    PROPOSAL_CLASSES.join("/")
+                )));
+            }
+            if !PROPOSAL_CLASSES_LOW_RISK.contains(&c) {
+                return Err(ApiError::unprocessable_entity(format!(
+                    "proposal_class `{c}` 为中/高危类别：不走机器行权（人工闸链，类别层一票否决）"
+                )));
+            }
+            Some(c)
+        }
+    };
+    // 3.6) 行权频次配额（per-tenant 滑窗）：超限 429 fail-visible——
+    // 调用方降级人工提案路径入闸，提案物料不丢弃
+    state
+        .transition_quota
+        .acquire(&tenant_id)
+        .map_err(|_| {
+            ApiError::too_many_requests(
+                "机器行权频次超配额（每租户每小时上限）：自动集成通道收敛，降级人工提案路径入闸（fail-visible，提案不丢弃）",
+            )
+        })?;
     // 4) 条目在场 + external 来源不给机器闸（来源不可信者仅可人工审批放行）
     let entry = state
         .store
@@ -1520,12 +1573,20 @@ pub async fn transition_entry(
             )))
         }
     };
-    let cause = format!(
-        "{} | machine-gate {} | actor {}",
-        body.cause,
-        report.summary(),
-        actor
-    );
+    let cause = match proposal_class {
+        Some(c) => format!(
+            "{} | class={c} | machine-gate {} | actor {}",
+            body.cause,
+            report.summary(),
+            actor
+        ),
+        None => format!(
+            "{} | machine-gate {} | actor {}",
+            body.cause,
+            report.summary(),
+            actor
+        ),
+    };
     let at = now_iso();
     for hop in &hops {
         state.store.transition_knowledge_entry_status_machine(
@@ -1552,6 +1613,7 @@ pub async fn transition_entry(
             "entry_id": body.entry_id,
             "lifecycle": "Active",
             "tier": report.tier,
+            "proposal_class": proposal_class,
             "post_review_required": report.tier == "T1",
             "report": serde_json::to_value(&report).unwrap_or(Value::Null),
         })),
