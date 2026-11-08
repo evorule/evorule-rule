@@ -144,6 +144,10 @@ const EMBEDDED_SERVICE_FILES: &[(&str, &str)] = &[
         "video-services",
         include_str!("official_native_services.video-services.embedded.json"),
     ),
+    (
+        "trace-audit-services",
+        include_str!("official_native_services.trace-audit-services.embedded.json"),
+    ),
 ];
 
 /// 官方预置原生服务种子（声明文件化；泛化至多插件聚合）。
@@ -423,6 +427,11 @@ mod tests {
             ("qc_count_check", false, "结构计数判定核(对象部件计数 vs 规则表期望计数/区间,闭区间判定,违例出规则ID+期望+实际证据;规则表参数化,新增检查项=加规则表不加代码;守恒谓词引擎原语一;确定性)"),
             ("qc_domain_check", false, "比例/数值域校验核(测量值落规则域区间判定,骨比域/角度域/结构比域同构,域界字符串有理数闭区间可开单侧,1e6 定点整比较,违例出规则ID+域界+实际证据;规则表参数化;守恒谓词引擎原语二;确定性)"),
             ("qc_temporal_check", false, "帧间守恒判定核(逐帧观测序列相邻帧差值越限判定,位移/面积/计数守恒同构泛化,帧号非负整数唯一必填升序判定,首帧无前帧不判定,1e6 定点整比较,违例出规则ID+帧号+观测名+差值证据;规则表参数化;守恒谓词引擎原语三;确定性)"),
+            // ---- trace-audit-services ----
+            ("trace_behavior_entropy", false, "run 事件流行为熵判据(ToolCall 到达序滑动窗口工具名香农熵 H=-Σp·log₂p,缺省窗宽10步长窗半;前后半程工具分布 JS 散度;熵与散度按 4 位小数定点字符串输出,确定性)"),
+            ("trace_approval_density", false, "run 事件流审批密度判据(ApprovalRequired/Result 密度与结论分布、auto_rejected 计数、流级 Error 计数与消息样本、帧对账未闭合清单,确定性)"),
+            ("trace_era_split", false, "事件流分代切分索引(三重正交判据:J1 链哈希字段组形态翻转/J2 相邻行 ts 间隔超 24h/J3 react 主循环模型翻转旁证;边界取 J1∨J2 命中点,逐代行号/seq 区间/判据命中快照/摘要,只读零改写输入,确定性)"),
+            ("trace_era_mixing_sentinel", false, "时代混杂哨兵(检测单账面内多时代事件拼接:相邻 ts 间隔超 24h 与 react 主循环模型混桶两条证据面;混档判读无效化门前置,确定性)"),
         ];
 
         let seed = official_native_services();
