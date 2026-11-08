@@ -432,6 +432,7 @@ mod tests {
             ("trace_approval_density", false, "run 事件流审批密度判据(ApprovalRequired/Result 密度与结论分布、auto_rejected 计数、流级 Error 计数与消息样本、帧对账未闭合清单,确定性)"),
             ("trace_era_split", false, "事件流分代切分索引(三重正交判据:J1 链哈希字段组形态翻转/J2 相邻行 ts 间隔超 24h/J3 react 主循环模型翻转旁证;边界取 J1∨J2 命中点,逐代行号/seq 区间/判据命中快照/摘要,只读零改写输入,确定性)"),
             ("trace_era_mixing_sentinel", false, "时代混杂哨兵(检测单账面内多时代事件拼接:相邻 ts 间隔超 24h 与 react 主循环模型混桶两条证据面;混档判读无效化门前置,确定性)"),
+            ("trace_out_of_scope_writes", false, "写类工具路径集合与范围外写入检出(ToolCall 写类工具的 path/file/target 三键按序取首个非空字符串;scope 根区间判定=词典法零 FS 零 CWD,相对路径经 base_dir 入参解析,缺省=scope 根;写型工具值域可经 write_tools 扩展;归一失败判范围外,确定性)"),
         ];
 
         let seed = official_native_services();
