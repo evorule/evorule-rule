@@ -1,0 +1,114 @@
+{
+  "skeleton_id": "hand-v1",
+  "name": "人体骨骼规则集·手部第一批（21 关节感知口径）",
+  "units": {
+    "length": "ratio",
+    "angle": "degree"
+  },
+  "joints": [
+    { "joint_id": "wrist", "label": "腕（桡腕+腕骨间复合：8 块腕骨抽象为单锚）", "parent": null, "kind": "root" },
+    { "joint_id": "thumb_cmc", "label": "拇指腕掌关节（第一腕掌关节）", "parent": "wrist", "kind": "saddle" },
+    { "joint_id": "thumb_mcp", "label": "拇指掌指关节", "parent": "thumb_cmc", "kind": "hinge" },
+    { "joint_id": "thumb_ip", "label": "拇指指间关节", "parent": "thumb_mcp", "kind": "hinge" },
+    { "joint_id": "thumb_tip", "label": "拇指指尖端点", "parent": "thumb_ip", "kind": "terminal" },
+    { "joint_id": "index_mcp", "label": "示指掌指关节（第二 MCP）", "parent": "wrist", "kind": "condyloid" },
+    { "joint_id": "index_pip", "label": "示指近侧指间关节", "parent": "index_mcp", "kind": "hinge" },
+    { "joint_id": "index_dip", "label": "示指远侧指间关节", "parent": "index_pip", "kind": "hinge" },
+    { "joint_id": "index_tip", "label": "示指指尖端点", "parent": "index_dip", "kind": "terminal" },
+    { "joint_id": "middle_mcp", "label": "中指掌指关节（第三 MCP）", "parent": "wrist", "kind": "condyloid" },
+    { "joint_id": "middle_pip", "label": "中指近侧指间关节", "parent": "middle_mcp", "kind": "hinge" },
+    { "joint_id": "middle_dip", "label": "中指远侧指间关节", "parent": "middle_pip", "kind": "hinge" },
+    { "joint_id": "middle_tip", "label": "中指指尖端点", "parent": "middle_dip", "kind": "terminal" },
+    { "joint_id": "ring_mcp", "label": "环指掌指关节（第四 MCP）", "parent": "wrist", "kind": "condyloid" },
+    { "joint_id": "ring_pip", "label": "环指近侧指间关节", "parent": "ring_mcp", "kind": "hinge" },
+    { "joint_id": "ring_dip", "label": "环指远侧指间关节", "parent": "ring_pip", "kind": "hinge" },
+    { "joint_id": "ring_tip", "label": "环指指尖端点", "parent": "ring_dip", "kind": "terminal" },
+    { "joint_id": "little_mcp", "label": "小指掌指关节（第五 MCP）", "parent": "wrist", "kind": "condyloid" },
+    { "joint_id": "little_pip", "label": "小指近侧指间关节", "parent": "little_mcp", "kind": "hinge" },
+    { "joint_id": "little_dip", "label": "小指远侧指间关节", "parent": "little_pip", "kind": "hinge" },
+    { "joint_id": "little_tip", "label": "小指指尖端点", "parent": "little_dip", "kind": "terminal" }
+  ],
+  "bones": [
+    { "bone_id": "metacarpal_thumb", "label": "第一掌骨", "from_joint": "thumb_cmc", "to_joint": "thumb_mcp", "length_ratio": "0.56" },
+    { "bone_id": "thumb_proximal_phalanx", "label": "拇指近节指骨", "from_joint": "thumb_mcp", "to_joint": "thumb_ip", "length_ratio": "0.35" },
+    { "bone_id": "thumb_distal_phalanx", "label": "拇指远节指骨", "from_joint": "thumb_ip", "to_joint": "thumb_tip", "length_ratio": "0.24" },
+    { "bone_id": "metacarpal_index", "label": "第二掌骨", "from_joint": "wrist", "to_joint": "index_mcp", "length_ratio": "0.92" },
+    { "bone_id": "index_proximal_phalanx", "label": "示指近节指骨", "from_joint": "index_mcp", "to_joint": "index_pip", "length_ratio": "0.49" },
+    { "bone_id": "index_middle_phalanx", "label": "示指中节指骨", "from_joint": "index_pip", "to_joint": "index_dip", "length_ratio": "0.32" },
+    { "bone_id": "index_distal_phalanx", "label": "示指远节指骨", "from_joint": "index_dip", "to_joint": "index_tip", "length_ratio": "0.26" },
+    { "bone_id": "metacarpal_middle", "label": "第三掌骨（骨长比例基准）", "from_joint": "wrist", "to_joint": "middle_mcp", "length_ratio": "1.00" },
+    { "bone_id": "middle_proximal_phalanx", "label": "中指近节指骨", "from_joint": "middle_mcp", "to_joint": "middle_pip", "length_ratio": "0.52" },
+    { "bone_id": "middle_middle_phalanx", "label": "中指中节指骨", "from_joint": "middle_pip", "to_joint": "middle_dip", "length_ratio": "0.36" },
+    { "bone_id": "middle_distal_phalanx", "label": "中指远节指骨", "from_joint": "middle_dip", "to_joint": "middle_tip", "length_ratio": "0.29" },
+    { "bone_id": "metacarpal_ring", "label": "第四掌骨", "from_joint": "wrist", "to_joint": "ring_mcp", "length_ratio": "0.94" },
+    { "bone_id": "ring_proximal_phalanx", "label": "环指近节指骨", "from_joint": "ring_mcp", "to_joint": "ring_pip", "length_ratio": "0.49" },
+    { "bone_id": "ring_middle_phalanx", "label": "环指中节指骨", "from_joint": "ring_pip", "to_joint": "ring_dip", "length_ratio": "0.34" },
+    { "bone_id": "ring_distal_phalanx", "label": "环指远节指骨", "from_joint": "ring_dip", "to_joint": "ring_tip", "length_ratio": "0.27" },
+    { "bone_id": "metacarpal_little", "label": "第五掌骨", "from_joint": "wrist", "to_joint": "little_mcp", "length_ratio": "0.74" },
+    { "bone_id": "little_proximal_phalanx", "label": "小指近节指骨", "from_joint": "little_mcp", "to_joint": "little_pip", "length_ratio": "0.38" },
+    { "bone_id": "little_middle_phalanx", "label": "小指中节指骨", "from_joint": "little_pip", "to_joint": "little_dip", "length_ratio": "0.27" },
+    { "bone_id": "little_distal_phalanx", "label": "小指远节指骨", "from_joint": "little_dip", "to_joint": "little_tip", "length_ratio": "0.24" }
+  ],
+  "length_base": "metacarpal_middle",
+  "joint_limits": [
+    { "joint_id": "thumb_cmc", "axis": "flexion", "min_deg": "0", "max_deg": "45", "source": "AAOS joint motion reference values（拇指 CMC 屈曲）" },
+    { "joint_id": "thumb_cmc", "axis": "opposition", "min_deg": "0", "max_deg": "90", "source": "AAOS joint motion reference values（对掌量角器惯例简化为度域保守近似）" },
+    { "joint_id": "thumb_mcp", "axis": "flexion", "min_deg": "0", "max_deg": "50", "source": "AAOS joint motion reference values（拇指 MCP 屈曲）" },
+    { "joint_id": "thumb_ip", "axis": "flexion", "min_deg": "0", "max_deg": "80", "source": "AAOS joint motion reference values（拇指 IP 屈曲）" },
+    { "joint_id": "index_mcp", "axis": "flexion", "min_deg": "0", "max_deg": "90", "source": "AAOS joint motion reference values" },
+    { "joint_id": "index_pip", "axis": "flexion", "min_deg": "0", "max_deg": "100", "source": "AAOS joint motion reference values" },
+    { "joint_id": "index_dip", "axis": "flexion", "min_deg": "0", "max_deg": "80", "source": "AAOS joint motion reference values" },
+    { "joint_id": "middle_mcp", "axis": "flexion", "min_deg": "0", "max_deg": "90", "source": "AAOS joint motion reference values" },
+    { "joint_id": "middle_pip", "axis": "flexion", "min_deg": "0", "max_deg": "100", "source": "AAOS joint motion reference values" },
+    { "joint_id": "middle_dip", "axis": "flexion", "min_deg": "0", "max_deg": "80", "source": "AAOS joint motion reference values" },
+    { "joint_id": "ring_mcp", "axis": "flexion", "min_deg": "0", "max_deg": "90", "source": "AAOS joint motion reference values" },
+    { "joint_id": "ring_pip", "axis": "flexion", "min_deg": "0", "max_deg": "100", "source": "AAOS joint motion reference values" },
+    { "joint_id": "ring_dip", "axis": "flexion", "min_deg": "0", "max_deg": "80", "source": "AAOS joint motion reference values" },
+    { "joint_id": "little_mcp", "axis": "flexion", "min_deg": "0", "max_deg": "90", "source": "AAOS joint motion reference values" },
+    { "joint_id": "little_pip", "axis": "flexion", "min_deg": "0", "max_deg": "100", "source": "AAOS joint motion reference values" },
+    { "joint_id": "little_dip", "axis": "flexion", "min_deg": "0", "max_deg": "80", "source": "AAOS joint motion reference values" }
+  ],
+  "landmark_projection": {
+    "mediapipe": {
+      "model": "hands-21",
+      "landmarks": [
+        { "idx": 0, "name": "WRIST", "maps_to": "wrist" },
+        { "idx": 1, "name": "THUMB_CMC", "maps_to": "thumb_cmc" },
+        { "idx": 2, "name": "THUMB_MCP", "maps_to": "thumb_mcp" },
+        { "idx": 3, "name": "THUMB_IP", "maps_to": "thumb_ip" },
+        { "idx": 4, "name": "THUMB_TIP", "maps_to": "thumb_tip" },
+        { "idx": 5, "name": "INDEX_FINGER_MCP", "maps_to": "index_mcp" },
+        { "idx": 6, "name": "INDEX_FINGER_PIP", "maps_to": "index_pip" },
+        { "idx": 7, "name": "INDEX_FINGER_DIP", "maps_to": "index_dip" },
+        { "idx": 8, "name": "INDEX_FINGER_TIP", "maps_to": "index_tip" },
+        { "idx": 9, "name": "MIDDLE_FINGER_MCP", "maps_to": "middle_mcp" },
+        { "idx": 10, "name": "MIDDLE_FINGER_PIP", "maps_to": "middle_pip" },
+        { "idx": 11, "name": "MIDDLE_FINGER_DIP", "maps_to": "middle_dip" },
+        { "idx": 12, "name": "MIDDLE_FINGER_TIP", "maps_to": "middle_tip" },
+        { "idx": 13, "name": "RING_FINGER_MCP", "maps_to": "ring_mcp" },
+        { "idx": 14, "name": "RING_FINGER_PIP", "maps_to": "ring_pip" },
+        { "idx": 15, "name": "RING_FINGER_DIP", "maps_to": "ring_dip" },
+        { "idx": 16, "name": "RING_FINGER_TIP", "maps_to": "ring_tip" },
+        { "idx": 17, "name": "PINKY_MCP", "maps_to": "little_mcp" },
+        { "idx": 18, "name": "PINKY_PIP", "maps_to": "little_pip" },
+        { "idx": 19, "name": "PINKY_DIP", "maps_to": "little_dip" },
+        { "idx": 20, "name": "PINKY_TIP", "maps_to": "little_tip" }
+      ]
+    }
+  },
+  "external_assets": [
+    {
+      "asset_id": "hand-mesh-ref",
+      "kind": "mesh",
+      "path": "assets/hand_reference.obj",
+      "blake3": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  ],
+  "anatomy_notes": {
+    "carpal_group": "腕骨 8 块（舟骨/月骨/三角骨/豌豆骨/大多角骨/小多角骨/头状骨/钩骨）抽象为 wrist 单锚节点：腕骨间细部不在 MediaPipe 21 点感知面，后续全身批再细化",
+    "phalangeal_source": "骨长比例=Buchholz, Neumann & Brand (1992) 手部运动学测量均值，以第三掌骨为基准比例化，两位十进制定点",
+    "rom_source": "关节角度域=AAOS joint motion 经典参考值；对掌轴以度域保守近似（量角器惯例）",
+    "omitted_axes": "MCP 展收轴（abduction/adduction 0-25 度量级）首批未录：B8 判定核需展收面时加批",
+    "external_asset_note": "hand_reference.obj 为占位引用（blake3 全零=未锚定实件），真三维资产接入时替换路径与哈希"
+  }
+}

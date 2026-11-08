@@ -10309,4 +10309,211 @@ mod writeback_dedup_tests {
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    // ---------- skeleton hosting（骨骼规则集数据集 store 层专项：B7 手部第一批） ----------
+
+    /// 文件库 + 领域 schema 目录：复制仓内 data/domain_schemas 的 skeleton-hand-v1
+    /// 预置件（同 file_store_with_law_schemas 形态，兼验过 C3 元校验与 jsonschema 装载）
+    fn file_store_with_skeleton_schema() -> (RuleStore, std::path::PathBuf) {
+        static SEQ: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let n = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let dir =
+            std::env::temp_dir().join(format!("skeleton-store-test-{}-{n}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("domain_schemas")).unwrap();
+        let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        std::fs::copy(
+            manifest
+                .join("data")
+                .join("domain_schemas")
+                .join("skeleton-hand-v1.json"),
+            dir.join("domain_schemas").join("skeleton-hand-v1.json"),
+        )
+        .unwrap();
+        let store = RuleStore::open(dir.join("db.sqlite").to_str().unwrap()).unwrap();
+        (store, dir)
+    }
+
+    fn skeleton_dataset() -> RuleDataset {
+        RuleDataset {
+            dataset_id: "ds-skeleton-hand".into(),
+            name: "人体骨骼规则集·手部第一批".into(),
+            description: None,
+            dataset_kind: crate::model::DatasetKind::Knowledge,
+            domain: vec!["anatomy".into()],
+            tags: vec![],
+            tenant_id: "org-evorule".into(),
+            visibility: Visibility::Private,
+            lifecycle: Lifecycle::default(),
+            versioning: Default::default(),
+            law_ref: None,
+            version_selection: None,
+            data_dependencies: None,
+            event_schemas: vec![],
+            meta: crate::model::Meta {
+                created_at: "t".into(),
+                created_by: "u".into(),
+                updated_at: None,
+                updated_by: None,
+            },
+        }
+    }
+
+    /// 载荷正本：仓内 data/skeleton_sets/hand-v1.json 实读（单一定义点，
+    /// 测试与未来种子导入共用同一真值面，防测试私有副本漂移）
+    fn skeleton_entry_payload() -> serde_json::Value {
+        let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let raw = std::fs::read_to_string(
+            manifest
+                .join("data")
+                .join("skeleton_sets")
+                .join("hand-v1.json"),
+        )
+        .expect("skeleton payload file missing");
+        serde_json::from_str(&raw).expect("skeleton payload must be valid JSON")
+    }
+
+    fn skeleton_entry() -> KnowledgeEntry {
+        KnowledgeEntry {
+            entry_id: "skeleton-hand-v1".into(),
+            dataset_id: "ds-skeleton-hand".into(),
+            version: 1,
+            status: Some(LifecycleStatus::Draft),
+            provenance: crate::model::Provenance {
+                source: "Buchholz, Neumann & Brand 1992 (segment lengths); AAOS joint motion reference values (ROM)".into(),
+                clause: None,
+                document_id: None,
+                effective_from: None,
+                effective_to: None,
+                last_verified: None,
+                verified_by: None,
+            },
+            domain: "anatomy".into(),
+            tags: vec![],
+            payload: skeleton_entry_payload(),
+            schema_ref: "https://evorule.org/schemas/domain/anatomy/skeleton-hand/v1.json".into(),
+            governance: None,
+            knowledge_kind: None,
+            trust_level: None,
+            license_ref: None,
+            execution_contract: None,
+        }
+    }
+
+    #[test]
+    fn test_skeleton_dataset_domain_schema_resolve() {
+        // 预置件（B7b 立法件）过 C3 元校验 + resolver 命中
+        let (store, dir) = file_store_with_skeleton_schema();
+        let uri = "https://evorule.org/schemas/domain/anatomy/skeleton-hand/v1.json";
+        let v = store
+            .lookup_domain_schema(uri)
+            .unwrap_or_else(|| panic!("skeleton-hand domain schema missing: {uri}"));
+        assert_eq!(v.get("$id").and_then(|i| i.as_str()), Some(uri));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_skeleton_entry_write_and_topology_gate() {
+        // B7 主件：hand-v1 全数字表入账（D3 领域 schema 闸全过）+ 拓扑口径计数 +
+        // 悬挂引用拒绝（schema 层不查引用、入账闸必须查——引用完整性归判定核入口）
+        let (store, dir) = file_store_with_skeleton_schema();
+        store.create_dataset(&skeleton_dataset()).unwrap();
+        store.add_knowledge_entry(&skeleton_entry()).unwrap();
+
+        // 拓扑守恒口径：21 关节（感知口径）+ 19 骨（拇指单节指骨=2 节）+
+        // 16 角度域（对掌轴双录拇指 CMC）+ 21 投影（MediaPipe hands-21）
+        let p = skeleton_entry_payload();
+        assert_eq!(p["joints"].as_array().map(|a| a.len()), Some(21));
+        assert_eq!(p["bones"].as_array().map(|a| a.len()), Some(19));
+        assert_eq!(p["joint_limits"].as_array().map(|a| a.len()), Some(16));
+        assert_eq!(
+            p["landmark_projection"]["mediapipe"]["landmarks"]
+                .as_array()
+                .map(|a| a.len()),
+            Some(21)
+        );
+
+        // 升版 → 历史重建（knowledge 条目快照通道与 law 面同源；v1=纯黄金单条，
+        // 边界探针条目在快照后写入不污染历史语义）
+        store
+            .create_dataset_version("ds-skeleton-hand", BumpKind::Major, "eng", "t")
+            .unwrap();
+        let hist = store
+            .export_bundle_at(
+                "ds-skeleton-hand",
+                "v1",
+                &BundleTests::unverified(),
+                "eng",
+                "t",
+                "org-evorule",
+                None,
+            )
+            .unwrap();
+        assert_eq!(hist.entries.len(), 1);
+        assert_eq!(hist.entries[0].entry_id, "skeleton-hand-v1");
+        assert!(!hist.audit.content_hash.is_empty());
+
+        // 悬挂骨→关节引用：store 层现契约=只过 D3 schema 闸不查引用（B7b scope-note
+        // 定谳：引用完整性归 B8 判定核入口职责）——边界钉死防契约漂移；B8 加闸时本断言翻转
+        let mut boundary = skeleton_entry();
+        boundary.entry_id = "skeleton-hand-boundary-ref".into();
+        boundary.payload["bones"][0]["to_joint"] = serde_json::json!("ghost_joint");
+        store
+            .add_knowledge_entry(&boundary)
+            .unwrap_or_else(|e| panic!("悬挂引用现属 B8 判定核职责，store 层不应拒绝: {e}"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_skeleton_entry_schema_gate_rejects_scientific_notation() {
+        // D3 闸红线：定点串纪律（科学计数法长度必须被拒，立法留痕不可绕）
+        let (store, dir) = file_store_with_skeleton_schema();
+        store.create_dataset(&skeleton_dataset()).unwrap();
+        let mut bad = skeleton_entry();
+        bad.entry_id = "skeleton-hand-bad-sci".into();
+        bad.payload["bones"][0]["length_ratio"] = serde_json::json!("9.5e-01");
+        let err = store.add_knowledge_entry(&bad).unwrap_err();
+        assert!(
+            matches!(err, StoreError::Bundle(_)),
+            "科学计数法骨长应被领域 schema 闸拒绝: {err}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_skeleton_bundle_export_zero_translation() {
+        // 载荷零转译：bundle rule_body == data/skeleton_sets 正本 JSON 等价
+        // （同 law 面 export 契约，条目即骨件，audit.hash 同源）
+        let (store, dir) = file_store_with_skeleton_schema();
+        store.create_dataset(&skeleton_dataset()).unwrap();
+        store.add_knowledge_entry(&skeleton_entry()).unwrap();
+        let bundle = store
+            .export_bundle(
+                "ds-skeleton-hand",
+                &BundleTests {
+                    subset: vec!["sandbox:eng-01".into()],
+                    fixtures: vec![],
+                    verdict: TestVerdict::Pass,
+                },
+                "eng",
+                "t",
+                "org-evorule",
+                None,
+            )
+            .unwrap();
+        assert_eq!(bundle.entries.len(), 1);
+        let be = &bundle.entries[0];
+        assert_eq!(
+            be.schema_ref.as_deref(),
+            Some("https://evorule.org/schemas/domain/anatomy/skeleton-hand/v1.json"),
+            "骨骼条目型打标随条目携带"
+        );
+        assert_eq!(
+            be.rule_body,
+            skeleton_entry_payload(),
+            "载荷零转译进 rule_body"
+        );
+        assert_eq!(bundle.audit.hash_algo, "blake3");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

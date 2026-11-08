@@ -4,12 +4,12 @@
   "generator": "RG-1 批次A 件A1（一次性生成脚本，仓外临时）",
   "source": "尽调正本《evorule-rule-回合2尽调-资产清册与宪法保护-20261015.md》§1.2 八批次/§1.3 敏感定性/§1.4 库量级",
   "counting": {
-    "total_entries": 93,
-    "existing_assets": 92,
+    "total_entries": 94,
+    "existing_assets": 93,
     "self_registered": 1,
     "top_level": 83,
     "domain_schemas": 9,
-    "note": "尽调正本口径=顶层 83 件；本清单全量登记含 domain_schemas 9 件（8 领域 schema+SR-17 B2 迁移映射表），另自登记清单本体 1 件，合计 93 条目"
+    "note": "尽调正本口径=顶层 83 件；本清单全量登记含 domain_schemas 9 件（8 领域 schema+SR-17 B2 迁移映射表）+skeleton_sets 1 件（B7 骨骼数据资产正本），另自登记清单本体 1 件，合计 94 条目"
   },
   "legend": {
     "strict": "时点快照件：文件消失或改名=红灯（内容不比对）",
@@ -336,6 +336,14 @@
       "batch": "未考（源头待对账）",
       "consumers": "施工复现链/审计证据（无生产消费方）",
       "note": "实例检视脚本（源头待考）"
+    },
+    {
+      "path": "skeleton_sets/hand-v1.json",
+      "guard": "strict",
+      "kind": "data",
+      "batch": "视频线B7骨骼规则集录入",
+      "consumers": "rule store knowledge 数据集（law hosting 通道+D3 领域 schema 闸，store 测试族对拍）/验证器 scripts/validate_skeleton_hand.py 第四段真值对拍/video-services anatomy 判定核（后续接线候选）",
+      "note": "git-tracked 数据资产正本：手部 21 关节/19 骨/16 角度域/21 投影（骨长比例=Buchholz 1992 均值比例化，角度域=AAOS joint motion 参考值）；载体=dataset_kind=knowledge"
     },
     {
       "path": "smoke.db",
