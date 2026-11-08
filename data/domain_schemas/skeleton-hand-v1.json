@@ -6,7 +6,7 @@
   "reviewed_by": "Mr. Damu Zheng",
   "consumer": "video-services anatomy 判定核（B7 手部解剖 QC）/引擎侧 IK 预检（事前）/骨骼规则集录入链",
   "title": "手部骨骼规则集领域 schema（skeleton-hand-v1 entry 体形态）",
-  "description": "骨骼规则集数据层 SSOT 的 entry.rule_body 形态立法（01 档 §四 v1.12 锁档+统帅计划原话锚定「人体标准骨骼组成按等比例立体数据写成规则集，每块骨骼的数据都有」）：本体=拓扑连接表+骨长比例表+关节角度域表（KB 级纯数字表）；三维网格不入库，作外部资产引用（路径+blake3 哈希锚定）——规则=认识=小而确定，资产=商品面=大而借用。关键点映射=MediaPipe Hands 21 点投影（可选面，与本体解耦：本体是解剖骨架，投影是感知接口）。数据集载体=evorule-rule dataset（dataset_kind=rule_set），条目 rule_body 一律符合本 schema；骨长以无量纲比例记录（同一骨架内部节段互比），角度以度记录，两者均零单位歧义。数字精度纪律：比例/角度一律十进制定点字符串（禁科学计数法），判定核侧确定性可复算。",
+  "description": "骨骼规则集数据层 SSOT 的 entry.rule_body 形态立法（01 档 §四 v1.12 锁档+统帅计划原话锚定「人体标准骨骼组成按等比例立体数据写成规则集，每块骨骼的数据都有」）：本体=拓扑连接表+骨长比例表+关节角度域表（KB 级纯数字表）；三维网格不入库，作外部资产引用（路径+blake3 哈希锚定）——规则=认识=小而确定，资产=商品面=大而借用。关键点映射=MediaPipe Hands 21 点投影（可选面，与本体解耦：本体是解剖骨架，投影是感知接口）。数据集载体=evorule-rule dataset（dataset_kind=knowledge，数据条目只进 knowledge/law_set 集），条目 rule_body 一律符合本 schema；骨长以无量纲比例记录（同一骨架内部节段互比），角度以度记录，两者均零单位歧义。数字精度纪律：比例/角度一律十进制定点字符串（禁科学计数法），判定核侧确定性可复算。",
   "type": "object",
   "properties": {
     "skeleton_id": {

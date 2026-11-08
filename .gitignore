@@ -23,12 +23,14 @@
 # Whitelist governance: everything under /data/* is ignored except the
 # re-included assets below. New data directories MUST be registered as an
 # exception here (silent-ignore otherwise; see O-461 precedent).
-# Current whitelist:
 #   /data/domain_schemas/       domain JSON Schema contracts (hosted assets)
+#   /data/law_sets/             hosted law-set data assets
+#   /data/skeleton_sets/        hosted skeleton-set data assets (B7 hand first batch)
 #   /data/ASSET-INVENTORY.json  asset inventory manifest
 /data/*
 !/data/domain_schemas
 !/data/law_sets
+!/data/skeleton_sets
 !/data/ASSET-INVENTORY.json
 
 # OS 临时文件
