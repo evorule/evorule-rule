@@ -4,12 +4,12 @@
   "generator": "RG-1 批次A 件A1（一次性生成脚本，仓外临时）",
   "source": "尽调正本《evorule-rule-回合2尽调-资产清册与宪法保护-20261015.md》§1.2 八批次/§1.3 敏感定性/§1.4 库量级",
   "counting": {
-    "total_entries": 92,
-    "existing_assets": 91,
+    "total_entries": 93,
+    "existing_assets": 92,
     "self_registered": 1,
     "top_level": 83,
-    "domain_schemas": 8,
-    "note": "尽调正本口径=顶层 83 件；本清单全量登记含 domain_schemas 8 件（7 领域 schema+SR-17 B2 迁移映射表），另自登记清单本体 1 件，合计 92 条目"
+    "domain_schemas": 9,
+    "note": "尽调正本口径=顶层 83 件；本清单全量登记含 domain_schemas 9 件（8 领域 schema+SR-17 B2 迁移映射表），另自登记清单本体 1 件，合计 93 条目"
   },
   "legend": {
     "strict": "时点快照件：文件消失或改名=红灯（内容不比对）",
@@ -128,6 +128,14 @@
       "batch": "ALE/SR-14线",
       "consumers": "e2e 种子/evorule-rule-b2 试验仓引用（工作级）",
       "note": "git-tracked（O-461 半保护面）；$id 已迁 domain 命名域（SR-17 B2，见 id-migration-map.json）"
+    },
+    {
+      "path": "domain_schemas/skeleton-hand-v1.json",
+      "guard": "strict",
+      "kind": "schema",
+      "batch": "视频线B7b骨骼规则集立法",
+      "consumers": "video-services anatomy 判定核（B7 手部解剖 QC）/引擎侧 IK 预检/骨骼规则集录入链（验证器 scripts/validate_skeleton_hand.py）",
+      "note": "git-tracked（O-461 半保护面）；$id=anatomy 命名域新注册（非 SR-17 迁移件）；手部 21 点口径，分批策略第一批（01 档 §四 v1.12 锁档）"
     },
     {
       "path": "domain_schemas/id-migration-map.json",

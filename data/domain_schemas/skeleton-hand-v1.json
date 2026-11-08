@@ -1,0 +1,219 @@
+{
+  "$id": "https://evorule.org/schemas/domain/anatomy/skeleton-hand/v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "version": "1.0",
+  "owner": "Mr. Damu Zheng",
+  "reviewed_by": "Mr. Damu Zheng",
+  "consumer": "video-services anatomy 判定核（B7 手部解剖 QC）/引擎侧 IK 预检（事前）/骨骼规则集录入链",
+  "title": "手部骨骼规则集领域 schema（skeleton-hand-v1 entry 体形态）",
+  "description": "骨骼规则集数据层 SSOT 的 entry.rule_body 形态立法（01 档 §四 v1.12 锁档+统帅计划原话锚定「人体标准骨骼组成按等比例立体数据写成规则集，每块骨骼的数据都有」）：本体=拓扑连接表+骨长比例表+关节角度域表（KB 级纯数字表）；三维网格不入库，作外部资产引用（路径+blake3 哈希锚定）——规则=认识=小而确定，资产=商品面=大而借用。关键点映射=MediaPipe Hands 21 点投影（可选面，与本体解耦：本体是解剖骨架，投影是感知接口）。数据集载体=evorule-rule dataset（dataset_kind=rule_set），条目 rule_body 一律符合本 schema；骨长以无量纲比例记录（同一骨架内部节段互比），角度以度记录，两者均零单位歧义。数字精度纪律：比例/角度一律十进制定点字符串（禁科学计数法），判定核侧确定性可复算。",
+  "type": "object",
+  "properties": {
+    "skeleton_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "description": "骨架标识（数据集内唯一；如 hand-v1；后续上肢/脊柱/下肢批沿用同 schema 换 id）"
+    },
+    "name": {
+      "type": "string",
+      "description": "骨架名（自然语言，检索面）"
+    },
+    "units": {
+      "type": "object",
+      "properties": {
+        "length": {
+          "type": "string",
+          "const": "ratio",
+          "description": "骨长单位=无量纲比例（同一骨架内部节段互比，零绝对长度依赖）"
+        },
+        "angle": {
+          "type": "string",
+          "const": "degree",
+          "description": "角度单位=度（解剖学 ROM 惯例）"
+        }
+      },
+      "required": ["length", "angle"],
+      "additionalProperties": false
+    },
+    "joints": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {
+          "joint_id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "description": "关节标识（骨架内唯一）"
+          },
+          "label": {
+            "type": "string",
+            "description": "关节名（自然语言，如 拇指腕掌关节 CMC）"
+          },
+          "parent": {
+            "type": ["string", "null"],
+            "description": "父关节 joint_id（运动链上游；根关节=null，手部=腕 wrist）"
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["root", "hinge", "saddle", "condyloid", "ball", "terminal"],
+            "description": "关节运动学类型（root=链根；hinge=单轴如指间；saddle=双轴如拇指 CMC；condyloid=双轴如 MCP；ball=多轴预留；terminal=链端点如指尖，无独立运动自由度）"
+          }
+        },
+        "required": ["joint_id", "label", "parent", "kind"],
+        "additionalProperties": false
+      },
+      "description": "关节表（拓扑连接表节点面；运动链自腕根展开，每指一条链）"
+    },
+    "bones": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {
+          "bone_id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "description": "骨标识（骨架内唯一；如 index_proximal_phalanx）"
+          },
+          "label": {
+            "type": "string",
+            "description": "骨名（自然语言，如 示指近节指骨）"
+          },
+          "from_joint": {
+            "type": "string",
+            "description": "近端关节 joint_id（须在 joints 表中存在）"
+          },
+          "to_joint": {
+            "type": "string",
+            "description": "远端关节 joint_id（须在 joints 表中存在）"
+          },
+          "length_ratio": {
+            "type": "string",
+            "pattern": "^[0-9]+(\\.[0-9]+)?$",
+            "description": "骨长比例（十进制定点字符串，相对 units.length 基准=骨架内 length_base 指定节段；禁科学计数法）"
+          }
+        },
+        "required": ["bone_id", "label", "from_joint", "to_joint", "length_ratio"],
+        "additionalProperties": false
+      },
+      "description": "骨表（拓扑连接表边面+骨长比例表；每骨连接两关节，长度互比零绝对量纲）"
+    },
+    "length_base": {
+      "type": "string",
+      "description": "骨长比例基准 bone_id（所有 length_ratio 相对此骨；缺省=第三掌骨中指掌骨——全手最长稳定节段惯例）。缺省时 length_ratio 视为相对最长骨归一。"
+    },
+    "joint_limits": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {
+          "joint_id": {
+            "type": "string",
+            "description": "关节 joint_id（须在 joints 表中存在）"
+          },
+          "axis": {
+            "type": "string",
+            "enum": ["flexion", "extension", "abduction", "adduction", "opposition", "rotation"],
+            "description": "运动轴（解剖学面：屈/伸/展/收/对掌/旋转）"
+          },
+          "min_deg": {
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
+            "description": "角度域下限（十进制定点字符串，度；负值=过伸/反生理位）"
+          },
+          "max_deg": {
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
+            "description": "角度域上限（十进制定点字符串，度）"
+          },
+          "source": {
+            "type": "string",
+            "description": "数值出处（解剖学文献/实测规范锚；立法留痕纪律=每个数字有来源）"
+          }
+        },
+        "required": ["joint_id", "axis", "min_deg", "max_deg", "source"],
+        "additionalProperties": false
+      },
+      "description": "关节角度域表（生理可达域；判定核据此出域=畸变判定的数学面）"
+    },
+    "landmark_projection": {
+      "type": "object",
+      "properties": {
+        "mediapipe": {
+          "type": "object",
+          "properties": {
+            "model": {
+              "type": "string",
+              "const": "hands-21",
+              "description": "感知接口标识（MediaPipe Hands 21 关键点）"
+            },
+            "landmarks": {
+              "type": "array",
+              "minItems": 21,
+              "maxItems": 21,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "idx": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 20,
+                    "description": "MediaPipe 关键点序号（0=腕，1-4=拇指，5-8=示指，9-12=中指，13-16=环指，17-20=小指）"
+                  },
+                  "name": {
+                    "type": "string",
+                    "description": "关键点名（如 THUMB_CMC / INDEX_FINGER_MCP）"
+                  },
+                  "maps_to": {
+                    "type": ["string", "null"],
+                    "description": "对应本骨架 joint_id 或 bone_id（null=该点无本体对应）"
+                  }
+                },
+                "required": ["idx", "name", "maps_to"],
+                "additionalProperties": false
+              },
+              "description": "21 点逐项映射（恒 21 项，感知投影完整性由 cardinality 锁死）"
+            }
+          },
+          "required": ["model", "landmarks"],
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false,
+      "description": "关键点投影（可选面；感知提取与解剖本体的接口映射——本体不依赖投影存在）"
+    },
+    "external_assets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "asset_id": {
+            "type": "string",
+            "description": "外部资产标识"
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["mesh", "reference_image", "other"],
+            "description": "资产类型（三维网格/参考图/其他）"
+          },
+          "path": {
+            "type": "string",
+            "description": "资产路径（不入库承诺：规则仓只存引用）"
+          },
+          "blake3": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$",
+            "description": "资产内容哈希（blake3 十六进制 64 位；哈希锚定防引用漂移）"
+          }
+        },
+        "required": ["asset_id", "kind", "path", "blake3"],
+        "additionalProperties": false
+      },
+      "description": "外部资产引用（可选面；「等比例立体数据」中三维模型类内容落此处，零入库）"
+    }
+  },
+  "required": ["skeleton_id", "name", "units", "joints", "bones", "joint_limits"],
+  "additionalProperties": true
+}
