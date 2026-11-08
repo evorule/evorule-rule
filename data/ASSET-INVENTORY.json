@@ -135,7 +135,7 @@
       "kind": "schema",
       "batch": "视频线B7b骨骼规则集立法",
       "consumers": "video-services anatomy 判定核（B7 手部解剖 QC）/引擎侧 IK 预检/骨骼规则集录入链（验证器 scripts/validate_skeleton_hand.py）",
-      "note": "git-tracked（O-461 半保护面）；$id=anatomy 命名域新注册（非 SR-17 迁移件）；手部 21 点口径，分批策略第一批（01 档 §四 v1.12 锁档）"
+      "note": "git-tracked 半保护面；$id=anatomy 命名域新注册（非迁移件，见 id-migration-map.json 命名域口径）；手部 21 点口径，分批策略第一批（01 档 §四 v1.12 锁档）"
     },
     {
       "path": "domain_schemas/id-migration-map.json",
