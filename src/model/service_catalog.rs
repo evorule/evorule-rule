@@ -429,6 +429,8 @@ mod tests {
             ("qc_temporal_check", false, "帧间守恒判定核(逐帧观测序列相邻帧差值越限判定,位移/面积/计数守恒同构泛化,帧号非负整数唯一必填升序判定,首帧无前帧不判定,1e6 定点整比较,违例出规则ID+帧号+观测名+差值证据;规则表参数化;守恒谓词引擎原语三;确定性)"),
             ("anatomy_joint_angle_eval", false, "三点关节角判定核(顶点+两臂端点坐标→夹角余弦闭区间判定,1e6 定点整比较零浮点零超越函数,双 isqrt 分母防溢出,违例出规则ID+cos证据;手部QC静态面;规则表参数化;确定性)"),
             ("anatomy_hand_orientation_eval", false, "手部朝向判定核(标架点集→手性符号判定+链段共线/非共线退化判定,鞋带公式整数叉积和零浮点,epsilon显式入参,违例出手性翻转/退化链证据;手部QC翻转与共线面;规则表参数化;确定性)"),
+            ("anatomy_ik_reachability_eval", false, "IK 可达性预检核(链段点列总长 L 与目标距 d 环形域闭式判定,内界分段闭式=单段 0/二段 L−2·Lmin/三段以上折叠定理 L−2·Lmax,平方整数比较零开方零浮点零超越函数,链外与内洞出 unreachable 规则ID+L/d 定点证据;只证不可达不证可达,数值 IK 收敛性与关节限位留引擎侧;机械域 IK 预检面;规则表参数化;确定性)"),
+            ("anatomy_fk_replay_eval", false, "FK 正解复算核(链段角以 (cos,sin) 十进制有理数对入参 1e6 定点判定面,tip 整数乘加递推零超越函数,检出 b 点不污染正解链=残差二次判别面,锚帧角核对 expect 成对校验,违例出残差/角不符逐轴定点证据;角度→三角换算留引擎提取侧;机械域 FK 复算面;规则表参数化;确定性)"),
             // ---- trace-audit-services ----
             ("trace_behavior_entropy", false, "run 事件流行为熵判据(ToolCall 到达序滑动窗口工具名香农熵 H=-Σp·log₂p,缺省窗宽10步长窗半;前后半程工具分布 JS 散度;熵与散度按 4 位小数定点字符串输出,确定性)"),
             ("trace_approval_density", false, "run 事件流审批密度判据(ApprovalRequired/Result 密度与结论分布、auto_rejected 计数、流级 Error 计数与消息样本、帧对账未闭合清单,确定性)"),
