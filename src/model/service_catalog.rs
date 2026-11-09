@@ -85,6 +85,10 @@ const EMBEDDED_SERVICE_FILES: &[(&str, &str)] = &[
         include_str!("official_native_services.inference-services.embedded.json"),
     ),
     (
+        "graph-dispatch-services",
+        include_str!("official_native_services.graph-dispatch-services.embedded.json"),
+    ),
+    (
         "geometry-services",
         include_str!("official_native_services.geometry-services.embedded.json"),
     ),
@@ -361,6 +365,8 @@ mod tests {
             ("inference_equivalence_probe", false, "等价探针(结构比较+有限探针行为证据,probe_equivalent为证据语义非数学证明,确定性)"),
             ("inference_differential_diff", false, "规则集差分(读写集结构化diff,写异必不同/读异可能不同的保守方向,确定性)"),
             ("inference_counterfactual_sweep", false, "反事实参数扫描(参数路径逐值双仿真,每点差异面+汇总,复用反事实语义,确定性)"),
+            // ---- graph-dispatch-services ----
+            ("graph_shock_propagate", false, "常数修订冲击半径传播分析(依赖图引用闭包+regime复查+量纲耦合层间传播+已裁命题反推,修订提案强制出处元数据,确定性)"),
             // ---- geometry-services ----
             ("geometry_collision_check", false, "几何碰撞检测(零件两两相交判定,bbox/圆/多边形,触即算,确定性)"),
             ("geometry_clearance_check", false, "几何间隙检查(零件两两最小距离vs阈值,违规清单+全局最小,宽容方向容差,确定性)"),
