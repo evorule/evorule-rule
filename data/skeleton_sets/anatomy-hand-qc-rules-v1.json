@@ -1,0 +1,59 @@
+{
+  "dataset_id": "anatomy-hand-qc-rules-v1",
+  "dataset_kind": "knowledge",
+  "title": "Anatomy hand QC rule table v1 (acceptance layer over skeleton-hand-v1)",
+  "description": "QC acceptance rule table for hand-anatomy checks: joint-angle acceptance bands, bone-length ratio intervals, part counts, finger-collision pair declaration and temporal-delta policy. Semantically layered over skeleton-hand-v1 (validity domains from AAOS/Buchholz live there; this table carries the tunable acceptance bands consumed by QC services).",
+  "related_datasets": {
+    "skeleton_hand_numeric": {
+      "dataset_id": "skeleton-hand-v1",
+      "schema_id": "https://evorule.org/schemas/domain/anatomy/skeleton-hand/v1.json",
+      "relation": "numeric SSOT (validity domains / ratios / topology); this table = acceptance thresholds layer"
+    }
+  },
+  "units": {
+    "angle": "degree",
+    "length_ratio": "dimensionless (3rd metacarpal = 1)"
+  },
+  "content": {
+    "joint_angle_rules": [
+      { "rule_id": "HA-ANG-001", "joint_id": "thumb_cmc", "axis": "flexion", "min_deg": "0", "max_deg": "45" },
+      { "rule_id": "HA-ANG-002", "joint_id": "thumb_cmc", "axis": "opposition", "min_deg": "0", "max_deg": "90" },
+      { "rule_id": "HA-ANG-003", "joint_id": "thumb_mcp", "axis": "flexion", "min_deg": "0", "max_deg": "50" },
+      { "rule_id": "HA-ANG-004", "joint_id": "thumb_ip", "axis": "flexion", "min_deg": "0", "max_deg": "80" },
+      { "rule_id": "HA-ANG-005", "joint_id": "index_mcp", "axis": "flexion", "min_deg": "0", "max_deg": "90" },
+      { "rule_id": "HA-ANG-006", "joint_id": "index_pip", "axis": "flexion", "min_deg": "0", "max_deg": "100" },
+      { "rule_id": "HA-ANG-007", "joint_id": "index_dip", "axis": "flexion", "min_deg": "0", "max_deg": "80" },
+      { "rule_id": "HA-ANG-008", "joint_id": "middle_mcp", "axis": "flexion", "min_deg": "0", "max_deg": "90" },
+      { "rule_id": "HA-ANG-009", "joint_id": "middle_pip", "axis": "flexion", "min_deg": "0", "max_deg": "100" },
+      { "rule_id": "HA-ANG-010", "joint_id": "middle_dip", "axis": "flexion", "min_deg": "0", "max_deg": "80" },
+      { "rule_id": "HA-ANG-011", "joint_id": "ring_mcp", "axis": "flexion", "min_deg": "0", "max_deg": "90" },
+      { "rule_id": "HA-ANG-012", "joint_id": "ring_pip", "axis": "flexion", "min_deg": "0", "max_deg": "100" },
+      { "rule_id": "HA-ANG-013", "joint_id": "ring_dip", "axis": "flexion", "min_deg": "0", "max_deg": "80" },
+      { "rule_id": "HA-ANG-014", "joint_id": "little_mcp", "axis": "flexion", "min_deg": "0", "max_deg": "90" },
+      { "rule_id": "HA-ANG-015", "joint_id": "little_pip", "axis": "flexion", "min_deg": "0", "max_deg": "100" },
+      { "rule_id": "HA-ANG-016", "joint_id": "little_dip", "axis": "flexion", "min_deg": "0", "max_deg": "80" }
+    ],
+    "bone_ratio_rules": [
+      { "rule_id": "HA-RAT-001", "observation": "thumb_metacarpal_over_3rd_metacarpal", "min": "0.54", "max": "0.58", "target": "0.56" },
+      { "rule_id": "HA-RAT-002", "observation": "thumb_proximal_phalanx_over_3rd_metacarpal", "min": "0.33", "max": "0.37", "target": "0.35" },
+      { "rule_id": "HA-RAT-003", "observation": "thumb_distal_phalanx_over_3rd_metacarpal", "min": "0.22", "max": "0.26", "target": "0.24" }
+    ],
+    "part_count_rules": [
+      { "rule_id": "HA-CNT-001", "part": "bones", "expect": 19 },
+      { "rule_id": "HA-CNT-002", "part": "joints", "expect": 21, "projected_landmarks": 21 }
+    ],
+    "collision_rules": {
+      "predicate": "geometry_collision_check (existing service, reused)",
+      "finger_chains": ["index", "middle", "ring", "little"],
+      "pair_policy": "adjacent finger chains checked pairwise per frame"
+    },
+    "temporal_rules": {
+      "predicate": "qc_temporal_check (existing primitive, reused)",
+      "observation": "joint angle series per rule id; delta policy passed per call"
+    }
+  },
+  "metadata": {
+    "source": "AAOS joint motion reference values (validity domains, mirrored from skeleton-hand-v1); Buchholz, Neumann & Brand 1992, hand kinematics ratios normalized to the 3rd metacarpal. Acceptance bands (min/max around published means) are engineering-tunable QC thresholds, AI default v1.",
+    "consumers": "anatomy_joint_angle_eval / anatomy_hand_orientation_eval / qc_count_check / geometry_collision_check / qc_temporal_check"
+  }
+}
