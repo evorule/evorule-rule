@@ -152,6 +152,10 @@ const EMBEDDED_SERVICE_FILES: &[(&str, &str)] = &[
         "trace-audit-services",
         include_str!("official_native_services.trace-audit-services.embedded.json"),
     ),
+    (
+        "dimensional-check",
+        include_str!("official_native_services.dimensional-check.embedded.json"),
+    ),
 ];
 
 /// 官方预置原生服务种子（声明文件化；泛化至多插件聚合）。
@@ -443,6 +447,8 @@ mod tests {
             ("trace_era_split", false, "事件流分代切分索引(三重正交判据:J1 链哈希字段组形态翻转/J2 相邻行 ts 间隔超 24h/J3 react 主循环模型翻转旁证;边界取 J1∨J2 命中点,逐代行号/seq 区间/判据命中快照/摘要,只读零改写输入,确定性)"),
             ("trace_era_mixing_sentinel", false, "时代混杂哨兵(检测单账面内多时代事件拼接:相邻 ts 间隔超 24h 与 react 主循环模型混桶两条证据面;混档判读无效化门前置,确定性)"),
             ("trace_out_of_scope_writes", false, "写类工具路径集合与范围外写入检出(ToolCall 写类工具的 path/file/target 三键按序取首个非空字符串;scope 根区间判定=词典法零 FS 零 CWD,相对路径经 base_dir 入参解析,缺省=scope 根;写型工具值域可经 write_tools 扩展;归一失败判范围外,确定性)"),
+            // ---- dimensional-check ----
+            ("dimensional_check", false, "量纲一致性校验(单位表达式 lhs/rhs 对比;SI 七基本量纲+货币维,加减要求操作分量纲一致;复用 law_schema 量纲代数单源,纯计算,确定性)"),
         ];
 
         let seed = official_native_services();
