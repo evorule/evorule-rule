@@ -10142,7 +10142,9 @@ mod writeback_dedup_tests {
             "domain": "mechanics",
             "solvable": ["F", "m", "a"],
             "derivation": ["second-order motion law in inertial frames"],
-            "tier": "full"
+            "tier": "full",
+            "max_version_depth": 1,
+            "monotone_form": true
         })
     }
 

@@ -228,15 +228,17 @@ impl Validator {
 
     /// law_set 条目结构校验（定律集条目准入结构面，纯函数零依赖）：
     ///
-    /// - 七要素必填（机器闸准入从严口径）：formula / symbols / si_units / domain /
-    ///   solvable / derivation / tier，外加条目 id（域 schema required 面）；
+    /// - 九要素必填（机器闸准入从严口径）：formula / symbols / si_units / domain /
+    ///   solvable / derivation / tier，外加 max_version_depth（有限性声明，整数 ≥1）
+    ///   与 monotone_form（单调形态声明，值须为 true），再加条目 id（域 schema
+    ///   required 面）；
     /// - 公式仅允许「等式恒真」语义：恰好一个等式分隔符（`==` 或 `=`），两侧非空
     ///   （裸 `=` = 分隔符缺侧，显式拒绝）；缺分隔符/多分隔符同样拒绝；
     /// - condition/then 判定语义属 rule_set 分野，由 law 载荷不含 transform 结构保证
     ///   （域 schema additionalProperties=false 同向收紧）。
     ///
     /// 载荷 schema 级校验走 D3 领域 schema resolver（law_set 域件）；本方法为机器闸
-    /// M1 分支的准入结构面，从严于 schema required 面（七要素全数在场）。
+    /// M1 分支的准入结构面，从严于 schema required 面（九要素全数在场）。
     pub fn validate_law_structure(payload: &serde_json::Value) -> Result<(), ValidationError> {
         let obj = payload
             .as_object()
@@ -329,6 +331,38 @@ impl Validator {
             _ => {
                 return Err(ValidationError::Message(
                     "law 条目缺 tier（或非 light|full 枚举值）".into(),
+                ))
+            }
+        }
+
+        // 有限性声明（v1.0 原位加必填）：max_version_depth 须为整数且 ≥1
+        match obj.get("max_version_depth") {
+            Some(v) if v.as_u64().is_some_and(|n| n >= 1) => {}
+            Some(_) => {
+                return Err(ValidationError::Message(
+                    "law 条目 max_version_depth 须为整数且 ≥1（有限性声明：版本链高度下界为 1）"
+                        .into(),
+                ))
+            }
+            None => {
+                return Err(ValidationError::Message(
+                    "law 条目缺 max_version_depth（或非整数；有限性声明必填且 ≥1）".into(),
+                ))
+            }
+        }
+
+        // 单调形态声明（v1.0 原位加必填）：值必须为 true（false 一律拒收）
+        match obj.get("monotone_form") {
+            Some(serde_json::Value::Bool(true)) => {}
+            Some(_) => {
+                return Err(ValidationError::Message(
+                    "law 条目 monotone_form=false：非单调形态律式拒收（须以时间锚定改写重交）"
+                        .into(),
+                ))
+            }
+            None => {
+                return Err(ValidationError::Message(
+                    "law 条目缺 monotone_form（或非布尔；单调形态声明必填且须为 true）".into(),
                 ))
             }
         }
@@ -954,13 +988,15 @@ mod tests {
             "domain": "mechanics",
             "solvable": ["F", "m", "a"],
             "derivation": ["second-order motion law in inertial frames"],
-            "tier": "full"
+            "tier": "full",
+            "max_version_depth": 1,
+            "monotone_form": true
         })
     }
 
     #[test]
     fn test_law_structure_golden_pass() {
-        // 黄金正例：等式恒真公式 + 七要素齐备
+        // 黄金正例：等式恒真公式 + 九要素齐备
         Validator::validate_law_structure(&law_payload()).unwrap();
         let mut einstein = law_payload();
         einstein["id"] = serde_json::json!("mass_energy_equivalence");
@@ -993,8 +1029,8 @@ mod tests {
     }
 
     #[test]
-    fn test_law_structure_seven_elements_required() {
-        // 七要素缺一即拒（机器闸准入从严口径）
+    fn test_law_structure_nine_elements_required() {
+        // 九要素缺一即拒（机器闸准入从严口径；七要素 + max_version_depth + monotone_form）
         for key in [
             "formula",
             "symbols",
@@ -1003,6 +1039,8 @@ mod tests {
             "solvable",
             "derivation",
             "tier",
+            "max_version_depth",
+            "monotone_form",
         ] {
             let mut p = law_payload();
             p.as_object_mut().unwrap().remove(key);
@@ -1017,7 +1055,8 @@ mod tests {
 
     #[test]
     fn test_law_structure_field_shapes_rejected() {
-        // id 模式 / symbols 项数 / si_units 非字符串 / tier 枚举 / 非对象载荷
+        // id 模式 / symbols 项数 / si_units 非字符串 / tier 枚举 / 新必填字段
+        // 非法形态（max_version_depth=0 / monotone_form=false）/ 非对象载荷
         let cases: Vec<(serde_json::Value, &str)> = vec![
             (serde_json::json!("Bad_Id"), "id"),
             (serde_json::json!("9law"), "id"),
@@ -1028,6 +1067,9 @@ mod tests {
                 "si_units",
             ),
             (serde_json::json!("medium"), "tier"),
+            (serde_json::json!(0), "max_version_depth"), // 有限性下界
+            (serde_json::json!("high"), "max_version_depth"), // 非整数
+            (serde_json::json!(false), "monotone_form"), // 非单调形态拒收
         ];
         for (value, key) in cases {
             let mut p = law_payload();
