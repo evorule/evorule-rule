@@ -9,8 +9,8 @@
 
 pub mod auth;
 pub mod dataset;
-pub mod domain_catalog;
 pub mod dependency;
+pub mod domain_catalog;
 pub mod entry;
 pub mod governance;
 pub mod knowledge;
