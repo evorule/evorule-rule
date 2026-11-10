@@ -1,0 +1,68 @@
+{
+  "$schema": "https://evorule.org/schemas/law_set/v1.0.json",
+  "kind": "law_set",
+  "id": "physical-approximation-slices",
+  "version": "0.1.0",
+  "metadata": {
+    "title": "Approximation physics law slices (migrated)",
+    "description": "Law slices migrated from the archived science asset dump; si_units are placeholders, so every entry sits in the explicit unverified (dimensional third) state until the dimension pass lands.",
+    "domain": "physical",
+    "source": "Einstein, 1905; Optics",
+    "unit_system": "SI",
+    "verified": "pending: si_units placeholder (dimensional verification not yet applied)"
+  },
+  "laws": [
+    {
+      "id": "phy_opt_app_03",
+      "formula": "m = v / u",
+      "symbols": {
+        "m": "input quantity",
+        "u": "input quantity",
+        "v": "input quantity"
+      },
+      "si_units": {},
+      "domain": "physical",
+      "domains": [
+        "physical"
+      ],
+      "solvable": [
+        "m"
+      ],
+      "derivation": [
+        "光学系统的放大率等于像距与物距的比值"
+      ],
+      "tier": "full",
+      "max_version_depth": 1,
+      "monotone_form": true,
+      "metadata": {
+        "source": "Optics"
+      }
+    },
+    {
+      "id": "phy_rel_app_01",
+      "formula": "E = m * c ^ 2",
+      "symbols": {
+        "E": "input quantity",
+        "m": "input quantity",
+        "c": "input quantity"
+      },
+      "si_units": {},
+      "domain": "physical",
+      "domains": [
+        "physical"
+      ],
+      "solvable": [
+        "E"
+      ],
+      "derivation": [
+        "物体的能量等于其质量乘以光速的平方"
+      ],
+      "tier": "full",
+      "max_version_depth": 1,
+      "monotone_form": true,
+      "metadata": {
+        "source": "Einstein, 1905"
+      }
+    }
+  ]
+}

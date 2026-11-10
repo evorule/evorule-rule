@@ -1,0 +1,96 @@
+{
+  "$schema": "https://evorule.org/schemas/law_set/v1.0.json",
+  "kind": "law_set",
+  "id": "physical-empirical-slices",
+  "version": "0.1.0",
+  "metadata": {
+    "title": "Empirical physics law slices (migrated)",
+    "description": "Law slices migrated from the archived science asset dump; si_units are placeholders, so every entry sits in the explicit unverified (dimensional third) state until the dimension pass lands.",
+    "domain": "physical",
+    "source": "Coulomb, 1785; Newton, Principia, 1687; Ohm, 1827",
+    "unit_system": "SI",
+    "verified": "pending: si_units placeholder (dimensional verification not yet applied)"
+  },
+  "laws": [
+    {
+      "id": "phy_cla_law_02",
+      "formula": "F = m * a",
+      "symbols": {
+        "F": "input quantity",
+        "m": "input quantity",
+        "a": "input quantity"
+      },
+      "si_units": {},
+      "domain": "physical",
+      "domains": [
+        "physical"
+      ],
+      "solvable": [
+        "F"
+      ],
+      "derivation": [
+        "物体的加速度与所受合外力成正比，与物体质量成反比"
+      ],
+      "tier": "full",
+      "max_version_depth": 1,
+      "monotone_form": true,
+      "metadata": {
+        "source": "Newton, Principia, 1687"
+      }
+    },
+    {
+      "id": "phy_elm_law_01",
+      "formula": "F = k * q1 * q2 / r ^ 2",
+      "symbols": {
+        "F": "input quantity",
+        "k": "input quantity",
+        "q1": "input quantity",
+        "q2": "input quantity",
+        "r": "input quantity"
+      },
+      "si_units": {},
+      "domain": "physical",
+      "domains": [
+        "physical"
+      ],
+      "solvable": [
+        "F"
+      ],
+      "derivation": [
+        "两个静止点电荷之间的相互作用力与它们电荷量的乘积成正比，与它们距离的平方成反比"
+      ],
+      "tier": "full",
+      "max_version_depth": 1,
+      "monotone_form": true,
+      "metadata": {
+        "source": "Coulomb, 1785"
+      }
+    },
+    {
+      "id": "phy_elm_law_02",
+      "formula": "V = I * R",
+      "symbols": {
+        "V": "input quantity",
+        "I": "input quantity",
+        "R": "input quantity"
+      },
+      "si_units": {},
+      "domain": "physical",
+      "domains": [
+        "physical"
+      ],
+      "solvable": [
+        "V"
+      ],
+      "derivation": [
+        "导体两端的电压与通过导体的电流成正比"
+      ],
+      "tier": "full",
+      "max_version_depth": 1,
+      "monotone_form": true,
+      "metadata": {
+        "source": "Ohm, 1827"
+      }
+    }
+  ]
+}
