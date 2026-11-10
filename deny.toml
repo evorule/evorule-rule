@@ -66,7 +66,14 @@ yanked = "warn"
 # TLS 根证书集（RUSTSEC-2026-0381）：webpki-roots 0.26 线止于 0.26.11，修复依赖
 # ureq 3.x 迁移（破坏性 API 重写，另行专项）；影响=根存储保留 emSign 不信任
 # 中间证书（多余信任锚，非验证绕过），升级 ureq 时一并消除，豁免。
-ignore = ["RUSTSEC-2026-0110", "RUSTSEC-2026-0381"]
+# libsqlite3-sys 捆绑 SQLite（RUSTSEC-2026-0459，2026-11-10 treadmill 追加）：
+# CVE-2026-119375 WAL 页缓存未初始化内存（vulnerability）；修复版 >=0.39.0 属
+# 大版本且要求 rusqlite 0.41（MSRV 1.89），依赖方 rusqlite 0.32.1（与
+# evorule-server workspace 对齐钉死）本地无单仓升级路径；攻击面=本地打开低信任
+# 方构造的 db+wal 文件对，本仓工作区库文件均由本应用创建，实际暴露面低；
+# 与 server 仓同裁定（其 deny.toml 2026-11-09 已豁免），双仓对齐升级 rusqlite
+# 0.41 后随版解除，豁免。
+ignore = ["RUSTSEC-2026-0110", "RUSTSEC-2026-0381", "RUSTSEC-2026-0459"]
 
 # ---------------------------------------------------------------------------
 # 依赖关系: 重复版本警告；通配符依赖拒绝
