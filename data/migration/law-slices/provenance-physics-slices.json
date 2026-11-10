@@ -1,0 +1,105 @@
+{
+  "laws": {
+    "phy_cla_law_02": {
+      "source_rule_id": "PHY-CLA-LAW-02",
+      "transformations": [
+        "law id: PHY-CLA-LAW-02 -> phy_cla_law_02 (lowercase underscore)",
+        "symbols.F: {'type': 'input'} -> 'input quantity'",
+        "symbols.m: {'type': 'input'} -> 'input quantity'",
+        "symbols.a: {'type': 'input'} -> 'input quantity'",
+        "formula: '==' -> '='",
+        "solvable: [F] (derived from source output)",
+        "derivation: source statement text",
+        "si_units: {} placeholder (dimensional verification pending -> unverified third state)",
+        "domain/domains: 'physical' (registered domain-catalog key)",
+        "tier: 'full'; max_version_depth: 1; monotone_form: true",
+        "metadata.source: Newton, Principia, 1687"
+      ]
+    },
+    "phy_elm_law_01": {
+      "source_rule_id": "PHY-ELM-LAW-01",
+      "transformations": [
+        "law id: PHY-ELM-LAW-01 -> phy_elm_law_01 (lowercase underscore)",
+        "symbols.F: {'type': 'input'} -> 'input quantity'",
+        "symbols.k: {'type': 'input'} -> 'input quantity'",
+        "symbols.q1: {'type': 'input'} -> 'input quantity'",
+        "symbols.q2: {'type': 'input'} -> 'input quantity'",
+        "symbols.r: {'type': 'input'} -> 'input quantity'",
+        "formula: '==' -> '='",
+        "formula: '**' -> '^'",
+        "solvable: [F] (derived from source output)",
+        "derivation: source statement text",
+        "si_units: {} placeholder (dimensional verification pending -> unverified third state)",
+        "domain/domains: 'physical' (registered domain-catalog key)",
+        "tier: 'full'; max_version_depth: 1; monotone_form: true",
+        "metadata.source: Coulomb, 1785"
+      ]
+    },
+    "phy_elm_law_02": {
+      "source_rule_id": "PHY-ELM-LAW-02",
+      "transformations": [
+        "law id: PHY-ELM-LAW-02 -> phy_elm_law_02 (lowercase underscore)",
+        "symbols.V: {'type': 'input'} -> 'input quantity'",
+        "symbols.I: {'type': 'input'} -> 'input quantity'",
+        "symbols.R: {'type': 'input'} -> 'input quantity'",
+        "formula: '==' -> '='",
+        "solvable: [V] (derived from source output)",
+        "derivation: source statement text",
+        "si_units: {} placeholder (dimensional verification pending -> unverified third state)",
+        "domain/domains: 'physical' (registered domain-catalog key)",
+        "tier: 'full'; max_version_depth: 1; monotone_form: true",
+        "metadata.source: Ohm, 1827"
+      ]
+    },
+    "phy_opt_app_03": {
+      "source_rule_id": "PHY-OPT-APP-03",
+      "transformations": [
+        "law id: PHY-OPT-APP-03 -> phy_opt_app_03 (lowercase underscore)",
+        "symbols.m: {'type': 'input'} -> 'input quantity'",
+        "symbols.u: {'type': 'input'} -> 'input quantity'",
+        "symbols.v: {'type': 'input'} -> 'input quantity'",
+        "formula: '==' -> '='",
+        "solvable: [m] (derived from source output)",
+        "derivation: source statement text",
+        "si_units: {} placeholder (dimensional verification pending -> unverified third state)",
+        "domain/domains: 'physical' (registered domain-catalog key)",
+        "tier: 'full'; max_version_depth: 1; monotone_form: true",
+        "metadata.source: Optics"
+      ]
+    },
+    "phy_rel_app_01": {
+      "source_rule_id": "PHY-REL-APP-01",
+      "transformations": [
+        "law id: PHY-REL-APP-01 -> phy_rel_app_01 (lowercase underscore)",
+        "symbols.E: {'type': 'input'} -> 'input quantity'",
+        "symbols.m: {'type': 'input'} -> 'input quantity'",
+        "symbols.c: {'type': 'input'} -> 'input quantity'",
+        "formula: '==' -> '='",
+        "formula: '**' -> '^'",
+        "solvable: [E] (derived from source output)",
+        "derivation: source statement text",
+        "si_units: {} placeholder (dimensional verification pending -> unverified third state)",
+        "domain/domains: 'physical' (registered domain-catalog key)",
+        "tier: 'full'; max_version_depth: 1; monotone_form: true",
+        "metadata.source: Einstein, 1905"
+      ]
+    }
+  },
+  "sets": {
+    "physical-approximation-slices": {
+      "law_ids": [
+        "phy_opt_app_03",
+        "phy_rel_app_01"
+      ],
+      "version": "0.1.0"
+    },
+    "physical-empirical-slices": {
+      "law_ids": [
+        "phy_cla_law_02",
+        "phy_elm_law_01",
+        "phy_elm_law_02"
+      ],
+      "version": "0.1.0"
+    }
+  }
+}
