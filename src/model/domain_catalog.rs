@@ -101,13 +101,13 @@ mod tests {
             assert!(
                 d.get("name")
                     .and_then(|v| v.as_str())
-                    .map_or(false, |s| !s.is_empty()),
+                    .is_some_and(|s| !s.is_empty()),
                 "域 {id} 缺 name"
             );
             assert!(
                 d.get("description")
                     .and_then(|v| v.as_str())
-                    .map_or(false, |s| !s.is_empty()),
+                    .is_some_and(|s| !s.is_empty()),
                 "域 {id} 缺 description"
             );
             ids.push(id.to_string());
