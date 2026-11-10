@@ -30,7 +30,8 @@ const DOMAIN_CATALOG_JSON: &str = include_str!("domain_catalog.v1.json");
 /// 惰性解析数据件一次（OnceLock 单例，std 等价 once_cell 语义——本仓未直依
 /// once_cell，不为单一目录引入依赖面变更）。
 pub fn domain_catalog() -> &'static BTreeMap<String, DomainCatalogEntry> {
-    static CATALOG: std::sync::OnceLock<BTreeMap<String, DomainCatalogEntry>> = std::sync::OnceLock::new();
+    static CATALOG: std::sync::OnceLock<BTreeMap<String, DomainCatalogEntry>> =
+        std::sync::OnceLock::new();
     CATALOG.get_or_init(|| {
         let file: serde_json::Value = serde_json::from_str(DOMAIN_CATALOG_JSON)
             .unwrap_or_else(|e| panic!("domain_catalog.v1.json 非法 JSON: {e} — 请修正治理侧 SSOT 数据件"));
@@ -79,8 +80,8 @@ mod tests {
     /// 同步脚本（evorule-server scripts/sync-domain-catalog.ps1，另批接线）把关。
     #[test]
     fn test_embedded_domain_catalog_copy_valid() {
-        let file: serde_json::Value = serde_json::from_str(DOMAIN_CATALOG_JSON)
-            .expect("domain_catalog.v1.json 非法 JSON");
+        let file: serde_json::Value =
+            serde_json::from_str(DOMAIN_CATALOG_JSON).expect("domain_catalog.v1.json 非法 JSON");
         let domains = file
             .get("domains")
             .and_then(|v| v.as_array())
@@ -98,11 +99,15 @@ mod tests {
                 "domain_id `{id}` 不符合命名规约 {DOMAIN_ID_PATTERN}"
             );
             assert!(
-                d.get("name").and_then(|v| v.as_str()).map_or(false, |s| !s.is_empty()),
+                d.get("name")
+                    .and_then(|v| v.as_str())
+                    .map_or(false, |s| !s.is_empty()),
                 "域 {id} 缺 name"
             );
             assert!(
-                d.get("description").and_then(|v| v.as_str()).map_or(false, |s| !s.is_empty()),
+                d.get("description")
+                    .and_then(|v| v.as_str())
+                    .map_or(false, |s| !s.is_empty()),
                 "域 {id} 缺 description"
             );
             ids.push(id.to_string());
