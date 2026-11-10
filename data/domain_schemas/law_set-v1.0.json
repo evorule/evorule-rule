@@ -6,9 +6,9 @@
   "reviewed_by": "Mr. Damu Zheng",
   "consumer": "law_set dataset governance chain (gate + bundle export + distribution consumers)",
   "title": "Evorule Law entry (law_set dataset payload)",
-  "description": "Law entry payload contract for law_set datasets. A law states an equation identity (equation-always-true semantics: the equation separator is compiled to an equality comparison downstream); condition/then decision semantics belong to rule_set entries and are structurally excluded here. Seven semantic elements: formula / symbols / si_units / domain / solvable / derivation / tier. Entry-level admission (machine gate) additionally requires all seven elements present and rejects bare equation separators (a separator with an empty side).",
+  "description": "Law entry payload contract for law_set datasets. A law states an equation identity (equation-always-true semantics: the equation separator is compiled to an equality comparison downstream); condition/then decision semantics belong to rule_set entries and are structurally excluded here. Nine semantic elements: formula / symbols / si_units / domain / solvable / derivation / tier / max_version_depth / monotone_form. Entry-level admission (machine gate) additionally requires all nine elements present and rejects bare equation separators (a separator with an empty side).",
   "type": "object",
-  "required": ["id", "formula", "symbols", "si_units"],
+  "required": ["id", "formula", "symbols", "si_units", "max_version_depth", "monotone_form"],
   "properties": {
     "id": {
       "type": "string",
@@ -41,6 +41,20 @@
     },
     "tier": {
       "enum": ["light", "full"]
+    },
+    "max_version_depth": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Version-chain height h_p (finiteness declaration): required, integer >= 1"
+    },
+    "monotone_form": {
+      "type": "boolean",
+      "description": "Monotone-form declaration: must be true (non-monotone laws are rejected; resubmit as a time-anchored rewrite)"
+    },
+    "time_anchor": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Time-anchored rewrite declaration anchor (optional; required non-empty when the formula hits a negation construct)"
     },
     "metadata": {
       "type": "object",

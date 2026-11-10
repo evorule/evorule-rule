@@ -36,6 +36,8 @@
         "dimensional identity: Pa*m^3 == mol*(J*mol^-1*K^-1)*K (both sides expand to [M=1, L=2, T=-2])"
       ],
       "tier": "full",
+      "max_version_depth": 1,
+      "monotone_form": true,
       "metadata": {
         "source": "Clapeyron, Mmoire sur la puissance motrice de la chaleur (1834)",
         "verified": "dimensional: Pa*m^3 == J"
@@ -63,6 +65,8 @@
         "dimensional identity: both sides expand to Pa*m^3 == [M=1, L=2, T=-2]"
       ],
       "tier": "light",
+      "max_version_depth": 1,
+      "monotone_form": true,
       "metadata": {
         "source": "Boyle, New Experiments Physico-Mechanical (1662)",
         "verified": "dimensional: Pa*m^3 == Pa*m^3"
@@ -90,6 +94,8 @@
         "dimensional identity: both sides expand to m^3*K^-1 == [L=3, Theta=-1]"
       ],
       "tier": "light",
+      "max_version_depth": 1,
+      "monotone_form": true,
       "metadata": {
         "source": "Charles, unpublished 1787 lectures (published by Gay-Lussac 1802)",
         "verified": "dimensional: m^3/K == m^3/K"
@@ -117,6 +123,8 @@
         "dimensional identity: both sides expand to Pa*K^-1 == [M=1, L=-1, T=-2, Theta=-1]"
       ],
       "tier": "light",
+      "max_version_depth": 1,
+      "monotone_form": true,
       "metadata": {
         "source": "Gay-Lussac, Annales de Chimie (1802)",
         "verified": "dimensional: Pa/K == Pa/K"
@@ -142,6 +150,8 @@
         "dimensional identity: mol*m^3*mol^-1 == m^3 == [L=3]"
       ],
       "tier": "full",
+      "max_version_depth": 1,
+      "monotone_form": true,
       "metadata": {
         "source": "Avogadro, Essai d'une manire de dterminer les masses relatives (1811)",
         "verified": "dimensional: mol*m^3/mol == m^3"

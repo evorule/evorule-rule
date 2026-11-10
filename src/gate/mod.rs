@@ -3,7 +3,7 @@
 //! 定位（机器闸行权通路实施设计 §六检从宽首版口径）：
 //! - 六检全为确定性纯函数（无 IO、无时钟、无随机）——同输入同结论，可回放可复算；
 //! - M1 复用既有校验 SSOT（rule=符号三方一致；knowledge=入账契约完整性；
-//!   law_set=law 条目结构校验，七要素必填 + 公式等式恒真结构）；
+//!   law_set=law 条目结构校验，九要素必填 + 公式等式恒真结构）；
 //! - M2 黄金样本回归以「快照连续性」替代首版（样本复算待执行引擎接入，随机器闸演进收紧）；
 //! - M3 词法域冲突（同数据集同内容 Active=重复提案拒绝；同 domain 重叠=警告不拦截）；
 //! - M4/M5 影响面与信誉只做梯位降级（超阈→T1 事后追认），默认通过档；
@@ -119,14 +119,14 @@ pub fn evaluate(input: &GateInput) -> MachineGateReport {
     let mut downgrade = false;
 
     // M1 schema 校验（复用既有校验 SSOT）
-    // law_set 数据集条目走 law 结构校验分支（七要素必填 + 公式等式恒真结构、
+    // law_set 数据集条目走 law 结构校验分支（九要素必填 + 公式等式恒真结构、
     // 裸 `=` 显式拒绝）；条目经知识条目同型通道携带（knowledge_entry）。
     let m1 = if input.dataset.dataset_kind == crate::model::DatasetKind::LawSet {
         match &input.knowledge_entry {
             Some(e) => match Validator::validate_law_structure(&e.payload) {
                 Ok(()) => (
                     true,
-                    "law 条目结构校验通过（七要素齐备，公式等式恒真语义）".to_string(),
+                    "law 条目结构校验通过（九要素齐备，公式等式恒真语义）".to_string(),
                 ),
                 Err(err) => (false, format!("law 条目结构校验未通过: {err}")),
             },
@@ -595,7 +595,9 @@ mod tests {
             "domain": "mechanics",
             "solvable": ["F", "m", "a"],
             "derivation": ["second-order motion law in inertial frames"],
-            "tier": "full"
+            "tier": "full",
+            "max_version_depth": 1,
+            "monotone_form": true
         });
         e
     }
@@ -616,7 +618,7 @@ mod tests {
 
     #[test]
     fn test_tier_t0_law_entry_structure_pass() {
-        // M1 law 分支：七要素齐备 + 等式恒真公式 → 全过直通
+        // M1 law 分支：九要素齐备 + 等式恒真公式 → 全过直通
         let report = evaluate(&law_gate_input(
             sample_law_dataset(),
             sample_law_entry(),
@@ -644,7 +646,7 @@ mod tests {
 
     #[test]
     fn test_tier_t2_law_missing_element_rejected() {
-        // M1 law 分支：七要素缺一（去 tier）→ 拒绝机器放行
+        // M1 law 分支：九要素缺一（去 tier）→ 拒绝机器放行
         let mut entry = sample_law_entry();
         entry.payload.as_object_mut().unwrap().remove("tier");
         let report = evaluate(&law_gate_input(sample_law_dataset(), entry, probe_v1()));

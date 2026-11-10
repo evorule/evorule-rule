@@ -5192,7 +5192,7 @@ mod tests {
         (app, state, dir)
     }
 
-    /// law entry fixture (mechanics domain, always-true equation, 7 fields)
+    /// law entry fixture (mechanics domain, always-true equation, 9 fields)
     fn p5_law_entry_body(entry_id: &str) -> serde_json::Value {
         json!({
             "entry_id": entry_id,
@@ -5205,7 +5205,9 @@ mod tests {
                 "domain": "mechanics",
                 "solvable": ["F", "m", "a"],
                 "derivation": ["second-order motion law in inertial frames"],
-                "tier": "full"
+                "tier": "full",
+                "max_version_depth": 1,
+                "monotone_form": true
             },
             "schema_ref": "https://evorule.org/schemas/domain/law_set/law/v1.0.json",
             "provenance": { "source": "matrix drill" }
