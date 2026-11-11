@@ -9,7 +9,7 @@
   "pipeline": {
     "determinism": "double-run manifest equality (external check)",
     "tool": "tools/pipeline.py",
-    "tool_sha256": "e16f438ec41a5b744361b4b2becc3ba34cf3f10856c900ab0d1d401dd1b4783a"
+    "tool_sha256": "c4234104bef5c33135f34b219bf019e701955df68608aabeec1fa7812abba6a7"
   },
   "proposals_sha256": "62a494db81368275d10fb253fd6e2811fcf45dfde6d4e4553be6bb4a6bca6f32",
   "rejected_disposition": "side-list with typed reasons only (no negative-example or preference-pair derivation in this batch)",

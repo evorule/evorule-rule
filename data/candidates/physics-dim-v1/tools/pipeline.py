@@ -186,6 +186,19 @@ def main():
     dup_flagged = sum(type_counts.get(t, 0) for t in
                       ("dup-exact", "diversity-review"))
 
+    # frozen manual spot-check decision (human-review layer)
+    spot_path = os.path.join(BATCH_DIR, "gate-outputs",
+                             "spot-check-decision.json")
+    spot_consistency = None
+    spot_note = ("pending manual spot-check by project owner "
+                 "(see spot-check-table.json)")
+    if os.path.exists(spot_path):
+        spot = json.load(open(spot_path, encoding="utf-8"))
+        agreed, sampled = spot["agreed"], spot["sampled"]
+        spot_consistency = round(agreed / sampled, 4) if sampled else None
+        spot_note = "manual spot-check recorded: %d/%d agreed" % (agreed,
+                                                                  sampled)
+
     metrics = {
         "total_proposals": total,
         "accepted": acc_n,
@@ -194,9 +207,8 @@ def main():
         "acceptance_rate": round(acc_n / total, 4) if total else None,
         "dup_flag_rate": round(dup_flagged / total, 4) if total else None,
         "diversity_index": round(1 - dup_flagged / total, 4) if total else None,
-        "spot_check_consistency": None,
-        "spot_check_note": ("pending manual spot-check by project owner "
-                            "(see spot-check-table.json)"),
+        "spot_check_consistency": spot_consistency,
+        "spot_check_note": spot_note,
         "metric_definitions": {
             "acceptance_rate": "accepted / total proposals",
             "dup_flag_rate": "(dup-exact + diversity-review) / total",
