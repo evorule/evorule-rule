@@ -1,0 +1,63 @@
+{
+  "clusters": [
+    {
+      "members": [
+        "kinetic_energy_relation_cand",
+        "rotational_kinetic_energy_cand",
+        "spring_potential_energy_cand"
+      ],
+      "skeleton": "s1=0.5*s2*s3^2"
+    },
+    {
+      "members": [
+        "newton_second_law_cand",
+        "weight_relation_cand",
+        "momentum_relation_cand",
+        "impulse_force_time_cand",
+        "work_force_disp_cand",
+        "power_force_velocity_cand",
+        "wave_speed_cand",
+        "light_speed_relation_cand",
+        "angular_linear_speed_cand",
+        "torque_force_arm_cand",
+        "hooke_law_cand",
+        "ohm_law_cand",
+        "electric_power_cand",
+        "charge_definition_cand",
+        "photon_energy_cand",
+        "magnetic_flux_def_cand",
+        "free_fall_velocity_cand"
+      ],
+      "skeleton": "s1=s2*s3"
+    },
+    {
+      "members": [
+        "grav_potential_energy_cand",
+        "lorentz_force_mag_cand",
+        "magnetic_wire_force_cand",
+        "heat_capacity_relation_cand",
+        "drag_warning_probe_cand"
+      ],
+      "skeleton": "s1=s2*s3*s4"
+    },
+    {
+      "members": [
+        "grav_force_law_cand",
+        "coulomb_law_cand"
+      ],
+      "skeleton": "s1=s2*s3*s4/s5^2"
+    },
+    {
+      "members": [
+        "power_definition_cand",
+        "pressure_definition_cand",
+        "density_definition_cand",
+        "capacitance_definition_cand",
+        "de_broglie_wavelength_cand",
+        "plate_field_cand"
+      ],
+      "skeleton": "s1=s2/s3"
+    }
+  ],
+  "note": "deterministic position-canonical skeleton clusters; membership is a review signal only, resolution is in gate-outputs/review-decisions.jsonl"
+}
