@@ -443,10 +443,12 @@ mod tests {
             ("anatomy_fk_replay_eval", false, "FK 正解复算核(链段角以 (cos,sin) 十进制有理数对入参 1e6 定点判定面,tip 整数乘加递推零超越函数,检出 b 点不污染正解链=残差二次判别面,锚帧角核对 expect 成对校验,违例出残差/角不符逐轴定点证据;角度→三角换算留引擎提取侧;机械域 FK 复算面;规则表参数化;确定性)"),
             // ---- trace-audit-services ----
             ("trace_behavior_entropy", false, "run 事件流行为熵判据(ToolCall 到达序滑动窗口工具名香农熵 H=-Σp·log₂p,缺省窗宽10步长窗半;前后半程工具分布 JS 散度;熵与散度按 4 位小数定点字符串输出,确定性)"),
-            ("trace_approval_density", false, "run 事件流审批密度判据(ApprovalRequired/Result 密度与结论分布、auto_rejected 计数、流级 Error 计数与消息样本、帧对账未闭合清单,确定性)"),
+            ("trace_approval_density", false, "run 事件流审批密度判据(ApprovalRequired/Result 密度与结论分布、auto_rejected 计数、流级 Error 计数与消息样本,确定性)"),
             ("trace_era_split", false, "事件流分代切分索引(三重正交判据:J1 链哈希字段组形态翻转/J2 相邻行 ts 间隔超 24h/J3 react 主循环模型翻转旁证;边界取 J1∨J2 命中点,逐代行号/seq 区间/判据命中快照/摘要,只读零改写输入,确定性)"),
             ("trace_era_mixing_sentinel", false, "时代混杂哨兵(检测单账面内多时代事件拼接:相邻 ts 间隔超 24h 与 react 主循环模型混桶两条证据面;混档判读无效化门前置,确定性)"),
             ("trace_out_of_scope_writes", false, "写类工具路径集合与范围外写入检出(ToolCall 写类工具的 path/file/target 三键按序取首个非空字符串;scope 根区间判定=词典法零 FS 零 CWD,相对路径经 base_dir 入参解析,缺省=scope 根;写型工具值域可经 write_tools 扩展;归一失败判范围外,确定性)"),
+            ("trace_frame_pairing", false, "run 事件流帧对账判据(ToolCall/ToolResult 与 ApprovalRequired/ApprovalResult 逐帧 FIFO 配对不校验 id 一致:ToolResult 出队否则 result_without_call,ApprovalResult 出队否则 result_without_request;审批帧标识取 proposal_id 真值字符串否则回落 tool_name 缺省 ?;出参未闭合四清单,确定性)"),
+            ("trace_target_fidelity", false, "run 事件流目标保真度判据(逐 LlmDone content 对 goal 关键词覆盖率:关键词集=goal 小写后连续字母/数字/下划线词块去 <=2 字符短词,覆盖率=命中词数/词总数 4 位舍入整值出整数带小数出字符串;空词集出 coverage 空数组与 note 提示,确定性)"),
             // ---- dimensional-check ----
             ("dimensional_check", false, "量纲一致性校验(单位表达式 lhs/rhs 对比;SI 七基本量纲+货币维,加减要求操作分量纲一致;复用 law_schema 量纲代数单源,纯计算,确定性)"),
         ];
