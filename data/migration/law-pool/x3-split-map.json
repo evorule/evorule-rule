@@ -1,0 +1,149 @@
+{
+  "declared_rule": "R9",
+  "entries": {
+    "evorule-merged/src/evorule/knowledge/math_advanced.py#math.calc.fundamental_theorem": {
+      "parent_formula_before": "F = integral and dF = f",
+      "pieces": 2,
+      "products": [
+        {
+          "formula_after": "F = integral and dF",
+          "id": "math_calc_fundamental_theorem_p1"
+        },
+        {
+          "formula_after": "integral and dF = f",
+          "id": "math_calc_fundamental_theorem_p2"
+        }
+      ],
+      "rule_id": "math.calc.fundamental_theorem",
+      "tag": "B"
+    },
+    "evorule-merged/src/evorule/knowledge/math_basic.py#math.geom.heron": {
+      "parent_formula_before": "s = (a + b + c) / 2 and A = sqrt(s * (s - a) * (s - b) * (s - c))",
+      "pieces": 2,
+      "products": [
+        {
+          "formula_after": "s = (a + b + c) / 2 and A",
+          "id": "math_geom_heron_p1"
+        },
+        {
+          "formula_after": "(a + b + c) / 2 and A = sqrt(s * (s - a) * (s - b) * (s - c))",
+          "id": "math_geom_heron_p2"
+        }
+      ],
+      "rule_id": "math.geom.heron",
+      "tag": "B"
+    },
+    "evorule-merged/src/evorule/knowledge/math_basic.py#math.trig.law_of_sines": {
+      "parent_formula_before": "a / sin(A) = b / sin(B) and b / sin(B) = c / sin(C)",
+      "pieces": 2,
+      "products": [
+        {
+          "formula_after": "a / sin(A) = b / sin(B) and b / sin(B)",
+          "id": "math_trig_law_of_sines_p1"
+        },
+        {
+          "formula_after": "b / sin(B) and b / sin(B) = c / sin(C)",
+          "id": "math_trig_law_of_sines_p2"
+        }
+      ],
+      "rule_id": "math.trig.law_of_sines",
+      "tag": "B"
+    },
+    "evorule-science/data/compiled/science_rules.db#MATH-ANA-DEF-03": {
+      "parent_formula_before": "e^z = e^(x+iy) = e^x(cos(y)+i*sin(y))",
+      "pieces": 2,
+      "products": [
+        {
+          "formula_after": "e^z = e^(x+iy)",
+          "id": "math_ana_def_03_p1"
+        },
+        {
+          "formula_after": "e^(x+iy) = e^x(cos(y)+i*sin(y))",
+          "id": "math_ana_def_03_p2"
+        }
+      ],
+      "rule_id": "MATH-ANA-DEF-03",
+      "tag": "X3"
+    },
+    "evorule-science/data/compiled/science_rules.db#MATH-PDE-DEF-01": {
+      "parent_formula_before": "Deltau = ∂^2u/∂x1^2 + ... + ∂^2u/∂xn^2 = 0",
+      "pieces": 2,
+      "products": [
+        {
+          "formula_after": "Deltau = ∂^2*u/∂x1^2 + ... + ∂^2*u/∂xn^2",
+          "id": "math_pde_def_01_p1"
+        },
+        {
+          "formula_after": "∂^2*u/∂x1^2 + ... + ∂^2*u/∂xn^2 = 0",
+          "id": "math_pde_def_01_p2"
+        }
+      ],
+      "rule_id": "MATH-PDE-DEF-01",
+      "tag": "X3"
+    },
+    "evorule-science/data/compiled/science_rules.db#PHY-REL-APP-02": {
+      "parent_formula_before": "dt1 = gamma * dt and gamma = 1 / sqrt(1 - v^2 / c^2)",
+      "pieces": 2,
+      "products": [
+        {
+          "formula_after": "dt1 = gamma * dt and gamma",
+          "id": "phy_rel_app_02_p1"
+        },
+        {
+          "formula_after": "gamma * dt and gamma = 1 / sqrt(1 - v^2 / c^2)",
+          "id": "phy_rel_app_02_p2"
+        }
+      ],
+      "rule_id": "PHY-REL-APP-02",
+      "tag": "C1"
+    },
+    "evorule-v4/crates/governance/rules/math_rules.json#math.calc.fundamental_theorem": {
+      "parent_formula_before": "F = integral and dF = f",
+      "pieces": 2,
+      "products": [
+        {
+          "formula_after": "F = integral and dF",
+          "id": "math_calc_fundamental_theorem_p1"
+        },
+        {
+          "formula_after": "integral and dF = f",
+          "id": "math_calc_fundamental_theorem_p2"
+        }
+      ],
+      "rule_id": "math.calc.fundamental_theorem",
+      "tag": "A"
+    },
+    "evorule-v4/crates/governance/rules/math_rules.json#math.geom.heron": {
+      "parent_formula_before": "s = (a + b + c) / 2 and A = sqrt(s * (s - a) * (s - b) * (s - c))",
+      "pieces": 2,
+      "products": [
+        {
+          "formula_after": "s = (a + b + c) / 2 and A",
+          "id": "math_geom_heron_p1"
+        },
+        {
+          "formula_after": "(a + b + c) / 2 and A = sqrt(s * (s - a) * (s - b) * (s - c))",
+          "id": "math_geom_heron_p2"
+        }
+      ],
+      "rule_id": "math.geom.heron",
+      "tag": "A"
+    },
+    "evorule-v4/crates/governance/rules/math_rules.json#math.trig.law_of_sines": {
+      "parent_formula_before": "a / sin(A) = b / sin(B) and b / sin(B) = c / sin(C)",
+      "pieces": 2,
+      "products": [
+        {
+          "formula_after": "a / sin(A) = b / sin(B) and b / sin(B)",
+          "id": "math_trig_law_of_sines_p1"
+        },
+        {
+          "formula_after": "b / sin(B) and b / sin(B) = c / sin(C)",
+          "id": "math_trig_law_of_sines_p2"
+        }
+      ],
+      "rule_id": "math.trig.law_of_sines",
+      "tag": "A"
+    }
+  }
+}

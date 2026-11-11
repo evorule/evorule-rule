@@ -1,0 +1,1500 @@
+{
+  "accounting": "pool_in (419) - non_identity_excluded + extra_split_products = products",
+  "excluded_k_side": 209,
+  "excluded_non_identity_forms": {
+    "by_tag": {
+      "A": 6,
+      "B": 4,
+      "C1": 1,
+      "X3": 8
+    },
+    "count": 19,
+    "declared_rule": "R13"
+  },
+  "gates": {
+    "machine_gate_pass": 13,
+    "products": 409,
+    "structural_pass": 409,
+    "substitution_grammar_ok": 140
+  },
+  "input_records": 628,
+  "known_gaps": {
+    "detail": [
+      {
+        "gap": "symbols<2 (deployment schema minProperties: 2)",
+        "id": "chem_pcd_thm_01",
+        "tag": "C2a"
+      },
+      {
+        "gap": "symbols<2 (deployment schema minProperties: 2)",
+        "id": "phy_cla_con_01",
+        "tag": "C1"
+      },
+      {
+        "gap": "symbols<2 (deployment schema minProperties: 2)",
+        "id": "phy_cla_con_02",
+        "tag": "C1"
+      },
+      {
+        "gap": "symbols<2 (deployment schema minProperties: 2)",
+        "id": "phy_cla_law_01",
+        "tag": "C1"
+      },
+      {
+        "gap": "symbols<2 (deployment schema minProperties: 2)",
+        "id": "phy_cla_prin_01",
+        "tag": "C2a"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_mech_newton2",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_mech_gravity",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_mech_momentum_def",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_mech_momentum_conservation",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_mech_kinetic_energy",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_mech_potential_energy_gravity",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_mech_work",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_mech_centripetal",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_mech_energy_conservation",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_mech_power",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_em_coulomb",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_em_gauss",
+        "tag": "A"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_em_ohm",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_em_faraday",
+        "tag": "A"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_em_biot_savart",
+        "tag": "A"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_em_maxwell_ampere",
+        "tag": "A"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_thermo_first_law",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_thermo_ideal_gas",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_thermo_carnot_efficiency",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_thermo_boltzmann",
+        "tag": "A"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_quantum_de_broglie",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_quantum_schrodinger_time_indep",
+        "tag": "A"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_rel_mass_energy",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_rel_time_dilation",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_rel_length_contraction",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_rel_lorentz_factor",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_wave_doppler",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_wave_snell",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_wave_wave_speed",
+        "tag": "A"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_wave_young_double_slit",
+        "tag": "A"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "chem_bond_molar_mass",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "chem_bond_moles_def",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "chem_bond_avogadro",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "chem_bond_bond_energy_total",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "chem_thermo_hess_law",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "chem_thermo_formation",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "chem_thermo_gibbs",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "chem_kinetics_rate_first",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "chem_kinetics_rate_second",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "chem_kinetics_arrhenius",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "chem_kinetics_half_life_first",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "chem_eq_kp_kc",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "chem_eq_vant_hoff",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "chem_eq_gibbs_eq",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "chem_electro_nernst",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "chem_electro_faraday",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "chem_sol_henry",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "chem_sol_raoult",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "chem_sol_osmotic",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "chem_sol_ph_def",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_arith_add_comm",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_arith_add_assoc",
+        "tag": "B"
+      },
+      {
+        "gap": "symbols<2 (deployment schema minProperties: 2)",
+        "id": "math_arith_add_identity",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_arith_add_identity",
+        "tag": "B"
+      },
+      {
+        "gap": "symbols<2 (deployment schema minProperties: 2)",
+        "id": "math_arith_add_inverse",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_arith_add_inverse",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_arith_mul_comm",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_arith_mul_assoc",
+        "tag": "B"
+      },
+      {
+        "gap": "symbols<2 (deployment schema minProperties: 2)",
+        "id": "math_arith_mul_identity",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_arith_mul_identity",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_arith_distributive",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_exp_product_rule",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_exp_quotient_rule",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_exp_power_rule",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_exp_negative_exp",
+        "tag": "B"
+      },
+      {
+        "gap": "symbols<2 (deployment schema minProperties: 2)",
+        "id": "math_exp_zero_exp",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_exp_zero_exp",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_log_product",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_log_quotient",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_log_power",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_log_change_base",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_geom_pythagorean",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_geom_circle_area",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_geom_circle_circumference",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_geom_sphere_volume",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_geom_sphere_surface",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_geom_triangle_area",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_geom_cylinder_volume",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_geom_cone_volume",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_geom_heron_p1",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_geom_heron_p2",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_trig_pythagorean_identity",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_trig_tangent_def",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_trig_cotangent_def",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_trig_angle_sum_sin",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_trig_angle_sum_cos",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_trig_double_angle_sin",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_trig_double_angle_cos",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_trig_law_of_sines_p1",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_trig_law_of_sines_p2",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_trig_law_of_cosines",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_calc_derivative_power",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_calc_derivative_exp",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_calc_derivative_ln",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_calc_derivative_sin",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_calc_derivative_cos",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_calc_chain_rule",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_calc_product_rule",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_calc_quotient_rule",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_calc_fundamental_theorem_p1",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_calc_fundamental_theorem_p2",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_calc_taylor_exp",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_calc_taylor_sin",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_linalg_det_2x2",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_linalg_trace_identity",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_linalg_det_product",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_linalg_norm_euclidean",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_linalg_dot_product",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_prob_bayes",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_prob_total_prob",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_prob_expectation_linear",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_prob_variance_sum",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_prob_variance_def",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_prob_complement",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_prob_normal_pdf",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_complex_euler",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_complex_euler_identity",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_complex_modulus",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "cross_bio_nernst_membrane",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "cross_bio_fick",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "cross_bio_hodgkin_huxley",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "cross_bio_michaelis_menten",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "cross_mathphys_wave_1d",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "cross_mathphys_diffusion_1d",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "cross_mathphys_laplace",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "cross_mathphys_poisson",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "cross_compchem_lennard_jones",
+        "tag": "A"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "cross_compchem_euler_angles",
+        "tag": "A"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "cross_geo_geothermal_gradient",
+        "tag": "A"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "cross_geo_barometric_height",
+        "tag": "A"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "cross_astro_wein_displacement",
+        "tag": "A"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "cross_astro_hubble",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "cross_astro_chandrasekhar",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "cross_info_shannon_entropy",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "cross_info_channel_capacity",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "cross_info_mutual_info",
+        "tag": "A"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_arith_add_comm_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_arith_add_assoc_dup2",
+        "tag": null
+      },
+      {
+        "gap": "symbols<2 (deployment schema minProperties: 2)",
+        "id": "math_arith_add_identity_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_arith_add_identity_dup2",
+        "tag": null
+      },
+      {
+        "gap": "symbols<2 (deployment schema minProperties: 2)",
+        "id": "math_arith_add_inverse_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_arith_add_inverse_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_arith_mul_comm_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_arith_mul_assoc_dup2",
+        "tag": null
+      },
+      {
+        "gap": "symbols<2 (deployment schema minProperties: 2)",
+        "id": "math_arith_mul_identity_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_arith_mul_identity_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_arith_distributive_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_exp_product_rule_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_exp_quotient_rule_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_exp_power_rule_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_exp_negative_exp_dup2",
+        "tag": null
+      },
+      {
+        "gap": "symbols<2 (deployment schema minProperties: 2)",
+        "id": "math_exp_zero_exp_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_exp_zero_exp_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_log_product_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_log_quotient_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_log_power_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_log_change_base_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_geom_pythagorean_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_geom_circle_area_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_geom_circle_circumference_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_geom_sphere_volume_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_geom_sphere_surface_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_geom_triangle_area_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_geom_cylinder_volume_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_geom_cone_volume_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_geom_heron_p1_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_geom_heron_p2_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_trig_pythagorean_identity_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_trig_tangent_def_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_trig_cotangent_def_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_trig_angle_sum_sin_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_trig_angle_sum_cos_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_trig_double_angle_sin_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_trig_double_angle_cos_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_trig_law_of_sines_p1_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_trig_law_of_sines_p2_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_trig_law_of_cosines_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_calc_derivative_power_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_calc_derivative_exp_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_calc_derivative_ln_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_calc_derivative_sin_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_calc_derivative_cos_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_calc_chain_rule_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_calc_product_rule_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_calc_quotient_rule_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_calc_fundamental_theorem_p1_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_calc_fundamental_theorem_p2_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_calc_taylor_exp_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_calc_taylor_sin_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_linalg_det_2x2_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_linalg_trace_identity_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_linalg_det_product_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_linalg_norm_euclidean_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_linalg_dot_product_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_prob_bayes_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_prob_total_prob_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_prob_expectation_linear_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_prob_variance_sum_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_prob_variance_def_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_prob_complement_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_prob_normal_pdf_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_complex_euler_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_complex_euler_identity_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "math_complex_modulus_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_mech_newton2_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_mech_gravity_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_mech_momentum_conservation_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_mech_momentum_def_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_mech_kinetic_energy_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_mech_potential_energy_gravity_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_mech_work_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_mech_centripetal_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_mech_energy_conservation_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_mech_power_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_em_coulomb_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_em_ohm_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_em_power_electric",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_em_power_ohm",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_em_capacitor_energy",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_em_inductor_energy",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_em_magnetic_force",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_thermo_ideal_gas_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_thermo_carnot_efficiency_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_thermo_first_law_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_thermo_heat_transfer",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_thermo_stefan_boltzmann",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_thermo_boltzmann_entropy",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_quantum_de_broglie_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_quantum_energy_level",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_quantum_photon_energy",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_quantum_schrodinger_particle",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_rel_mass_energy_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_rel_lorentz_factor_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_rel_time_dilation_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_rel_length_contraction_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_rel_relativistic_energy",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_wave_speed",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_wave_doppler_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_wave_snell_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_wave_lens_equation",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "phys_wave_double_slit",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "chem_bond_molar_mass_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "chem_bond_moles_def_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "chem_bond_avogadro_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "chem_bond_bond_energy_total_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "chem_thermo_hess_law_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "chem_thermo_formation_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "chem_thermo_gibbs_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "chem_kinetics_rate_first_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "chem_kinetics_rate_second_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "chem_kinetics_arrhenius_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "chem_kinetics_half_life_first_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "chem_eq_kp_kc_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "chem_eq_vant_hoff_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "chem_eq_gibbs_eq_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "chem_electro_nernst_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "chem_electro_faraday_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "chem_sol_henry_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "chem_sol_raoult_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "chem_sol_osmotic_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "chem_sol_ph_def_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "cross_bio_nernst_membrane_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "cross_bio_fick_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "cross_bio_hodgkin_huxley_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "cross_bio_michaelis_menten_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "cross_mathphys_wave_1d_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "cross_mathphys_diffusion_1d_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "cross_mathphys_schrodinger_time",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "cross_mathphys_laplace_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "cross_mathphys_poisson_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "cross_compchem_lj_potential",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "cross_compchem_coulomb_interaction",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "cross_compchem_boltzmann_factor",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "cross_compchem_harmonic_bond",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "cross_earth_geothermal",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "cross_earth_scale_height",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "cross_earth_barometric",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "cross_astro_wien",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "cross_astro_hubble_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "cross_astro_schwarzschild",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "cross_astro_chandrasekhar_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "cross_astro_stefan_boltzmann_luminosity",
+        "tag": "B"
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "cross_info_shannon_entropy_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "cross_info_channel_capacity_dup2",
+        "tag": null
+      },
+      {
+        "gap": "domain missing (mechanical assembly stage)",
+        "id": "cross_info_kullback_leibler",
+        "tag": "B"
+      }
+    ],
+    "domain_missing": 277,
+    "si_units_empty": 233,
+    "symbols_lt2": 13
+  },
+  "machine_gate_fail_reasons": {
+    "derivation missing or not an array of strings": 307,
+    "domain missing or empty": 277,
+    "solvable missing or not an array of strings": 202,
+    "symbols must have >= 2 entries": 13,
+    "tier missing or not light|full": 277
+  },
+  "pool_in": 419,
+  "pool_in_by_tag": {
+    "A": 135,
+    "B": 146,
+    "C1": 25,
+    "C2a": 30,
+    "X3": 10,
+    "X4": 60,
+    "X5": 13
+  },
+  "products": 409,
+  "split_products": 18,
+  "structural_failures": [],
+  "x3_split_entries": 9,
+  "x5_mult_products": 21
+}

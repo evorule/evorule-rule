@@ -1,0 +1,80 @@
+{
+  "charset_rule_seq": [
+    "R1",
+    "R2",
+    "R3",
+    "R4",
+    "R5",
+    "R6",
+    "R7",
+    "R8"
+  ],
+  "rules": [
+    {
+      "def": "unicodedata NFKC normalization of the formula string",
+      "id": "R1",
+      "name": "nfkc"
+    },
+    {
+      "def": "superscript digits mapped to caret form via fixed table (11 entries)",
+      "id": "R2",
+      "name": "superscript_transcribe"
+    },
+    {
+      "def": "interpunct/middot/times (· ⋅ ×) mapped to '*'",
+      "id": "R3",
+      "name": "mult_sign_unify"
+    },
+    {
+      "def": "unicode minus/en-dash/em-dash (− – —) mapped to '-'",
+      "id": "R4",
+      "name": "minus_unify"
+    },
+    {
+      "def": "'**' mapped to '^'",
+      "id": "R5",
+      "name": "pow_star_unify"
+    },
+    {
+      "def": "greek letters mapped to latin names via fixed table (33 entries); same table applied to si_units keys",
+      "id": "R6",
+      "name": "greek_transcribe"
+    },
+    {
+      "def": "'==' mapped to '=' (equality-identity semantics)",
+      "id": "R7",
+      "name": "eq_separator_unify"
+    },
+    {
+      "def": "whitespace runs collapsed to single space, strip both ends",
+      "id": "R8",
+      "name": "ws_collapse"
+    },
+    {
+      "def": "formula with >1 equation separator, no banned comparison operator and no statement markers (set-builder/quantifier/logic-connective characters) is split into consecutive pairs (a=b=c -> a=b, b=c); product ids append _p<k>; multi-'=' formulas carrying statement markers are routed out by R13 instead (non-chain form)",
+      "id": "R9",
+      "name": "chain_split"
+    },
+    {
+      "def": "insert '*' at lexical boundaries only: a maximal number token (digit run not preceded by an identifier character) followed by an identifier-start letter, or ')' followed by identifier/digit/'('; identifier tokens are never split (t2g/H2O/x2 intact); skipped when the letter run is a scientific-notation exponent (e.g. 1e5, 1E-10)",
+      "id": "R10",
+      "name": "implicit_mult_insert"
+    },
+    {
+      "def": "symbols object keys = ordered union of formula identifiers and valid source symbol names (^[A-Za-z_][A-Za-z0-9_]*$); values from source symbol descriptions when available else empty string; source names that are not bare identifiers are recorded as dropped, never invented",
+      "id": "R11",
+      "name": "symbols_rebuild"
+    },
+    {
+      "def": "max_version_depth=1, monotone_form=true (uniform finiteness/monotone declarations); metadata.source = source citation when the source provides one, else 'pending-citation:<id>' (flagged source_status=pending for the citation-completion stage)",
+      "id": "R12",
+      "name": "uniform_declarations"
+    },
+    {
+      "def": "pool entries whose normalized formula still contains a banned comparison operator (!=, <=, >=) or has no equation separator are not equation-identity laws: they are excluded to a documented side-list (rule_set semantics), never rewritten",
+      "id": "R13",
+      "name": "non_identity_routing"
+    }
+  ],
+  "version": "1.0"
+}
