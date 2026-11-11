@@ -450,6 +450,16 @@ pub fn build_bundle_from_dir(
                 .unwrap_or(dir_name),
             tenant_id: String::new(), // 导入侧以调用方租户为准（租户隔离，不信任包内声明）
             instance_id: "cli-bulk-import".into(),
+            // dataset.json 可携带 dataset_kind 判别（缺省 rule_set：存量目录零迁移；
+            // 非法值 fail-fast 不静默——防规则/知识/定律载荷混装错误类型数据集）
+            dataset_kind: match meta.as_ref().and_then(|m| m.get("dataset_kind")) {
+                None | Some(serde_json::Value::Null) => evorule_bundle::DatasetKind::RuleSet,
+                Some(v) => serde_json::from_value(v.clone()).map_err(|e| {
+                    CliError(format!(
+                        "dataset.json dataset_kind 非法（rule_set|knowledge|law_set）: {e}"
+                    ))
+                })?,
+            },
             versioning: Default::default(),
             law_ref: None,
             // CLI 目录组装的 bundle 无法规生效基准，缺省 pinned 到当前版本（v1）——

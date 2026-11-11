@@ -76,7 +76,7 @@ mod tests {
     }
 
     /// 域目录守卫：数据件可解析、目录非空、domain_id 唯一且符合命名规约、
-    /// 条目字段齐全、三 seed 域在册。与 server 侧嵌入副本的字节一致性由
+    /// 条目字段齐全、五 seed 域在册。与 server 侧嵌入副本的字节一致性由
     /// 同步脚本（evorule-server scripts/sync-domain-catalog.ps1，另批接线）把关。
     #[test]
     fn test_embedded_domain_catalog_copy_valid() {
@@ -123,8 +123,8 @@ mod tests {
         let catalog = domain_catalog();
         assert_eq!(catalog.len(), ids.len(), "聚合目录与数据件条目数漂移");
 
-        // 三 seed 域在册（物理/工程/经济）
-        for seed in ["physical", "engineering", "economic"] {
+        // 五 seed 域在册（物理/工程/经济/数学/化学）
+        for seed in ["physical", "engineering", "economic", "math", "chemistry"] {
             assert!(catalog.contains_key(seed), "seed 域 {seed} 应在册");
         }
     }

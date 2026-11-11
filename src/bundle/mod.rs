@@ -8,8 +8,8 @@
 
 pub use evorule_bundle::{
     BundleAudit, BundleDatasetMeta, BundleEntry, BundleError, BundleImporter, BundleTests,
-    BundleTrimmer, DatasetBundle, DomainSchemaResolver, EntryFilter, EntryKind, ImportResult,
-    RecipeSnapshot, TestVerdict, ViewRef, BUNDLE_SCHEMA_VERSION,
+    BundleTrimmer, DatasetBundle, DatasetKind, DomainSchemaResolver, EntryFilter, EntryKind,
+    ImportResult, RecipeSnapshot, TestVerdict, ViewRef, BUNDLE_SCHEMA_VERSION,
 };
 
 use crate::model::dataset::RuleDataset;
@@ -197,6 +197,18 @@ impl BundleExporter {
                 name: dataset.name.clone(),
                 tenant_id: dataset.tenant_id.clone(),
                 instance_id: instance_id.into(),
+                // 数据集类型随包携带（bundle 0.8.0 判别字段；与治理侧 datasets 表同词汇表）
+                dataset_kind: match dataset.dataset_kind {
+                    crate::model::dataset::DatasetKind::RuleSet => {
+                        evorule_bundle::DatasetKind::RuleSet
+                    }
+                    crate::model::dataset::DatasetKind::Knowledge => {
+                        evorule_bundle::DatasetKind::Knowledge
+                    }
+                    crate::model::dataset::DatasetKind::LawSet => {
+                        evorule_bundle::DatasetKind::LawSet
+                    }
+                },
                 versioning: dataset.versioning.clone(),
                 version_selection: dataset.version_selection.clone(),
                 law_ref: dataset.law_ref.clone(),

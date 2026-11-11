@@ -9044,6 +9044,7 @@ mod tests {
                 name: "外部知识包".into(),
                 tenant_id: "org-partner".into(),
                 instance_id: "inst-partner".into(),
+                dataset_kind: crate::bundle::DatasetKind::Knowledge,
                 versioning: Default::default(),
                 version_selection: None,
                 law_ref: Some(crate::model::version::LawRef {
