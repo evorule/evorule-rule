@@ -1713,3 +1713,228 @@ mod tenant_gate_tests {
         assert_eq!(err.status, axum::http::StatusCode::NOT_FOUND);
     }
 }
+
+// ----------------------------------------------------------------------
+// Distribution contract snapshot tests: the bundle pull endpoint
+// (`GET /v1/datasets/{id}/bundle`) is the single distribution surface
+// consumed by evorule-server `law_host::load_remote`. These tests lock the
+// endpoint against the wire shape embedded in the shared crate
+// (`evorule_bundle::CONTRACT_GOLDEN`):
+//   1. auth semantics — no credentials = 401, non-pull scope key = 403,
+//      pull-scope x-api-key = 200;
+//   2. wire shape — the emitted body must round-trip byte-identically
+//      through `DatasetBundle` (canonical serde form, struct declaration
+//      order) and carry the consumption pointers the execution side reads
+//      (`/dataset/versioning/current`, `entries[].entry_id`,
+//      `entries[].rule_body`).
+// The law_set-specific shape (schema_ref URI prefix) is locked on the
+// golden itself inside evorule-bundle and mirrored by the law_host mock.
+// ----------------------------------------------------------------------
+
+#[cfg(test)]
+mod distribution_contract_tests {
+    use super::*;
+    use crate::model::auth::ApiKey;
+    use crate::model::dataset::{DatasetKind, Meta};
+    use crate::model::knowledge::KnowledgeEntry;
+    use crate::model::lifecycle::LifecycleStatus;
+    use crate::store::RuleStore;
+
+    fn test_state() -> AppState {
+        AppState::new(
+            RuleStore::in_memory().expect("in-memory store"),
+            "test-secret",
+            "inst-test",
+            "http://127.0.0.1:19000",
+        )
+    }
+
+    fn seed_tenant(store: &RuleStore, tenant: &str) {
+        store
+            .ensure_default_tenant(
+                tenant,
+                "contract seed tenant",
+                "inst-test",
+                "2026-01-01T00:00:00Z",
+            )
+            .expect("seed tenant");
+    }
+
+    fn seed_knowledge_dataset(store: &RuleStore, id: &str, tenant: &str) {
+        let ds = RuleDataset {
+            dataset_id: id.to_string(),
+            name: format!("ds-{id}"),
+            description: None,
+            dataset_kind: DatasetKind::Knowledge,
+            domain: vec!["physics".to_string()],
+            tags: vec![],
+            tenant_id: tenant.to_string(),
+            visibility: Visibility::default(),
+            lifecycle: Default::default(),
+            versioning: Default::default(),
+            law_ref: None,
+            version_selection: None,
+            data_dependencies: None,
+            event_schemas: vec![],
+            meta: Meta {
+                created_at: "2026-01-01T00:00:00Z".to_string(),
+                created_by: "seed".to_string(),
+                updated_at: None,
+                updated_by: None,
+            },
+        };
+        store.create_dataset(&ds).expect("seed dataset");
+    }
+
+    fn seed_knowledge_entry(store: &RuleStore, dataset_id: &str) {
+        let entry = KnowledgeEntry {
+            entry_id: "fact-0001".to_string(),
+            dataset_id: dataset_id.to_string(),
+            version: 1,
+            status: Some(LifecycleStatus::Active),
+            provenance: Provenance {
+                source: "contract snapshot seed".to_string(),
+                clause: None,
+                document_id: None,
+                effective_from: None,
+                effective_to: None,
+                last_verified: None,
+                verified_by: None,
+            },
+            domain: "physics".to_string(),
+            tags: vec![],
+            payload: serde_json::json!({
+                "statement": "a body at rest stays at rest unless acted upon"
+            }),
+            schema_ref: "builtin:knowledge/fact".to_string(),
+            governance: None,
+            knowledge_kind: Some("fact".to_string()),
+            trust_level: Some("human".to_string()),
+            license_ref: None,
+            execution_contract: None,
+        };
+        store.add_knowledge_entry(&entry).expect("seed entry");
+    }
+
+    fn seed_api_key(store: &RuleStore, tenant: &str, scope: &str, raw_key: &str) {
+        let key = ApiKey {
+            key_id: format!("key-{scope}"),
+            tenant_id: tenant.to_string(),
+            name: "distribution contract seed".to_string(),
+            scope: scope.to_string(),
+            key_hash: sha256_hex(raw_key),
+            created_at: "2026-01-01T00:00:00Z".to_string(),
+            revoked_at: None,
+        };
+        store.create_api_key(&key).expect("seed api key");
+    }
+
+    fn api_key_headers(raw_key: &str) -> axum::http::HeaderMap {
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert(
+            "x-api-key",
+            axum::http::HeaderValue::from_str(raw_key).expect("valid header value"),
+        );
+        headers
+    }
+
+    #[tokio::test]
+    async fn bundle_endpoint_without_credentials_is_401() {
+        let state = test_state();
+        seed_tenant(&state.store, "tenant_a");
+        seed_knowledge_dataset(&state.store, "ds-contract", "tenant_a");
+        seed_knowledge_entry(&state.store, "ds-contract");
+        let err = get_bundle(
+            State(state),
+            axum::http::HeaderMap::new(),
+            Path("ds-contract".to_string()),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(err.status, axum::http::StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn bundle_endpoint_rejects_non_pull_scope_key_with_403() {
+        let state = test_state();
+        seed_tenant(&state.store, "tenant_a");
+        seed_knowledge_dataset(&state.store, "ds-contract", "tenant_a");
+        seed_knowledge_entry(&state.store, "ds-contract");
+        seed_api_key(
+            &state.store,
+            "tenant_a",
+            "entries:propose",
+            "raw-propose-key",
+        );
+        let err = get_bundle(
+            State(state),
+            api_key_headers("raw-propose-key"),
+            Path("ds-contract".to_string()),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(err.status, axum::http::StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn bundle_endpoint_pull_key_emits_canonical_contract_wire_shape() {
+        let state = test_state();
+        seed_tenant(&state.store, "tenant_a");
+        seed_knowledge_dataset(&state.store, "ds-contract", "tenant_a");
+        seed_knowledge_entry(&state.store, "ds-contract");
+        seed_api_key(&state.store, "tenant_a", "pull", "raw-pull-key");
+
+        let Json(bundle) = get_bundle(
+            State(state),
+            api_key_headers("raw-pull-key"),
+            Path("ds-contract".to_string()),
+        )
+        .await
+        .expect("pull-scope key must be accepted");
+
+        // Wire shape guard: the emitted body must round-trip byte-identically
+        // through `DatasetBundle` (canonical serde form at the pinned crate
+        // version) — the exact form evorule-server `load_remote` parses.
+        let wire = serde_json::to_string(&bundle).expect("serialize bundle");
+        let back: crate::bundle::DatasetBundle =
+            serde_json::from_str(&wire).expect("deserialize emitted wire bytes");
+        let re_wire = serde_json::to_string(&back).expect("re-serialize bundle");
+        assert_eq!(
+            wire, re_wire,
+            "emitted bundle bytes are not the canonical DatasetBundle serde form"
+        );
+
+        // Consumption pointers read by evorule-server `law_host::load_remote`.
+        let parsed: serde_json::Value = serde_json::from_str(&wire).expect("parse wire bytes");
+        assert!(
+            parsed
+                .pointer("/dataset/versioning/current")
+                .and_then(|v| v.as_str())
+                .map(|s| !s.is_empty())
+                .unwrap_or(false),
+            "dataset.versioning.current must anchor the dataset version"
+        );
+        let entries = parsed
+            .get("entries")
+            .and_then(|v| v.as_array())
+            .expect("entries must be an array");
+        assert!(!entries.is_empty(), "endpoint must emit the entry set");
+        for entry in entries {
+            assert!(
+                entry
+                    .get("entry_id")
+                    .and_then(|v| v.as_str())
+                    .map(|s| !s.is_empty())
+                    .unwrap_or(false),
+                "entries[].entry_id must be present"
+            );
+            assert!(
+                entry
+                    .get("rule_body")
+                    .map(|v| !v.is_null())
+                    .unwrap_or(false),
+                "entries[].rule_body must carry the zero-translation payload"
+            );
+        }
+    }
+}

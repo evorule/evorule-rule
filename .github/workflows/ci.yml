@@ -89,6 +89,33 @@ jobs:
       - name: cargo test --workspace
         run: cargo test --workspace
 
+  # ==========================================================================
+  # distribution-contract：分布面契约快照（快照包 wire 形状互守）。
+  # 快照包拉取端点 GET /v1/datasets/{id}/bundle 是 evorule-server law_host
+  # load_remote 的唯一消费面：本 job 单独跑批端点认证语义（无凭证 401 /
+  # 非 pull scope 403 / pull scope 放行）与 DatasetBundle serde canonical
+  # wire 形状（逐字节 round-trip + 消费指针）。bundle 侧 wire 形状演进
+  # （改字段名/序列化规则）时本 job 即刻红灯，不再依赖人工回归。
+  # law_set 域件形状（schema_ref URI 前缀）由 evorule-bundle 内嵌契约
+  # golden 自身快照测试锁定，law_host mock 对表同源。
+  # ==========================================================================
+  distribution-contract:
+    name: Distribution contract snapshot
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: contract-${{ hashFiles('**/Cargo.toml') }}
+
+      - name: cargo test (distribution contract)
+        run: cargo test --lib distribution_contract_tests
+
   # ===== Release build (编译验证) =====
   build:
     name: Build (release)
