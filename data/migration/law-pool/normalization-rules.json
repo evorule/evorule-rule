@@ -74,6 +74,11 @@
       "def": "pool entries whose normalized formula still contains a banned comparison operator (!=, <=, >=) or has no equation separator are not equation-identity laws: they are excluded to a documented side-list (rule_set semantics), never rewritten",
       "id": "R13",
       "name": "non_identity_routing"
+    },
+    {
+      "def": "laws whose formula hits the negation-construct scan (unary minus acting on an identifier/bracket group) receive a time_anchor declaration from a fixed per-law disposition table stating the minus is the sign of a physical quantity coefficient (not a monotonicity negation; formula unchanged); this unlocks the law-layer negation-gate bypass (time_anchor non-empty) with a truthful declaration",
+      "id": "R14",
+      "name": "negation_disposition_declaration"
     }
   ],
   "version": "1.0"

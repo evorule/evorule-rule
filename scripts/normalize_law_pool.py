@@ -76,7 +76,22 @@ RULES = [
      "def": "pool entries whose normalized formula still contains a banned comparison operator "
             "(!=, <=, >=) or has no equation separator are not equation-identity laws: they are "
             "excluded to a documented side-list (rule_set semantics), never rewritten"},
+    {"id": "R14", "name": "negation_disposition_declaration",
+     "def": "laws whose formula hits the negation-construct scan (unary minus acting on an "
+            "identifier/bracket group) receive a time_anchor declaration from a fixed per-law "
+            "disposition table stating the minus is the sign of a physical quantity coefficient "
+            "(not a monotonicity negation; formula unchanged); this unlocks the law-layer "
+            "negation-gate bypass (time_anchor non-empty) with a truthful declaration"},
 ]
+
+# R14 disposition table: law id -> time_anchor declaration text (truthful,
+# formula-unchanged statements; keyed by normalized product id)
+NEGATION_DISPOSITIONS = {
+    "chem_oxd_rul_02": "negative coefficient: the leading minus is the physical sign of the "
+                       "Gibbs-free-energy coefficient, not a monotonicity negation; formula unchanged",
+    "chem_rxn_kin_01": "negative coefficient: the minus in the Arrhenius exponent term is the "
+                       "physical sign of activation energy, not a monotonicity negation; formula unchanged",
+}
 
 RULE_SEQ = ["R1", "R2", "R3", "R4", "R5", "R6", "R7", "R8"]  # applied to every formula
 
@@ -486,6 +501,9 @@ def build_products(records):
             if split_info:
                 # mapping table always mirrors the final product formula (post-R10)
                 split_info["products"][k]["formula_after"] = mf
+            # R14 negation-construct disposition declaration (fixed per-law table)
+            if pid in NEGATION_DISPOSITIONS:
+                applied.append("R14")
             applied_prod = list(dict.fromkeys(applied))
 
             # R11 symbols rebuild
@@ -530,6 +548,8 @@ def build_products(records):
                 payload["derivation"] = deriv
             if tier:
                 payload["tier"] = tier
+            if pid in NEGATION_DISPOSITIONS:
+                payload["time_anchor"] = NEGATION_DISPOSITIONS[pid]
             prov = {
                 "id": pid,
                 "src": src,
@@ -549,6 +569,8 @@ def build_products(records):
                 "field": field,
                 "subdomain": subdomain,
             }
+            if pid in NEGATION_DISPOSITIONS:
+                prov["time_anchor"] = NEGATION_DISPOSITIONS[pid]
             if split_info:
                 prov["split"] = {"parent_id": base_id, "piece": k + 1,
                                  "pieces": len(pieces)}

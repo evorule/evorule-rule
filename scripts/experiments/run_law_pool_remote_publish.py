@@ -11,8 +11,10 @@ binaries (no mocks):
      dataset snapshot bundle via x-api-key (pull scope) and registers the
      law_set through the same local-path validation (validate_law_set).
 
-Every assertion result and artifact is written to the evidence directory
-(default D:/tmp/b265-remote-publish-e2e). Credentials are generated per run,
+Every assertion result and artifact is written to a per-run evidence
+subdirectory (default D:/tmp/b272-remote-publish-e2e/run-<timestamp>; the
+newest 5 runs are retained, older runs pruned) so a failing run's logs are
+never overwritten by a later passing run. Credentials are generated per run,
 kept in memory + evidence (local temp dir only), never printed to stdout.
 
 Pure experiment tooling: reads repository artifacts (normalized pool,
@@ -20,13 +22,8 @@ domain schemas) read-only; writes nothing into the repository tree.
 
 Usage:
   python scripts/experiments/run_law_pool_remote_publish.py \
-      [--rule-serve <exe>] [--server <exe>] [--evidence <dir>]
-
-Prerequisite: both release binaries must be built from source trees whose
-governance face knows the law_set dataset kind (rule serve >= the law-hosting
-expansion) and whose pull side consumes the snapshot bundle endpoint.
-Default binaries: <this repo>/target/release/evorule-rule-serve.exe and
-D:/wt-b265-server/target/release/evorule-server.exe.
+      [--rule-serve <exe>] [--server <exe>] [--evidence <dir>] \
+      [--with-negation]
 """
 
 import argparse
@@ -53,7 +50,10 @@ DATASET_ID = "law-pool-e2e"
 TENANT = "default"
 ADMIN_USER = "admin"
 HTTP_TIMEOUT = 30
-STARTUP_TIMEOUT = 60
+# startup includes sqlite migrations + idempotent seeds; on machines where a
+# third-party file scanner/lock slows writes this can take ~1 minute, so keep
+# the budget generous instead of mistaking a slow start for a dead process
+STARTUP_TIMEOUT = 240
 
 # unary-minus probe mirroring the law-layer negation gate (assembly side):
 # a minus is unary when it opens the formula or follows '=', '(', '*', '/', '^'
@@ -64,9 +64,13 @@ def has_negation_construct(formula):
     return bool(UNARY_MINUS.search(formula))
 
 DEFAULT_RULE_SERVE = os.path.join(ROOT, "target", "release", "evorule-rule-serve.exe")
-DEFAULT_SERVER = r"D:\wt-b265-server\target\release\evorule-server.exe"
-DEFAULT_SERVER_ROOT = r"D:\wt-b265-server"
-DEFAULT_EVIDENCE = r"D:\tmp\b265-remote-publish-e2e"
+DEFAULT_SERVER = r"D:\wt-b272-server\target\release\evorule-server.exe"
+DEFAULT_SERVER_ROOT = r"D:\wt-b272-server"
+# evidence lives on C: — the D: volume showed pathological sqlite journal
+# latency (single write up to ~15 s vs 0.01 s on C:) mid-day on 2026-11-11
+DEFAULT_EVIDENCE = os.path.expandvars(
+    r"%LOCALAPPDATA%\Temp\b272-remote-publish-e2e")
+EVIDENCE_KEEP_RUNS = 5
 
 
 def free_port():
@@ -132,9 +136,24 @@ def main():
     ap.add_argument("--server", default=DEFAULT_SERVER)
     ap.add_argument("--server-root", default=DEFAULT_SERVER_ROOT)
     ap.add_argument("--evidence", default=DEFAULT_EVIDENCE)
+    ap.add_argument("--with-negation", action="store_true",
+                    help="reproduction mode: include machine-gate-pass laws that "
+                         "carry negation constructs (unary minus) to capture the "
+                         "assembly-side rejection verbatim for gate forensics")
     args = ap.parse_args()
 
-    ev = args.evidence
+    # evidence rotation: one subdirectory per run, keep the newest N runs so a
+    # failing run's logs are never overwritten by a later passing run
+    run_dir = os.path.join(args.evidence, "run-%s" % time.strftime("%Y%m%d-%H%M%S"))
+    os.makedirs(run_dir)
+    ev = run_dir
+    parent = args.evidence
+    prior_runs = sorted(
+        (d for d in os.listdir(parent)
+         if d.startswith("run-") and os.path.isdir(os.path.join(parent, d))),
+        reverse=True)
+    for stale in prior_runs[EVIDENCE_KEEP_RUNS:]:
+        shutil.rmtree(os.path.join(parent, stale), ignore_errors=True)
     rule_db_dir = os.path.join(ev, "rule-db")
     server_dir = os.path.join(ev, "server-data")
     for d in (rule_db_dir, server_dir):
@@ -155,8 +174,9 @@ def main():
 
     # --- remote-loadable subset of the normalized pool ----------------------
     # gate 1: rule-side machine gate (nine-element structural check)
-    # gate 2: law-layer negation gate mirror (unary minus) — deterministic
-    #         exclusion, content is never rewritten (same discipline as R13)
+    # gate 2: law-layer negation gate mirror (unary minus) — an undeclared hit
+    #         is excluded deterministically; a non-blank time_anchor declaration
+    #         unlocks the documented bypass (law_schema G20 semantics)
     pool_path = os.path.join(ROOT, "data", "migration", "law-pool", "normalized-law-pool.jsonl")
     machine_pass, laws = [], []
     with io.open(pool_path, encoding="utf-8") as f:
@@ -168,13 +188,24 @@ def main():
             if check_machine_gate(law):  # returns the error list; empty = pass
                 continue
             machine_pass.append(law)
-            if not has_negation_construct(law.get("formula", "")):
+            # mirror the law-layer gate: a negation construct with a non-blank
+            # time_anchor declaration is a lawful entry, not an exclusion
+            anchored = bool(str(law.get("time_anchor") or "").strip())
+            if args.with_negation or anchored or not has_negation_construct(law.get("formula", "")):
                 laws.append(law)
     excluded_negation = sorted(l["id"] for l in machine_pass
-                               if has_negation_construct(l.get("formula", "")))
+                               if has_negation_construct(l.get("formula", ""))
+                               and not str(l.get("time_anchor") or "").strip())
     assert len(machine_pass) == 13, (
         "expected 13 machine-gate-pass laws, got %d" % len(machine_pass))
     law_ids = sorted(l["id"] for l in laws)
+    if args.with_negation:
+        assert excluded_negation, "reproduction mode: no negation laws in pool"
+        assert all(lid in law_ids for lid in excluded_negation)
+    else:
+        assert not excluded_negation, (
+            "all negation-construct laws must carry a time_anchor declaration: %s"
+            % excluded_negation)
 
     # --- 1. governance side: rule serve ------------------------------------
     rule_port = free_port()
