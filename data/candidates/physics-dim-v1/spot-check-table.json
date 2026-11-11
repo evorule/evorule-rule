@@ -1,0 +1,196 @@
+{
+  "accepted_sample": [
+    {
+      "formula": "J_imp = F * delta_t",
+      "id": "impulse_force_time_cand",
+      "machine_verdict": {
+        "dup": "clear",
+        "l1_struct": "pass",
+        "l2_dim": "pass",
+        "pollution": "clear"
+      }
+    },
+    {
+      "formula": "P_mech = F * v_inst",
+      "id": "power_force_velocity_cand",
+      "machine_verdict": {
+        "dup": "clear",
+        "l1_struct": "pass",
+        "l2_dim": "pass",
+        "pollution": "clear"
+      }
+    },
+    {
+      "formula": "E_mc2 = m_rest * c_light^2",
+      "id": "mass_energy_cand",
+      "machine_verdict": {
+        "dup": "clear",
+        "l1_struct": "pass",
+        "l2_dim": "pass",
+        "pollution": "clear"
+      }
+    },
+    {
+      "formula": "a_cent = v_tan^2 / r_orbit",
+      "id": "centripetal_acc_cand",
+      "machine_verdict": {
+        "dup": "clear",
+        "l1_struct": "pass",
+        "l2_dim": "pass",
+        "pollution": "clear"
+      }
+    },
+    {
+      "formula": "tau_net = r_arm * F_tan",
+      "id": "torque_force_arm_cand",
+      "machine_verdict": {
+        "dup": "clear",
+        "l1_struct": "pass",
+        "l2_dim": "pass",
+        "pollution": "clear"
+      }
+    },
+    {
+      "formula": "P_abs = F_norm / A_area",
+      "id": "pressure_definition_cand",
+      "machine_verdict": {
+        "dup": "clear",
+        "l1_struct": "pass",
+        "l2_dim": "pass",
+        "pollution": "clear"
+      }
+    },
+    {
+      "formula": "P_elec = V_drop * I_cur",
+      "id": "electric_power_cand",
+      "machine_verdict": {
+        "dup": "clear",
+        "l1_struct": "pass",
+        "l2_dim": "pass",
+        "pollution": "clear"
+      }
+    },
+    {
+      "formula": "E_photon = h_planck * f_freq",
+      "id": "photon_energy_cand",
+      "machine_verdict": {
+        "dup": "clear",
+        "l1_struct": "pass",
+        "l2_dim": "pass",
+        "pollution": "clear"
+      }
+    },
+    {
+      "formula": "Phi_flux = B_field * A_area",
+      "id": "magnetic_flux_def_cand",
+      "machine_verdict": {
+        "dup": "clear",
+        "l1_struct": "pass",
+        "l2_dim": "pass",
+        "pollution": "clear"
+      }
+    },
+    {
+      "formula": "P_rad = sigma_SB * A_surf * T_abs^4",
+      "id": "blackbody_power_cand",
+      "machine_verdict": {
+        "dup": "clear",
+        "l1_struct": "pass",
+        "l2_dim": "pass",
+        "pollution": "clear"
+      }
+    },
+    {
+      "formula": "E_field = V_drop / d_gap",
+      "id": "plate_field_cand",
+      "machine_verdict": {
+        "dup": "clear",
+        "l1_struct": "pass",
+        "l2_dim": "pass",
+        "pollution": "clear"
+      }
+    }
+  ],
+  "rejected_sample": [
+    {
+      "formula": "F = m * a",
+      "id": "newton_second_law_cand",
+      "machine_verdict": {
+        "l1_struct": "pass",
+        "l2_dim": "pass",
+        "reason": "normalized formula matches seed pool entry physical-empirical-slices/phy_cla_law_02",
+        "type": "pollution"
+      }
+    },
+    {
+      "formula": "W = m * g",
+      "id": "weight_relation_cand",
+      "machine_verdict": {
+        "l1_struct": "pass",
+        "l2_dim": "pass",
+        "reason": "normalized formula matches seed pool entry newton-classical/gravitational_weight",
+        "type": "pollution"
+      }
+    },
+    {
+      "formula": "p = m * v",
+      "id": "momentum_relation_cand",
+      "machine_verdict": {
+        "l1_struct": "pass",
+        "l2_dim": "pass",
+        "reason": "normalized formula matches seed pool entry newton-classical/linear_momentum",
+        "type": "pollution"
+      }
+    },
+    {
+      "formula": "E_k = 0.5 * m * v^2",
+      "id": "kinetic_energy_relation_cand",
+      "machine_verdict": {
+        "l1_struct": "pass",
+        "l2_dim": "pass",
+        "reason": "normalized formula matches seed pool entry newton-classical/kinetic_energy",
+        "type": "pollution"
+      }
+    },
+    {
+      "formula": "P * V = n * R * T",
+      "id": "ideal_gas_relation_cand",
+      "machine_verdict": {
+        "l1_struct": "pass",
+        "l2_dim": "pass",
+        "reason": "normalized formula matches seed pool entry ideal-gas/ideal_gas_law",
+        "type": "pollution"
+      }
+    },
+    {
+      "formula": "c_light = lambda_wl * nu_freq",
+      "id": "light_speed_relation_cand",
+      "machine_verdict": {
+        "l1_struct": "pass",
+        "l2_dim": "pass",
+        "reason": "same physical law as wave_speed_cand (speed = frequency x wavelength) with relabeled symbols for light; true semantic duplicate of the earlier proposal",
+        "type": "diversity-review"
+      }
+    },
+    {
+      "formula": "v_esc = (2 * G_const * M_body / r_body)^0.5",
+      "id": "escape_velocity_cand",
+      "machine_verdict": {
+        "l1_struct": "pass",
+        "l2_dim": "unverified",
+        "reason": "表达式尾随未解析内容 .5（分数幂不进表达式文法）",
+        "type": "unverified-dimensions"
+      }
+    },
+    {
+      "formula": "F_drag = mu_dyn * r_radius * v_inst",
+      "id": "drag_warning_probe_cand",
+      "machine_verdict": {
+        "l1_struct": "pass",
+        "l2_dim": "unverified",
+        "reason": "符号 mu_dyn 的 si_units poise 不可解析: 未知单位 poise",
+        "type": "unverified-dimensions"
+      }
+    }
+  ]
+}

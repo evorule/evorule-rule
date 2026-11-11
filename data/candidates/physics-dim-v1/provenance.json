@@ -1,0 +1,18 @@
+{
+  "batch": "physics-dim-v1",
+  "gate_versions": {
+    "l1_structure_gate": "evorule-rule 0.5.1 Validator::validate_law_structure (nine-element admission face)",
+    "l2_dimensional_gate": "evorule-law-schema validate_law_set (schema + formula structure + domain edges + finiteness + monotone form + dimensional verdict)"
+  },
+  "llm_generated_marking": "all entries carry the candidate suffix and remain draft-grade until human review; Published status requires human ownership",
+  "llm_model": "GLM",
+  "pipeline": {
+    "determinism": "double-run manifest equality (external check)",
+    "tool": "tools/pipeline.py",
+    "tool_sha256": "e16f438ec41a5b744361b4b2becc3ba34cf3f10856c900ab0d1d401dd1b4783a"
+  },
+  "proposals_sha256": "62a494db81368275d10fb253fd6e2811fcf45dfde6d4e4553be6bb4a6bca6f32",
+  "rejected_disposition": "side-list with typed reasons only (no negative-example or preference-pair derivation in this batch)",
+  "si_units_discipline": "proposed by LLM, machine-verified for dimensional consistency by the unit engine; accepted entries are marked machine-verified-pending-spot-check and do not enter the live pool",
+  "source_seed_sha256": "357368429a7e202ccf505b05812c58bb346adc746498282f6d3d6f4c1229a4f6"
+}
