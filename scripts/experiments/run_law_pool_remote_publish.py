@@ -64,12 +64,13 @@ def has_negation_construct(formula):
     return bool(UNARY_MINUS.search(formula))
 
 DEFAULT_RULE_SERVE = os.path.join(ROOT, "target", "release", "evorule-rule-serve.exe")
-DEFAULT_SERVER = r"D:\wt-b272-server\target\release\evorule-server.exe"
-DEFAULT_SERVER_ROOT = r"D:\wt-b272-server"
-# evidence lives on C: — the D: volume showed pathological sqlite journal
-# latency (single write up to ~15 s vs 0.01 s on C:) mid-day on 2026-11-11
-DEFAULT_EVIDENCE = os.path.expandvars(
-    r"%LOCALAPPDATA%\Temp\b272-remote-publish-e2e")
+SERVER_EXE = os.environ.get("EVORULE_E2E_SERVER_EXE")
+SERVER_ROOT = os.environ.get("EVORULE_E2E_SERVER_ROOT")
+# evidence lives on the system temp volume - the repository volume showed
+# pathological sqlite journal latency mid-day on 2026-11-11 (single write
+# up to ~15 s vs 0.01 s on the temp volume)
+DEFAULT_EVIDENCE = os.environ.get("EVORULE_E2E_EVIDENCE") or os.path.expandvars(
+    r"%LOCALAPPDATA%\Temp\evorule-remote-publish-e2e")
 EVIDENCE_KEEP_RUNS = 5
 
 
@@ -133,14 +134,17 @@ def start_proc(args, env_extra, log_path, cwd):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--rule-serve", default=DEFAULT_RULE_SERVE)
-    ap.add_argument("--server", default=DEFAULT_SERVER)
-    ap.add_argument("--server-root", default=DEFAULT_SERVER_ROOT)
+    ap.add_argument("--server", default=SERVER_EXE)
+    ap.add_argument("--server-root", default=SERVER_ROOT)
     ap.add_argument("--evidence", default=DEFAULT_EVIDENCE)
     ap.add_argument("--with-negation", action="store_true",
                     help="reproduction mode: include machine-gate-pass laws that "
                          "carry negation constructs (unary minus) to capture the "
                          "assembly-side rejection verbatim for gate forensics")
     args = ap.parse_args()
+    if not args.server or not args.server_root:
+        ap.error("companion server not configured: set EVORULE_E2E_SERVER_EXE "
+                 "and EVORULE_E2E_SERVER_ROOT (machine-local build artifacts)")
 
     # evidence rotation: one subdirectory per run, keep the newest N runs so a
     # failing run's logs are never overwritten by a later passing run
