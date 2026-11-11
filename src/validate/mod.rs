@@ -366,6 +366,24 @@ impl Validator {
                 ))
             }
         }
+
+        // 否定类构造静态扫描（与 evorule-server core/law_schema 同款纯函数，
+        // golden 向量双仓锁定防漂移）：命中且无 time_anchor 非空声明 → 拒收；
+        // 命中但 time_anchor 非空 → 放行；未命中 → 放行。
+        let hits = scan_negation_constructs(formula);
+        if !hits.is_empty() {
+            let anchored = obj
+                .get("time_anchor")
+                .and_then(|v| v.as_str())
+                .map(|s| !s.trim().is_empty())
+                .unwrap_or(false);
+            if !anchored {
+                return Err(ValidationError::Message(format!(
+                    "law 条目 (id={id}): formula 含否定类构造（{}，位置 {}：`{}`）；如属时间锚定改写请声明 time_anchor，否则拒收",
+                    hits[0].kind, hits[0].pos, hits[0].snippet
+                )));
+            }
+        }
         Ok(())
     }
 
@@ -492,6 +510,102 @@ impl Validator {
             f => Err((f, LifecycleStatus::Published)),
         }
     }
+}
+
+// ============================================================================
+// formula 否定类构造静态扫描（与 evorule-server core/law_schema 同款纯函数；
+// SSOT=server 侧，本仓为消费副本，G19/G20 golden 向量双仓锁定防漂移）
+// ============================================================================
+
+/// 否定类构造扫描命中（独立纯函数返回值，便于单测与报因回显）
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NegationHit {
+    /// 命中形态：`unary_minus`（一元负号）或 `logical_not`（逻辑否定记号）
+    pub kind: &'static str,
+    /// 命中位置（formula 内字符偏移，0 起）
+    pub pos: usize,
+    /// 命中片段（含少量上下文，供报因回显）
+    pub snippet: String,
+}
+
+/// 一元负号的前缀字符（减号前最近非空白字符必须是这些之一或行首）；
+/// `a - b` 二元减法（前缀是标识符）与 `-3.14` 负数字面量（后随数字）不命中。
+const UNARY_MINUS_PRECEDERS: [char; 9] = ['=', '(', '+', '*', '/', '^', '<', '>', ','];
+
+fn is_word_char(c: char) -> bool {
+    c.is_ascii_alphanumeric() || c == '_'
+}
+
+/// 命中片段截取（前后各取少量上下文，越界端加省略号）
+fn negation_snippet(chars: &[char], pos: usize, width: usize) -> String {
+    let start = pos.saturating_sub(width);
+    let end = (pos + width).min(chars.len());
+    let mut s: String = chars[start..end].iter().collect();
+    if start > 0 {
+        s.insert(0, '…');
+    }
+    if end < chars.len() {
+        s.push('…');
+    }
+    s
+}
+
+/// formula 否定类构造静态扫描（独立纯函数，便于单测）：
+///
+/// 两类命中形态——
+/// ① 一元负号作用于标识符或括号组：减号前最近非空白字符是行首/运算符/分隔符
+///    （`=(+*/^<>,`），且减号后（跳过空白）紧跟标识符字母或左括号；
+///    `-3.14` 负数字面量与 `a - b` 二元减法不命中；
+/// ② 逻辑否定记号：词边界 `not`、`¬`。
+pub fn scan_negation_constructs(formula: &str) -> Vec<NegationHit> {
+    let chars: Vec<char> = formula.chars().collect();
+    let mut hits = Vec::new();
+    for i in 0..chars.len() {
+        if chars[i] == '-' {
+            // 前瞻：减号后跳过空白须紧跟标识符字母或左括号
+            let next = chars[i + 1..].iter().find(|c| !c.is_whitespace());
+            let next_ok = next.is_some_and(|c| c.is_ascii_alphabetic() || *c == '(');
+            if !next_ok {
+                continue;
+            }
+            // 回溯：减号前最近非空白字符须为行首/运算符/分隔符
+            let unary = chars[..i]
+                .iter()
+                .rev()
+                .find(|c| !c.is_whitespace())
+                .map(|c| UNARY_MINUS_PRECEDERS.contains(c))
+                .unwrap_or(true);
+            if unary {
+                hits.push(NegationHit {
+                    kind: "unary_minus",
+                    pos: i,
+                    snippet: negation_snippet(&chars, i, 8),
+                });
+            }
+        } else if chars[i] == '¬' {
+            hits.push(NegationHit {
+                kind: "logical_not",
+                pos: i,
+                snippet: negation_snippet(&chars, i, 8),
+            });
+        } else if chars[i] == 'n'
+            && chars[i..].len() >= 3
+            && chars[i + 1] == 'o'
+            && chars[i + 2] == 't'
+        {
+            let before_ok = i == 0 || !is_word_char(chars[i - 1]);
+            let after_idx = i + 3;
+            let after_ok = after_idx >= chars.len() || !is_word_char(chars[after_idx]);
+            if before_ok && after_ok {
+                hits.push(NegationHit {
+                    kind: "logical_not",
+                    pos: i,
+                    snippet: negation_snippet(&chars, i, 8),
+                });
+            }
+        }
+    }
+    hits
 }
 
 #[cfg(test)]
@@ -1010,6 +1124,73 @@ mod tests {
         let mut eq_eq = law_payload();
         eq_eq["formula"] = serde_json::json!("F == m * a");
         Validator::validate_law_structure(&eq_eq).unwrap();
+    }
+
+    #[test]
+    fn test_law_structure_negation_unary_minus_without_time_anchor_rejected() {
+        // G19 镜像（与 evorule-server core/law_schema 同向量）：formula 含一元负号
+        // 作用标识符且无 time_anchor → 拒收（报因含否定类构造措辞与命中片段回显）
+        let mut p = law_payload();
+        p["formula"] = serde_json::json!("v = -a * t");
+        p["symbols"] = serde_json::json!({"v": "velocity", "a": "acceleration", "t": "time"});
+        p["si_units"] = serde_json::json!({"v": "m*s^-1", "a": "m*s^-2", "t": "s"});
+        let err =
+            Validator::validate_law_structure(&p).expect_err("G19 一元负号无 time_anchor 应拒收");
+        let msg = format!("{err}");
+        assert!(
+            msg.contains("否定类构造") && msg.contains("time_anchor") && msg.contains("-a"),
+            "报因须含否定类构造措辞、时间锚定指引与命中片段: {msg}"
+        );
+    }
+
+    #[test]
+    fn test_law_structure_negation_unary_minus_with_time_anchor_passes() {
+        // G20 镜像：同 formula + time_anchor 非空 → 通过；仅空白 → 仍按未声明拒收
+        let mut p = law_payload();
+        p["formula"] = serde_json::json!("v = -a * t");
+        p["symbols"] = serde_json::json!({"v": "velocity", "a": "acceleration", "t": "time"});
+        p["si_units"] = serde_json::json!({"v": "m*s^-1", "a": "m*s^-2", "t": "s"});
+        p["time_anchor"] = serde_json::json!("anchored at t0 = 0 (time-anchored rewrite)");
+        Validator::validate_law_structure(&p).unwrap();
+        let mut blank = p.clone();
+        blank["time_anchor"] = serde_json::json!("   ");
+        assert!(
+            Validator::validate_law_structure(&blank).is_err(),
+            "time_anchor 仅空白应视为未声明而拒收"
+        );
+    }
+
+    #[test]
+    fn test_negation_scan_boundary_forms() {
+        // 扫描器边界形态（与 server 侧同向量）：命中/不命中各型
+        // 命中：行首/运算符/分隔符前缀 + 标识符或左括号后随
+        for (formula, kind, pos) in [
+            ("v = -a * t", "unary_minus", 4),
+            ("x = (-k) * y", "unary_minus", 5),
+            ("y = a^(-b) * c", "unary_minus", 7),
+        ] {
+            let hits = scan_negation_constructs(formula);
+            assert_eq!(hits.len(), 1, "`{formula}` 应恰命中一处");
+            assert_eq!(hits[0].kind, kind);
+            assert_eq!(hits[0].pos, pos);
+        }
+        // 不命中：负数字面量 / 二元减法 / 词中 not
+        for formula in [
+            "y = 2 - a * t",
+            "x = -3.14 * r",
+            "v = a * t - b",
+            "x = n * other",
+        ] {
+            assert!(
+                scan_negation_constructs(formula).is_empty(),
+                "`{formula}` 不应命中"
+            );
+        }
+        // 逻辑否定记号：词边界 not / ¬ 命中
+        let hits = scan_negation_constructs("y = not(a) * b");
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].kind, "logical_not");
+        assert_eq!(scan_negation_constructs("¬(a) = b").len(), 1);
     }
 
     #[test]
