@@ -26,7 +26,9 @@ subtle = "2"
 # 经导入闸 fail-closed 拒收，不再静默当已验证；产包工具须显式写出 verdict 字段
 # 0.7.0：嵌入分布面契约 golden（CONTRACT_GOLDEN，include_str 内嵌 rlib）——
 # 快照包 wire 形状快照互守锚，分布面演进时下游 CI 即红（不再依赖人工回归）
-evorule-bundle = { version = "0.7.0" }
+# 0.8.0：BundleDatasetMeta 增 dataset_kind 判别字段——导出面随包填充数据集类型，
+# law_set 归属由消费端按字段直读（schema_ref 前缀代理降兜底）
+evorule-bundle = { version = "0.8.0" }
 rand = "0.8"
 base64 = "0.22"
 # 0.32：与 evorule-server workspace（evorule-workspace 0.32）对齐——libsqlite3-sys
