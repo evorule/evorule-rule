@@ -1,0 +1,89 @@
+{
+  "declared_rule": "R10",
+  "products": {
+    "chem_cft_prin_01": {
+      "after": "CFSE = (#eg * -0.6*Deltao) + (#t2g * -0.4*Deltao)",
+      "before": "CFSE = (#eg * -0.6Deltao) + (#t2g * -0.4Deltao)"
+    },
+    "chem_cft_str_01": {
+      "after": "Deltao = 10*Dq",
+      "before": "Deltao = 10Dq"
+    },
+    "chem_ele_thm_01": {
+      "after": "E = E° - (RT/nF)*lnQ",
+      "before": "E = E° - (RT/nF)lnQ"
+    },
+    "math_ana_thm_04": {
+      "after": "d/dx ∫_a^x f(t)*dt = f(x)",
+      "before": "d/dx ∫_a^x f(t)dt = f(x)"
+    },
+    "math_complex_euler": {
+      "after": "exp_i = cos(x) + 1*j * sin(x)",
+      "before": "exp_i = cos(x) + 1j * sin(x)"
+    },
+    "math_geo_def_02": {
+      "after": "d(x,y) = √(Sigma(xi-yi)*2)",
+      "before": "d(x,y) = √(Sigma(xi-yi)2)"
+    },
+    "math_pde_def_01_p1": {
+      "after": "Deltau = ∂^2*u/∂x1^2 + ... + ∂^2*u/∂xn^2",
+      "before": "Deltau = ∂^2u/∂x1^2 + ... + ∂^2u/∂xn^2"
+    },
+    "math_pde_def_01_p2": {
+      "after": "∂^2*u/∂x1^2 + ... + ∂^2*u/∂xn^2 = 0",
+      "before": "∂^2u/∂x1^2 + ... + ∂^2u/∂xn^2 = 0"
+    },
+    "math_rg_thm_01": {
+      "after": "d^2*x^k/ds^2 + Gamma^k_{ij} dx^i/ds dx^j/ds = 0",
+      "before": "d^2x^k/ds^2 + Gamma^k_{ij} dx^i/ds dx^j/ds = 0"
+    },
+    "phy_atm_law_01": {
+      "after": "E_n = -13.6*eV / n2",
+      "before": "E_n = -13.6eV / n2"
+    },
+    "phy_elm_law_03": {
+      "after": "dB = (mu0/4*pi)*Idl*r̂/r2",
+      "before": "dB = (mu0/4pi)Idl*r̂/r2"
+    },
+    "phy_flu_prin_02": {
+      "after": "P + 1⁄2*rhov2 + rhogh = constant",
+      "before": "P + 1⁄2rhov2 + rhogh = constant"
+    },
+    "phy_flu_prin_03": {
+      "after": "P/rhog + v2/2*g + z = constant",
+      "before": "P/rhog + v2/2g + z = constant"
+    },
+    "phy_mol_law_01": {
+      "after": "nu = (1/2*pi)√(k/mu)",
+      "before": "nu = (1/2pi)√(k/mu)"
+    },
+    "phy_opt_prin_02": {
+      "after": "I = I1 + I2 + 2√(I1I2)*cos(Deltaphi)",
+      "before": "I = I1 + I2 + 2√(I1I2)cos(Deltaphi)"
+    },
+    "phy_qm_law_01": {
+      "after": "rho(nu,T) = (8*pihnu3/c3) / (e^(hnu/kT) - 1)",
+      "before": "rho(nu,T) = (8pihnu3/c3) / (e^(hnu/kT) - 1)"
+    },
+    "phy_qm_law_03": {
+      "after": "Deltalambda = h/(m_e c)*(1 - costheta)",
+      "before": "Deltalambda = h/(m_e c)(1 - costheta)"
+    },
+    "phy_rel_app_05": {
+      "after": "K = (gamma - 1)*m0c2",
+      "before": "K = (gamma - 1)m0c2"
+    },
+    "phy_rel_the_02": {
+      "after": "G_munu = (8*piG/c4)*T_munu",
+      "before": "G_munu = (8piG/c4)T_munu"
+    },
+    "phy_sol_law_01": {
+      "after": "nlambda = 2*d sintheta",
+      "before": "nlambda = 2d sintheta"
+    },
+    "phy_sta_prin_02": {
+      "after": "f(v) = 4*pi (m/2*pikT)^(3/2) v2 e^(-mv2/2*kT)",
+      "before": "f(v) = 4pi (m/2pikT)^(3/2) v2 e^(-mv2/2kT)"
+    }
+  }
+}
