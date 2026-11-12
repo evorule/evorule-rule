@@ -5,7 +5,7 @@
 //! 逐行出 verdict 报告（JSONL），批级汇总 pass/reject 计数。
 //! 拒收走 side-list 留痕（吸收原则 3/6），不静默丢弃。
 //!
-//! L2 真值面口径（51 号 L2 定案）：量纲一致性/单位冒烟=server 分布消费面
+//! L2 真值面口径（可计算子集裁定）：量纲一致性/单位冒烟=server 分布消费面
 //! （core/law_schema unit engine）；rule 侧闸=结构+否定构造（本模块）。
 
 use crate::validate::{scan_negation_constructs, Validator};
