@@ -50,7 +50,7 @@ pub struct CandidateBatch {
     pub tier_grant: TierGrant,
 }
 
-/// tier 授予档（51 号 L2 口径：公式面可执行=底线，服务家族对答=full 前置）
+/// tier 授予档（可计算子集裁定：公式面可执行=底线，服务家族对答=full 前置）
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TierGrant {
     /// 默认授予：公式面可执行（结构+冒烟底线下通过即可）
