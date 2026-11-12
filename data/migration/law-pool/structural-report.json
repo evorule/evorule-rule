@@ -294,6 +294,19 @@
   },
   "split_products": 18,
   "structural_failures": [],
+  "symbols_cleanup": {
+    "applied": "2026-11-12",
+    "artifacts": [
+      "symbols-cleanup-log.jsonl",
+      "symbols-cleanup-rules.json"
+    ],
+    "census_basis": "409 rows, 398 distinct symbol keys (2026-11-12)",
+    "entries_fixed": 4,
+    "formula_entries_touched": 2,
+    "keys_added": 3,
+    "keys_removed": 13,
+    "root_cause": "stage-2 symbol extractor (R9 family) mixes physical-quantity symbols with unit tokens, chemical species, preposition residue, and subscript-collapsed names"
+  },
   "x3_split_entries": 9,
   "x5_mult_products": 21
 }
