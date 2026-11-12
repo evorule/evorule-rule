@@ -121,7 +121,8 @@
       }
     ],
     "domain_missing": 0,
-    "si_units_empty": 212,
+    "si_units_empty": 209,
+    "si_units_exempt": 3,
     "si_units_partial": 0,
     "symbols_lt2": 13
   },
@@ -203,6 +204,19 @@
     },
     "reviewed": "2026-11-12",
     "unit_engine_precheck": "consistent 16/16 (dual-run SHA256-equal harness evidence); zero mismatch; 4 formula-face fragment defects and 53 open questions remain under review"
+  },
+  "si_units_exempt": {
+    "applied": "2026-11-12",
+    "artifacts": [
+      "si-units-exempt-entries.jsonl",
+      "si-units-exempt-rules.json"
+    ],
+    "entries": [
+      "math_at_thm_01",
+      "math_set_ax_01",
+      "math_set_ax_08"
+    ],
+    "rationale": "pure logical/quantified/set-theoretic statements carry no SI dimension semantics; exempted from unit review entirely"
   },
   "si_units_notation_normalize": {
     "applied": "2026-11-12",
