@@ -1,0 +1,103 @@
+{
+  "category_map": {
+    "astrophysics": "physical",
+    "biophysics": "physical",
+    "chemistry": "chemistry",
+    "computational_chemistry": "chemistry",
+    "earth_science": "physical",
+    "information_theory": "math",
+    "math": "math",
+    "mathematical_physics": "physical",
+    "physics": "physical"
+  },
+  "cross_subcategory_map": {
+    "astronomy": "physical",
+    "computational_chemistry": "chemistry",
+    "geoscience": "physical",
+    "information_theory": "math"
+  },
+  "domain_catalog_ids": [
+    "chemistry",
+    "economic",
+    "engineering",
+    "math",
+    "physical"
+  ],
+  "field_map": {
+    "chemistry": "chemistry",
+    "computer_science": "math",
+    "mathematics": "math",
+    "physics": "physical"
+  },
+  "notes": "closed maps only; no per-entry special cases; every derived value is traceable to source columns recorded in a2-derivation-log.jsonl",
+  "scope": "legacy pool domain/tier/solvable backfill + domain vocabulary normalization",
+  "tables": {
+    "AB": {
+      "applies_to": "products whose source batch is A or B (domain empty)",
+      "rules": [
+        {
+          "def": "domain = CATEGORY_MAP[category]; category read from call.category (B batch) or rule.metadata.category (A batch) via provenance.src back-link",
+          "id": "AB-D1",
+          "source_columns": [
+            "call.category",
+            "rule.metadata.category"
+          ]
+        },
+        {
+          "def": "tier = 'light' (default grant; full awaits service-family channel backfill, hook metadata.intake.tier_grant_basis)",
+          "id": "AB-D2",
+          "source_columns": []
+        },
+        {
+          "def": "solvable = [output] when output non-empty else []; output read from call.output (B batch) or rule.domain.output (A batch)",
+          "id": "AB-D3",
+          "source_columns": [
+            "call.output",
+            "rule.domain.output"
+          ]
+        },
+        {
+          "def": "metadata.subdomain = subcategory when subcategory non-empty (side-channel preservation)",
+          "id": "AB-D4",
+          "source_columns": [
+            "call.subcategory",
+            "rule.metadata.subcategory"
+          ]
+        }
+      ]
+    },
+    "C": {
+      "applies_to": "products whose source batch is C (composite domain 'field / subdomain' filled by A1)",
+      "rules": [
+        {
+          "def": "domain = FIELD_MAP[field]; the composite 'field / subdomain' value is split, field mapped to domain-catalog id",
+          "id": "C-D1",
+          "source_columns": [
+            "domain (composite)"
+          ]
+        },
+        {
+          "def": "tier untouched (A1 legacy values: computability partial->light x118, full->full x14)",
+          "id": "C-D2",
+          "source_columns": []
+        },
+        {
+          "def": "solvable: fill [] when missing (source eval_output/provenance output empty); A1 legacy non-empty values untouched",
+          "id": "C-D3",
+          "source_columns": [
+            "row.eval_output",
+            "output (provenance)"
+          ]
+        },
+        {
+          "def": "metadata.subdomain = composite sub-domain component when absent (side-channel preservation)",
+          "id": "C-D4",
+          "source_columns": [
+            "domain (composite)"
+          ]
+        }
+      ]
+    }
+  },
+  "title": "A2 metadata derivation rule tables (two tables, never mixed)"
+}
