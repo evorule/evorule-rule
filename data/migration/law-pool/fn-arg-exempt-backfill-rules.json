@@ -1,0 +1,14 @@
+{
+  "applied": "2026-11-13",
+  "engine_side": "evorule-law-schema metadata.fn_arg_dimless_exempt (serde default false; strict-args hard Mismatch unless declared)",
+  "entries_fixed": 2,
+  "fills": {
+    "chem_sol_ph_def": {
+      "fn_arg_dimless_exempt": true
+    },
+    "chem_sol_ph_def_dup2": {
+      "fn_arg_dimless_exempt": true
+    }
+  },
+  "rule": "declare the reviewed exemption explicitly on the law face; the strict dimensionless-argument check is overridden only where the key is present (default-invariant preserved)"
+}
