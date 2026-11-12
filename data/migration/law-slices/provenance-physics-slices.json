@@ -10,7 +10,9 @@
         "formula: '==' -> '='",
         "solvable: [F] (derived from source output)",
         "derivation: source statement text",
-        "si_units: {} placeholder (dimensional verification pending -> unverified third state)",
+        "si_units: {} -> {\"F\": \"N\", \"a\": \"m*s^-2\", \"m\": \"kg\"} (human-reviewed phy_cla_law_02; unit-engine precheck consistent)",
+        "form: 'equation_identity' (four-form axis)",
+        "intake_channel: 'human_curated' (immutable origin fact)",
         "domain/domains: 'physical' (registered domain-catalog key)",
         "tier: 'full'; max_version_depth: 1; monotone_form: true",
         "metadata.source: Newton, Principia, 1687"
@@ -29,7 +31,9 @@
         "formula: '**' -> '^'",
         "solvable: [F] (derived from source output)",
         "derivation: source statement text",
-        "si_units: {} placeholder (dimensional verification pending -> unverified third state)",
+        "si_units: {} -> {\"F\": \"N\", \"k\": \"N*m^2*C^-2\", \"q1\": \"C\", \"q2\": \"C\", \"r\": \"m\"} (human-reviewed phy_elm_law_01; unit-engine precheck consistent)",
+        "form: 'equation_identity' (four-form axis)",
+        "intake_channel: 'human_curated' (immutable origin fact)",
         "domain/domains: 'physical' (registered domain-catalog key)",
         "tier: 'full'; max_version_depth: 1; monotone_form: true",
         "metadata.source: Coulomb, 1785"
@@ -45,7 +49,9 @@
         "formula: '==' -> '='",
         "solvable: [V] (derived from source output)",
         "derivation: source statement text",
-        "si_units: {} placeholder (dimensional verification pending -> unverified third state)",
+        "si_units: {} -> {\"I\": \"A\", \"R\": \"ohm\", \"V\": \"V\"} (human-reviewed phy_elm_law_02; unit-engine precheck consistent)",
+        "form: 'equation_identity' (four-form axis)",
+        "intake_channel: 'human_curated' (immutable origin fact)",
         "domain/domains: 'physical' (registered domain-catalog key)",
         "tier: 'full'; max_version_depth: 1; monotone_form: true",
         "metadata.source: Ohm, 1827"
@@ -61,7 +67,9 @@
         "formula: '==' -> '='",
         "solvable: [m] (derived from source output)",
         "derivation: source statement text",
-        "si_units: {} placeholder (dimensional verification pending -> unverified third state)",
+        "si_units: {} -> {\"m\": \"1\", \"u\": \"m\", \"v\": \"m\"} (human-reviewed phy_opt_app_03; unit-engine precheck consistent)",
+        "form: 'equation_identity' (four-form axis)",
+        "intake_channel: 'human_curated' (immutable origin fact)",
         "domain/domains: 'physical' (registered domain-catalog key)",
         "tier: 'full'; max_version_depth: 1; monotone_form: true",
         "metadata.source: Optics"
@@ -78,7 +86,9 @@
         "formula: '**' -> '^'",
         "solvable: [E] (derived from source output)",
         "derivation: source statement text",
-        "si_units: {} placeholder (dimensional verification pending -> unverified third state)",
+        "si_units: {} -> {\"E\": \"J\", \"c\": \"m*s^-1\", \"m\": \"kg\"} (human-reviewed phy_rel_app_01; unit-engine precheck consistent)",
+        "form: 'equation_identity' (four-form axis)",
+        "intake_channel: 'human_curated' (immutable origin fact)",
         "domain/domains: 'physical' (registered domain-catalog key)",
         "tier: 'full'; max_version_depth: 1; monotone_form: true",
         "metadata.source: Einstein, 1905"
@@ -91,7 +101,7 @@
         "phy_opt_app_03",
         "phy_rel_app_01"
       ],
-      "version": "0.1.0"
+      "version": "0.2.0"
     },
     "physical-empirical-slices": {
       "law_ids": [
@@ -99,7 +109,7 @@
         "phy_elm_law_01",
         "phy_elm_law_02"
       ],
-      "version": "0.1.0"
+      "version": "0.2.0"
     }
   }
 }

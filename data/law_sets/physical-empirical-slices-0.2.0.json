@@ -2,14 +2,14 @@
   "$schema": "https://evorule.org/schemas/law_set/v1.0.json",
   "kind": "law_set",
   "id": "physical-empirical-slices",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "metadata": {
     "title": "Empirical physics law slices (migrated)",
-    "description": "Law slices migrated from the archived science asset dump; si_units are placeholders, so every entry sits in the explicit unverified (dimensional third) state until the dimension pass lands.",
+    "description": "Law slices migrated from the archived science asset dump; si_units are human-reviewed and backfilled (dimensional pass: every entry unit-engine consistent, dual-run SHA256-equal harness evidence).",
     "domain": "physical",
     "source": "Coulomb, 1785; Newton, Principia, 1687; Ohm, 1827",
     "unit_system": "SI",
-    "verified": "pending: si_units placeholder (dimensional verification not yet applied)"
+    "verified": "human-reviewed 2026-11-12: si_units approved and backfilled; unit-engine precheck consistent"
   },
   "laws": [
     {
@@ -20,7 +20,11 @@
         "m": "input quantity",
         "a": "input quantity"
       },
-      "si_units": {},
+      "si_units": {
+        "F": "N",
+        "a": "m*s^-2",
+        "m": "kg"
+      },
       "domain": "physical",
       "domains": [
         "physical"
@@ -34,6 +38,8 @@
       "tier": "full",
       "max_version_depth": 1,
       "monotone_form": true,
+      "form": "equation_identity",
+      "intake_channel": "human_curated",
       "metadata": {
         "source": "Newton, Principia, 1687"
       }
@@ -48,7 +54,13 @@
         "q2": "input quantity",
         "r": "input quantity"
       },
-      "si_units": {},
+      "si_units": {
+        "F": "N",
+        "k": "N*m^2*C^-2",
+        "q1": "C",
+        "q2": "C",
+        "r": "m"
+      },
       "domain": "physical",
       "domains": [
         "physical"
@@ -62,6 +74,8 @@
       "tier": "full",
       "max_version_depth": 1,
       "monotone_form": true,
+      "form": "equation_identity",
+      "intake_channel": "human_curated",
       "metadata": {
         "source": "Coulomb, 1785"
       }
@@ -74,7 +88,11 @@
         "I": "input quantity",
         "R": "input quantity"
       },
-      "si_units": {},
+      "si_units": {
+        "I": "A",
+        "R": "ohm",
+        "V": "V"
+      },
       "domain": "physical",
       "domains": [
         "physical"
@@ -88,6 +106,8 @@
       "tier": "full",
       "max_version_depth": 1,
       "monotone_form": true,
+      "form": "equation_identity",
+      "intake_channel": "human_curated",
       "metadata": {
         "source": "Ohm, 1827"
       }
