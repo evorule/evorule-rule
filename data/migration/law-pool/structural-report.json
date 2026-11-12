@@ -146,15 +146,6 @@
     "symbols must have >= 2 entries": 13,
     "tier missing or not light|full": 0
   },
-  "o662_663_664_pool_fixes": {
-    "applied": "2026-11-13",
-    "artifacts": [
-      "o662-663-664-pool-fixes-log.jsonl",
-      "o662-663-664-pool-fixes-rules.json"
-    ],
-    "entries_fixed": 4,
-    "source": "approved 2026-11-13 (O-662/663/664 remediation)"
-  },
   "pool_in": 419,
   "pool_in_by_tag": {
     "A": 135,
@@ -166,6 +157,15 @@
     "X5": 13
   },
   "products": 409,
+  "reviewed_defects_pool_fixes": {
+    "applied": "2026-11-13",
+    "artifacts": [
+      "reviewed-defects-fix-log.jsonl",
+      "reviewed-defects-fix-rules.json"
+    ],
+    "entries_fixed": 4,
+    "source": "approved 2026-11-13 (three registered remediation paths)"
+  },
   "si_units_backfill": {
     "artifacts": [
       "si-units-backfill-log.jsonl",

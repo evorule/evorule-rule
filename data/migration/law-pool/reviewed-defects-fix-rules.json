@@ -1,0 +1,10 @@
+{
+  "applied": "2026-11-13",
+  "approval": "user directive 2026-11-13 to complete three registered defects per the registered remediation paths",
+  "entries_fixed": 4,
+  "fixes": {
+    "remedy-1": "phys_em_maxwell_ampere si d_phi_E_dt Wb/s -> V*m/s (electric-flux derivative; eps0 * dPhiE/dt = A)",
+    "remedy-2": "embedded-constant rows reference the new reviewed key E_rydberg (si = eV); value semantics (-13.6 eV) moved to the derivation annotation",
+    "remedy-3": "phy_rel_app_02_p2 si v m -> m*s^-1 (velocity dimension)"
+  }
+}
