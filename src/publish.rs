@@ -1,4 +1,4 @@
-//! 候选批 → law_set v1.1 发布链（accepted→入池；B-293 T3 工程化件）
+//! 候选批 → law_set v1.1 发布链（accepted→入池；发布链工程化件）
 //!
 //! 转换+验收+组装一体：
 //! - 每条候选取 `law` 载荷，注入批级 form/intake_channel 后过
@@ -260,7 +260,7 @@ mod tests {
             form: "equation_identity".into(),
             intake_channel: "llm_proposal".into(),
             title: "Physics dimensional-algebra laws".into(),
-            description: "B-287 candidate batch published as law_set v1.1".into(),
+            description: "physics-dim-v1 candidate batch published as law_set v1.1".into(),
             source: "seed excerpt; LLM proposals machine-gated + human spot-check".into(),
             tier_grant: TierGrant::Light,
         }
