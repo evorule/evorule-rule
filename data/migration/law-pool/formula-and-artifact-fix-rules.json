@@ -1,0 +1,69 @@
+{
+  "applied": "2026-11-12",
+  "cross_checks": {
+    "check_1": "p1 and-right fragment == equation_2 left-hand side",
+    "check_2": "p2 and-left fragment == equation_1 right-hand side",
+    "equation_1": "p1 formula before the and-join",
+    "equation_2": "p2 formula after the and-join"
+  },
+  "entries_fixed": 14,
+  "parent_pairs": {
+    "math_calc_fundamental_theorem": [
+      "math_calc_fundamental_theorem_p1",
+      "math_calc_fundamental_theorem_p2"
+    ],
+    "math_calc_fundamental_theorem_dup2": [
+      "math_calc_fundamental_theorem_p1_dup2",
+      "math_calc_fundamental_theorem_p2_dup2"
+    ],
+    "math_geom_heron": [
+      "math_geom_heron_p1",
+      "math_geom_heron_p2"
+    ],
+    "math_geom_heron_dup2": [
+      "math_geom_heron_p1_dup2",
+      "math_geom_heron_p2_dup2"
+    ],
+    "math_trig_law_of_sines": [
+      "math_trig_law_of_sines_p1",
+      "math_trig_law_of_sines_p2"
+    ],
+    "math_trig_law_of_sines_dup2": [
+      "math_trig_law_of_sines_p1_dup2",
+      "math_trig_law_of_sines_p2_dup2"
+    ],
+    "phy_rel_app_02": [
+      "phy_rel_app_02_p1",
+      "phy_rel_app_02_p2"
+    ]
+  },
+  "rule": "restore each chain-split product's formula to the exact single equation it represents (root cause: chain splitter statement-marker table lacks the word connective; generator fix registered separately, not part of this pass); remove the and pseudo-symbol from symbols; apply the human-reviewed candidate fills (s=m, sin=1, sqrt=1, approved 2026-11-12) to the eight geometry/trigonometry entries; empty-si_units entries stay untouched on the value face",
+  "si_units_fills": {
+    "math_geom_heron_p1": {
+      "s": "m"
+    },
+    "math_geom_heron_p1_dup2": {
+      "s": "m"
+    },
+    "math_geom_heron_p2": {
+      "s": "m",
+      "sqrt": "1"
+    },
+    "math_geom_heron_p2_dup2": {
+      "s": "m",
+      "sqrt": "1"
+    },
+    "math_trig_law_of_sines_p1": {
+      "sin": "1"
+    },
+    "math_trig_law_of_sines_p1_dup2": {
+      "sin": "1"
+    },
+    "math_trig_law_of_sines_p2": {
+      "sin": "1"
+    },
+    "math_trig_law_of_sines_p2_dup2": {
+      "sin": "1"
+    }
+  }
+}
