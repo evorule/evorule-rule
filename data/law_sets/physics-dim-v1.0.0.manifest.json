@@ -1,0 +1,21 @@
+{
+  "title": "Publication manifest: physics-dim-v1.0.0 law_set",
+  "published_at": "2026-11-12",
+  "batch": "physics-dim-v1",
+  "source_candidates": "data/candidates/physics-dim-v1/accepted-candidates.jsonl",
+  "candidate_count": 33,
+  "published_count": 33,
+  "rejected_count": 0,
+  "output": "data/law_sets/physics-dim-v1.0.0.json",
+  "output_digest": "blake3:139166e55845fe5004dc06073e624fcb7eaa73fa75ab58ae6d8ad80460754146",
+  "output_digest_algorithm": "evorule-hash json_digest (BLAKE3, prefixed)",
+  "schema": "https://evorule.org/schemas/law_set/v1.1.json",
+  "intake": {
+    "form": "equation_identity",
+    "intake_channel": "llm_proposal",
+    "face": "validate_law_intake_v11 (nine elements + form + intake_channel + key allowlist)",
+    "all_or_nothing": true
+  },
+  "ssot_validation": "PASS (jsonschema draft 2020-12 against evorule-system-rules schemas/law_set/v1.1.json)",
+  "chain": "B-287 proposals -> machine gates (L1 struct / L2 dim / dup / pollution) -> human spot-check 19/19 -> publication chain v1.1 -> main pool"
+}
