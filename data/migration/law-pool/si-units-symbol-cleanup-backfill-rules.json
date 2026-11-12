@@ -1,0 +1,27 @@
+{
+  "applied": "2026-11-12",
+  "engine_boundary": "all four rows keep check_law = Skipped (unary-minus boundary O-660 / binary +|- boundary B-320 track / untouched formula-face defects deferred to the formula-repair batch); zero mismatch, verified by the B-323 precedent probes",
+  "entries_fixed": 4,
+  "fills": {
+    "chem_bio_rul_01": {
+      "DeltaG": "J*mol^-1"
+    },
+    "chem_pcd_thm_03": {
+      "E_anode": "V",
+      "E_cathode": "V",
+      "E_cell": "V"
+    },
+    "chem_sto_emp_01": {
+      "P": "kg*m^-1*s^-2",
+      "T": "K",
+      "V": "m^3",
+      "constant": "m^3*mol^-1",
+      "n": "mol"
+    },
+    "phy_atm_law_01": {
+      "E_n": "eV",
+      "n2": "1"
+    }
+  },
+  "rule": "apply the approved candidate values (frozen single source) as surgical si_units fills; candidate keyset must complete the cleaned symbol face of each row"
+}
