@@ -2,3 +2,6 @@
 # force LF so any platform checkout materializes byte-identical files and
 # deterministic pipeline re-runs stay digest-stable.
 /data/candidates/** text eol=lf
+
+# Migration pool artifacts are digest-anchored the same way (A1/A2 manifests):
+/data/migration/** text eol=lf
