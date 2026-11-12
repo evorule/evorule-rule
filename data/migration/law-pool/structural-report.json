@@ -121,9 +121,10 @@
       }
     ],
     "domain_missing": 0,
-    "si_units_empty": 209,
+    "si_units_empty": 200,
     "si_units_exempt": 3,
     "si_units_partial": 0,
+    "si_units_tiered_review": 9,
     "symbols_lt2": 13
   },
   "machine_gate_fail_reasons": {
@@ -216,7 +217,25 @@
       "math_set_ax_01",
       "math_set_ax_08"
     ],
-    "rationale": "pure logical/quantified/set-theoretic statements carry no SI dimension semantics; exempted from unit review entirely"
+    "rationale": "pure logical/quantified/set-theoretic statements carry no SI dimension semantics; exempted from unit review entirely",
+    "tiered_review_addendum": {
+      "agnostic": [
+        "math_ana_def_01",
+        "math_ana_thm_01",
+        "math_ana_thm_03"
+      ],
+      "applied": "2026-11-12",
+      "criterion": "formula symbols commit to physical dimensions or not; review lens differs per tier",
+      "milestone_dependency": "rule_defined rows await unit-value review until M1 (function-notation engine support) lands",
+      "rule_defined": [
+        "math_trig_pythagorean_identity",
+        "math_trig_pythagorean_identity_dup2",
+        "math_linalg_norm_euclidean",
+        "math_linalg_norm_euclidean_dup2",
+        "math_complex_modulus",
+        "math_complex_modulus_dup2"
+      ]
+    }
   },
   "si_units_notation_normalize": {
     "applied": "2026-11-12",
