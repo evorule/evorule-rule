@@ -33,7 +33,7 @@
         "J_imp": "impulse delivered by the force",
         "delta_t": "time interval over which the force acts"
       },
-      "tier": "full"
+      "tier": "light"
     },
     {
       "derivation": [
@@ -65,7 +65,7 @@
         "W_work": "work done by the force",
         "d_disp": "displacement along the force direction"
       },
-      "tier": "full"
+      "tier": "light"
     },
     {
       "derivation": [
@@ -97,7 +97,7 @@
         "W_work": "work done",
         "t_dur": "time duration"
       },
-      "tier": "full"
+      "tier": "light"
     },
     {
       "derivation": [
@@ -163,7 +163,7 @@
         "h_height": "height above the reference level",
         "m": "mass of the body"
       },
-      "tier": "full"
+      "tier": "light"
     },
     {
       "derivation": [
@@ -198,7 +198,7 @@
         "m2": "mass of the second body",
         "r_dist": "distance between the body centers"
       },
-      "tier": "full"
+      "tier": "light"
     },
     {
       "derivation": [
@@ -229,7 +229,7 @@
         "c_light": "speed of light in vacuum",
         "m_rest": "rest mass of the body"
       },
-      "tier": "full"
+      "tier": "light"
     },
     {
       "derivation": [
@@ -261,7 +261,7 @@
         "lambda_len": "wavelength",
         "v_wave": "wave propagation speed"
       },
-      "tier": "full"
+      "tier": "light"
     },
     {
       "derivation": [
@@ -354,7 +354,7 @@
         "r_orbit": "orbit radius",
         "v_tan": "tangential speed"
       },
-      "tier": "full"
+      "tier": "light"
     },
     {
       "derivation": [
@@ -386,7 +386,7 @@
         "I_moi": "moment of inertia about the rotation axis",
         "omega_ang": "angular velocity"
       },
-      "tier": "full"
+      "tier": "light"
     },
     {
       "derivation": [
@@ -418,7 +418,7 @@
         "r_arm": "moment arm length",
         "tau_net": "torque magnitude about the axis"
       },
-      "tier": "full"
+      "tier": "light"
     },
     {
       "derivation": [
@@ -449,7 +449,7 @@
         "k_stiff": "spring stiffness constant",
         "x_disp": "extension from natural length"
       },
-      "tier": "full"
+      "tier": "light"
     },
     {
       "derivation": [
@@ -512,7 +512,7 @@
         "F_norm": "normal force on the surface",
         "P_abs": "average absolute pressure on the surface"
       },
-      "tier": "full"
+      "tier": "light"
     },
     {
       "derivation": [
@@ -544,7 +544,7 @@
         "m_body": "mass of the body",
         "rho_mass": "average mass density"
       },
-      "tier": "full"
+      "tier": "light"
     },
     {
       "derivation": [
@@ -576,7 +576,7 @@
         "R_res": "resistance",
         "V_drop": "voltage drop across the resistor"
       },
-      "tier": "full"
+      "tier": "light"
     },
     {
       "derivation": [
@@ -640,7 +640,7 @@
         "Q_charge": "charge transported",
         "t_dur": "time duration"
       },
-      "tier": "full"
+      "tier": "light"
     },
     {
       "derivation": [
@@ -672,7 +672,7 @@
         "Q_charge": "charge stored on the positive plate",
         "V_drop": "voltage between the plates"
       },
-      "tier": "full"
+      "tier": "light"
     },
     {
       "derivation": [
@@ -703,7 +703,7 @@
         "f_freq": "photon frequency",
         "h_planck": "Planck constant"
       },
-      "tier": "full"
+      "tier": "light"
     },
     {
       "derivation": [
@@ -734,7 +734,7 @@
         "lambda_de": "de Broglie wavelength of the particle",
         "p_mom": "momentum of the particle"
       },
-      "tier": "full"
+      "tier": "light"
     },
     {
       "derivation": [
@@ -769,7 +769,7 @@
         "q_ch": "electric charge of the particle",
         "v_inst": "speed of the particle"
       },
-      "tier": "full"
+      "tier": "light"
     },
     {
       "derivation": [
@@ -801,7 +801,7 @@
         "B_field": "magnetic flux density normal to the surface",
         "Phi_flux": "magnetic flux through the surface"
       },
-      "tier": "full"
+      "tier": "light"
     },
     {
       "derivation": [
@@ -868,7 +868,7 @@
         "delta_T": "temperature change",
         "m_body": "mass of the body"
       },
-      "tier": "full"
+      "tier": "light"
     },
     {
       "derivation": [
@@ -901,7 +901,7 @@
         "T_abs": "absolute temperature",
         "sigma_SB": "Stefan-Boltzmann constant"
       },
-      "tier": "full"
+      "tier": "light"
     },
     {
       "derivation": [
@@ -932,7 +932,7 @@
         "b_wien": "Wien displacement constant",
         "lambda_max": "wavelength of maximum spectral radiance"
       },
-      "tier": "full"
+      "tier": "light"
     },
     {
       "derivation": [
@@ -967,7 +967,7 @@
         "q2": "second point charge",
         "r_sep": "separation distance"
       },
-      "tier": "full"
+      "tier": "light"
     },
     {
       "derivation": [
@@ -1034,7 +1034,7 @@
         "delta_T": "temperature difference across the slab",
         "k_cond": "thermal conductivity"
       },
-      "tier": "full"
+      "tier": "light"
     },
     {
       "derivation": [
@@ -1069,12 +1069,14 @@
     }
   ],
   "metadata": {
-    "description": "Dimensional-algebra equation identities proposed by LLM, machine-gated (structure L1 + dimensional L2 + duplicate/pollution), human spot-check 19/19 consistent; published through the law_set v1.1 intake-discipline publication chain.",
+    "description": "Dimensional-algebra equation identities proposed by LLM, machine-gated (structure L1 + dimensional L2 + duplicate/pollution), human spot-check 19/19 consistent; published through the law_set v1.1 intake-discipline publication chain. Tier granted per the computable-subset ruling: light until the service-family answer channel (B') backfills full.",
     "intake": {
       "candidate_count": 33,
       "form": "equation_identity",
       "intake_channel": "llm_proposal",
-      "provenance_note": "batch=physics-dim-v1; proposals sha256=62a494db81368275d10fb253fd6e2811fcf45dfde6d4e4553be6bb4a6bca6f32; spot-check consistency=19/19"
+      "provenance_note": "batch=physics-dim-v1; proposals sha256=62a494db81368275d10fb253fd6e2811fcf45dfde6d4e4553be6bb4a6bca6f32; spot-check consistency=19/19",
+      "tier_grant": "light",
+      "tier_grant_basis": "L2 ruling: computable = formula-face executable; light is the default grant"
     },
     "source": "seed excerpt (physics dimensional algebra); LLM proposals under provenance.llm_model=GLM",
     "title": "Physics dimensional-algebra laws (B-287 candidate batch)",

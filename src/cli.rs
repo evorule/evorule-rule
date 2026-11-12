@@ -142,6 +142,9 @@ pub enum Cmd {
         /// 出身通道（批级注入：human_curated|llm_proposal；一经发布永不回写）
         #[arg(long)]
         intake_channel: String,
+        /// tier 授予（L2 口径：默认 light=公式面可执行；full 须服务家族对答通道在位）
+        #[arg(long, default_value = "light")]
+        tier_grant: String,
         /// 文档 metadata.title
         #[arg(long)]
         title: String,
@@ -240,6 +243,7 @@ pub fn run(args: CliArgs) -> Result<(), CliError> {
             dataset_version,
             form,
             intake_channel,
+            tier_grant,
             title,
             description,
             source,
@@ -269,6 +273,7 @@ pub fn run(args: CliArgs) -> Result<(), CliError> {
                 dataset_version,
                 form,
                 intake_channel,
+                tier_grant: crate::publish::TierGrant::parse(&tier_grant).map_err(CliError)?,
                 title,
                 description,
                 source,

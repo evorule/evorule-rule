@@ -45,6 +45,34 @@ pub struct CandidateBatch {
     pub title: String,
     pub description: String,
     pub source: String,
+    /// tier 授予（L2 口径定案：accepted 默认 light；full 需服务家族对答通道，
+    /// B′ 后回填——提案期 tier 只是提案意图，入池 tier=验证级授予）
+    pub tier_grant: TierGrant,
+}
+
+/// tier 授予档（51 号 L2 口径：公式面可执行=底线，服务家族对答=full 前置）
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TierGrant {
+    /// 默认授予：公式面可执行（结构+冒烟底线下通过即可）
+    Light,
+    /// 显式授予：须声明服务家族对答通道在位（B′ 后回填期使用）
+    Full,
+}
+
+impl TierGrant {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            TierGrant::Light => "light",
+            TierGrant::Full => "full",
+        }
+    }
+    pub fn parse(s: &str) -> Result<Self, String> {
+        match s {
+            "light" => Ok(TierGrant::Light),
+            "full" => Ok(TierGrant::Full),
+            other => Err(format!("tier_grant 非法（须 light|full）: {other}")),
+        }
+    }
 }
 
 /// 单条拒收记录（带行号与原因；吸收原则 3：拒收带因）
@@ -112,6 +140,12 @@ fn law_payload_from_candidate(candidate: &Value, batch: &CandidateBatch) -> Resu
     obj.insert(
         "intake_channel".into(),
         Value::String(batch.intake_channel.clone()),
+    );
+    // tier 授予（L2 口径）：入池 tier=验证级授予，覆盖提案期 tier（提案意图
+    // 保留在候选件与 verdict 留痕里，审计链不丢）
+    obj.insert(
+        "tier".into(),
+        Value::String(batch.tier_grant.as_str().to_string()),
     );
     Ok(Value::Object(obj))
 }
@@ -188,6 +222,11 @@ pub fn build_law_set_document(
     let mut intake = json!({
         "form": batch.form,
         "intake_channel": batch.intake_channel,
+        "tier_grant": batch.tier_grant.as_str(),
+        "tier_grant_basis": match batch.tier_grant {
+            TierGrant::Light => "L2 ruling: computable = formula-face executable; light is the default grant",
+            TierGrant::Full => "service-family answer channel verified in place (post-B' backfill)",
+        },
         "candidate_count": candidates.len(),
     });
     if let Some(note) = provenance_note {
@@ -223,6 +262,7 @@ mod tests {
             title: "Physics dimensional-algebra laws".into(),
             description: "B-287 candidate batch published as law_set v1.1".into(),
             source: "seed excerpt; LLM proposals machine-gated + human spot-check".into(),
+            tier_grant: TierGrant::Light,
         }
     }
 
@@ -309,5 +349,21 @@ mod tests {
             build_law_set_document(&[candidate("a")], &b, None),
             Err(PublishError::Message(_))
         ));
+    }
+
+    #[test]
+    fn test_publish_tier_grant_overrides_proposal_tier() {
+        // L2 口径：提案 tier=full 只是提案意图；入池 tier=验证级授予（默认 light）
+        let doc = build_law_set_document(&[candidate("a_law")], &batch(), None).unwrap();
+        assert_eq!(doc["laws"][0]["tier"], "light");
+        assert_eq!(doc["metadata"]["intake"]["tier_grant"], "light");
+        let mut full = batch();
+        full.tier_grant = TierGrant::Full;
+        let doc_full = build_law_set_document(&[candidate("a_law")], &full, None).unwrap();
+        assert_eq!(doc_full["laws"][0]["tier"], "full");
+        assert_eq!(
+            doc_full["metadata"]["intake"]["tier_grant_basis"],
+            "service-family answer channel verified in place (post-B' backfill)"
+        );
     }
 }
