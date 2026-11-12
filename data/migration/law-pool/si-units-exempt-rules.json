@@ -1,0 +1,8 @@
+{
+  "notation": {
+    "dimensionless": "\"1\" (engine has no \"dimensionless\" token)",
+    "form": "coherent SI symbols or base-unit power products (e.g. m*s^-1)"
+  },
+  "reviewed": "2026-11-12",
+  "rule": "human-adjudicated SI-dimension exemptions: entries whose formulas are pure logical/quantified/set-theoretic statements carry no SI dimension semantics; they are exempted from unit review entirely (si_units intentionally left empty, no candidate derivation, check_law not applicable), recorded here and in the structural report gap counter"
+}
