@@ -17,6 +17,7 @@ pub mod cli;
 pub mod gate;
 pub mod llm_client;
 pub mod model;
+pub mod proposals;
 pub mod publish;
 pub mod resolve;
 pub mod store;

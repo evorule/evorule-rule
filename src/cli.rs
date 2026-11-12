@@ -158,6 +158,17 @@ pub enum Cmd {
         #[arg(long)]
         provenance_note: Option<String>,
     },
+    /// 提案批机器闸（LLM 提案 → 逐行 verdict 报告；本地零网络）
+    ///
+    /// 复用加固①共享校验面：结构九要素+公式分离符+否定构造（双仓锁定扫描）。
+    /// 拒收走 side-list 留痕；有拒收时退出码非零（批完整性信号，拒收件修订后重提）。
+    ProposalsGate {
+        /// 提案 JSONL 文件（每行裸 law 载荷或 {law:...} 信封）
+        file: String,
+        /// 判定报告输出 JSONL（缺省打印 stdout）
+        #[arg(long)]
+        out: Option<String>,
+    },
 }
 
 /// CLI 错误（如实透出服务端错误体，不静默）
@@ -283,6 +294,52 @@ pub fn run(args: CliArgs) -> Result<(), CliError> {
                 "digest {}",
                 evorule_hash::prefixed(&evorule_hash::json_digest(&doc))
             );
+        }
+        Cmd::ProposalsGate { file, out } => {
+            let raw = std::fs::read_to_string(&file)
+                .map_err(|e| CliError(format!("读取提案批失败 ({}): {e}", file)))?;
+            let mut lines: Vec<Value> = Vec::new();
+            for (idx, l) in raw.lines().enumerate() {
+                let l = l.trim();
+                if l.is_empty() {
+                    continue;
+                }
+                let v: Value = serde_json::from_str(l)
+                    .map_err(|e| CliError(format!("提案第 {} 行 JSON 解析失败: {e}", idx + 1)))?;
+                lines.push(v);
+            }
+            if lines.is_empty() {
+                return Err(CliError("提案批为空（无有效行）".into()));
+            }
+            let report = crate::proposals::gate_proposals(&lines);
+            let report_lines = crate::proposals::report_to_jsonl(&report);
+            match out.as_deref() {
+                Some(path) => {
+                    let body: String = report_lines
+                        .iter()
+                        .map(|v| v.to_string())
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    std::fs::write(path, body.as_bytes())
+                        .map_err(|e| CliError(format!("写报告失败: {e}")))?;
+                    println!("gate report written: {path}");
+                }
+                None => {
+                    for v in &report_lines {
+                        println!("{v}");
+                    }
+                }
+            }
+            println!(
+                "summary: total={} pass={} reject={}",
+                report.summary.total, report.summary.passed, report.summary.rejected
+            );
+            if report.summary.rejected > 0 {
+                return Err(CliError(format!(
+                    "提案批含 {} 条拒收（报告留痕；拒收件修订后重提）",
+                    report.summary.rejected
+                )));
+            }
         }
         Cmd::EntriesBulkImport {
             dir,
