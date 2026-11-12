@@ -1,0 +1,192 @@
+{
+  "applied": "2026-11-12",
+  "deferred": {
+    "(mol/L)^Deltan": "symbolic variable exponent (Deltan) is not a fixed unit; deferred for human review",
+    "atm^Deltan": "symbolic variable exponent (Deltan) is not a fixed unit; deferred for human review"
+  },
+  "notation": {
+    "dimensionless": "\"1\" (engine has no \"dimensionless\" token)",
+    "form": "coherent SI symbols or base-unit power products (e.g. m*s^-1)",
+    "prefixes": "none (SI prefixes unsupported by the unit engine)",
+    "reserved_spellings": {
+      "ohm": "ohm is the only accepted ohm spelling"
+    }
+  },
+  "probe_verified_forms": [
+    "1",
+    "J*m^-2",
+    "J*mol^-1",
+    "J*mol^-1*K^-1",
+    "K",
+    "K*m^-1",
+    "N*m^2*C^-1",
+    "N*m^2*C^-2",
+    "N*m^2*kg^-2",
+    "W*m^-2*K^-4",
+    "m",
+    "m*s^-1",
+    "m*s^-2",
+    "m^-2",
+    "m^2",
+    "m^2*s^-1",
+    "m^3",
+    "mol*m^-2*s^-1",
+    "mol*m^-4",
+    "mol^-1",
+    "ohm",
+    "s^-1",
+    "s^-2"
+  ],
+  "rewrite_map": {
+    "1/m2": {
+      "after": "m^-2",
+      "class": "notation-resyntax",
+      "rationale": "unit numerator 1 is a dimension-one factor, dropped"
+    },
+    "1/s2": {
+      "after": "s^-2",
+      "class": "notation-resyntax",
+      "rationale": "unit numerator 1 is a dimension-one factor, dropped"
+    },
+    "J/m2": {
+      "after": "J*m^-2",
+      "class": "notation-resyntax",
+      "rationale": "slash division to negative-power product"
+    },
+    "Mpc": {
+      "after": "m",
+      "class": "dimension-equivalent",
+      "rationale": "parsec is a length unit; dimension vector equals meter"
+    },
+    "N*m2/C": {
+      "after": "N*m^2*C^-1",
+      "class": "notation-resyntax",
+      "rationale": "inline powers and slash division to caret product"
+    },
+    "N*m2/C2": {
+      "after": "N*m^2*C^-2",
+      "class": "notation-resyntax",
+      "rationale": "inline powers and slash division to caret product"
+    },
+    "N*m2/kg2": {
+      "after": "N*m^2*kg^-2",
+      "class": "notation-resyntax",
+      "rationale": "inline powers and slash division to caret product"
+    },
+    "Omega": {
+      "after": "ohm",
+      "class": "notation-resyntax",
+      "rationale": "ohm is the only accepted ohm spelling in the engine vocabulary"
+    },
+    "W/(m2*K4)": {
+      "after": "W*m^-2*K^-4",
+      "class": "notation-resyntax",
+      "rationale": "parenthesized divisor to negative-power product"
+    },
+    "bit": {
+      "after": "1",
+      "class": "dimension-equivalent",
+      "rationale": "information quantities are dimensionless in the SI convention"
+    },
+    "bit/s": {
+      "after": "s^-1",
+      "class": "dimension-equivalent",
+      "rationale": "information quantities are dimensionless in the SI convention; slash division to negative power"
+    },
+    "bits": {
+      "after": "1",
+      "class": "dimension-equivalent",
+      "rationale": "information quantities are dimensionless in the SI convention"
+    },
+    "bits/s": {
+      "after": "s^-1",
+      "class": "dimension-equivalent",
+      "rationale": "information quantities are dimensionless in the SI convention; slash division to negative power"
+    },
+    "dimensionless": {
+      "after": "1",
+      "class": "notation-resyntax",
+      "rationale": "dimension-one values are recorded as \"1\"; the engine has no dimensionless token"
+    },
+    "kJ/(mol*K)": {
+      "after": "J*mol^-1*K^-1",
+      "class": "notation-resyntax",
+      "rationale": "coherent SI: drop kilo prefix; divisor to negative powers"
+    },
+    "kJ/mol": {
+      "after": "J*mol^-1",
+      "class": "notation-resyntax",
+      "rationale": "coherent SI: drop kilo prefix; slash division to negative power"
+    },
+    "km": {
+      "after": "m",
+      "class": "notation-resyntax",
+      "rationale": "coherent SI: drop kilo prefix"
+    },
+    "km/(s*Mpc)": {
+      "after": "s^-1",
+      "class": "dimension-equivalent",
+      "rationale": "length cancels between kilometer and megaparsec, leaving time^-1"
+    },
+    "km/s": {
+      "after": "m*s^-1",
+      "class": "notation-resyntax",
+      "rationale": "coherent SI: drop kilo prefix; slash division to negative power"
+    },
+    "m/s2": {
+      "after": "m*s^-2",
+      "class": "notation-resyntax",
+      "rationale": "slash division and trailing exponent to negative-power product"
+    },
+    "m2": {
+      "after": "m^2",
+      "class": "notation-resyntax",
+      "rationale": "power notation: caret syntax only"
+    },
+    "m2/s": {
+      "after": "m^2*s^-1",
+      "class": "notation-resyntax",
+      "rationale": "slash division to negative-power product"
+    },
+    "m3": {
+      "after": "m^3",
+      "class": "notation-resyntax",
+      "rationale": "power notation: caret syntax only"
+    },
+    "mol-1": {
+      "after": "mol^-1",
+      "class": "notation-resyntax",
+      "rationale": "trailing negative exponent rewritten to caret syntax"
+    },
+    "mol/(m2*s)": {
+      "after": "mol*m^-2*s^-1",
+      "class": "notation-resyntax",
+      "rationale": "slash division to negative-power product"
+    },
+    "mol/m4": {
+      "after": "mol*m^-4",
+      "class": "notation-resyntax",
+      "rationale": "slash division to negative-power product"
+    },
+    "s-1": {
+      "after": "s^-1",
+      "class": "notation-resyntax",
+      "rationale": "trailing negative exponent rewritten to caret syntax"
+    },
+    "°C": {
+      "after": "K",
+      "class": "dimension-equivalent",
+      "rationale": "celsius temperature has the kelvin dimension vector; degree sign is a non-ASCII token"
+    },
+    "°C/km": {
+      "after": "K*m^-1",
+      "class": "dimension-equivalent",
+      "rationale": "celsius temperature has the kelvin dimension vector; slash division to negative power"
+    }
+  },
+  "rule": "deterministic notation rewrite of unit-engine-unparseable si_units values into engine-canonical coherent-SI form; values already parseable in the unit engine are never touched; symbolic-variable exponents are deferred untouched for human review",
+  "rule_classes": {
+    "dimension-equivalent": "engine vocabulary lacks the unit; rewrite target preserves the exact dimension vector",
+    "notation-resyntax": "mechanical re-spelling of the same dimension (coherent SI form)"
+  }
+}
