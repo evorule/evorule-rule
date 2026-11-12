@@ -1,0 +1,86 @@
+{
+  "notation": {
+    "dimensionless": "\"1\" (engine has no \"dimensionless\" token)",
+    "form": "coherent SI symbols or base-unit power products (e.g. m*s^-1)",
+    "prefixes": "none (SI prefixes unsupported by the unit engine)"
+  },
+  "reviewed": "2026-11-12",
+  "reviewed_units": {
+    "chem_ana_emp_01": {
+      "A": "s^-1",
+      "epsilonbc": "s^-1"
+    },
+    "chem_ele_thm_02": {
+      "F": "s*A*mol^-1",
+      "I": "A",
+      "M": "kg*mol^-1",
+      "m": "kg",
+      "n": "1",
+      "t": "s"
+    },
+    "chem_sol_prin_01": {
+      "C": "m^-3*mol",
+      "P": "kg*m^-1*s^-2",
+      "k": "kg^-1*m^-2*s^2*mol"
+    },
+    "chem_sol_thm_01": {
+      "DeltaP": "kg*m^-1*s^-2",
+      "P_0": "kg*m^-1*s^-2",
+      "x_2": "1"
+    },
+    "chem_sol_thm_02": {
+      "iCRT": "1",
+      "pi": "1"
+    },
+    "math_calc_derivative_ln": {
+      "d": "m",
+      "x": "m^-1"
+    },
+    "math_calc_derivative_ln_dup2": {
+      "d": "m",
+      "x": "m^-1"
+    },
+    "phy_ast_con_01": {
+      "E": "kg*m^2*s^-2",
+      "mc2": "kg*m^2*s^-2"
+    },
+    "phy_mag_law_01": {
+      "M": "kg",
+      "chiH": "kg"
+    },
+    "phy_opt_law_01": {
+      "n1": "1",
+      "n2": "1",
+      "sin1": "1",
+      "sin2": "1"
+    },
+    "phy_opt_law_02": {
+      "theta1": "1",
+      "theta2": "1"
+    },
+    "phy_opt_law_03": {
+      "I": "A",
+      "I0cos2theta": "A"
+    },
+    "phy_opt_prin_04": {
+      "n1": "1",
+      "n2": "1",
+      "tantheta_B": "1"
+    },
+    "phy_rel_app_02_p1": {
+      "dt": "s",
+      "dt1": "s",
+      "gamma": "1"
+    },
+    "phy_rel_app_04": {
+      "gammam0v": "kg*m*s^-1",
+      "p": "kg*m*s^-1"
+    },
+    "phy_wav_law_01": {
+      "lambdaf": "m*s^-1",
+      "v": "m*s^-1"
+    }
+  },
+  "rule": "human-reviewed candidate fills for empty si_units entries (dimension-pure subset, second workbook split); derivation = pool-internal reviewed-value priors (vector-cluster disambiguation, subdomain/domain/global layers, underscore-variant normalization) + symbol-level semantic judgments anchored to previously approved precedents + algebraic back-substitution; constant-equation forms (rhs is a bare number) are excluded and stay under review",
+  "unit_engine_precheck": "consistent 16/16 (dual-run SHA256-equal harness evidence); zero mismatch; 4 formula-face fragment defects and 53 open questions remain under review"
+}
