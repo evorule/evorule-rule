@@ -1,3 +1,12 @@
-{"id": "math_at_thm_01", "rationale": "存在量词陈述（∃x∈D^2: f(x)=x）：量词辖域内为抽象集合与连续映射，无 SI 量纲语义", "reviewed": "2026-11-12", "subdomain": "algebraic_topology", "title_zh": "不动点定理（Brouwer 型）"}
-{"id": "math_set_ax_01", "rationale": "集合论公理（∀A∀B(A=B ↔ ∀x(x∈A ↔ x∈B))）：纯集合等价陈述，无 SI 量纲语义", "reviewed": "2026-11-12", "subdomain": "set_theory", "title_zh": "外延公理"}
-{"id": "math_set_ax_08", "rationale": "集合论公理（∀x(x≠∅ → ∃y∈x(x∩y=∅))）：纯集合陈述，无 SI 量纲语义", "reviewed": "2026-11-12", "subdomain": "set_theory", "title_zh": "正则公理"}
+{"id": "math_at_thm_01", "rationale": "存在量词陈述（∃x∈D^2: f(x)=x）：量词辖域内为抽象集合与连续映射，无 SI 量纲语义", "reviewed": "2026-11-12", "subdomain": "algebraic_topology", "tier": "exempt", "title_zh": "不动点定理（Brouwer 型）"}
+{"id": "math_set_ax_01", "rationale": "集合论公理（∀A∀B(A=B ↔ ∀x(x∈A ↔ x∈B))）：纯集合等价陈述，无 SI 量纲语义", "reviewed": "2026-11-12", "subdomain": "set_theory", "tier": "exempt", "title_zh": "外延公理"}
+{"id": "math_set_ax_08", "rationale": "集合论公理（∀x(x≠∅ → ∃y∈x(x∩y=∅))）：纯集合陈述，无 SI 量纲语义", "reviewed": "2026-11-12", "subdomain": "set_theory", "tier": "exempt", "title_zh": "正则公理"}
+{"id": "math_ana_def_01", "rationale": "ε-N 量词定义：只约束 |an-a|<epsilon 的序结构，不承诺物理量纲；符号映射保留、单位不预设，若给定须整式自洽", "reviewed": "2026-11-12", "subdomain": "analysis_real", "tier": "agnostic", "title_zh": "极限定义（数列形式）"}
+{"id": "math_ana_thm_01", "rationale": "连续性与零点存在陈述（f∈C[a,b] ∧ f(a)*f(b)<0 → ∃c: f(c)=0）：抽象函数值域语义，不承诺物理量纲；同上口径", "reviewed": "2026-11-12", "subdomain": "analysis_real", "tier": "agnostic", "title_zh": "介值定理"}
+{"id": "math_ana_thm_03", "rationale": "导数商等式 f'(c)=(f(b)-f(a))/(b-a)：两侧同为函数增量比，量纲自洽性由整式保证，单位不预设", "reviewed": "2026-11-12", "subdomain": "analysis_real", "tier": "agnostic", "title_zh": "中值定理（Lagrange）"}
+{"dup_of": null, "id": "math_trig_pythagorean_identity", "rationale": "函数记号族规则：三角函数宗量须无量纲，等式为纯数恒等式；量纲面由函数记号规则给出，值审归 M1 函数记号引擎支持批之后，不豁免", "reviewed": "2026-11-12", "subdomain": "trigonometry", "tier": "rule_defined", "title_zh": "三角恒等式（勾股恒等式）"}
+{"dup_of": "math_trig_pythagorean_identity", "id": "math_trig_pythagorean_identity_dup2", "rationale": "同主条；dup2 副本随主条同档", "reviewed": "2026-11-12", "subdomain": "trigonometry", "tier": "rule_defined", "title_zh": "三角恒等式（池内重复条目副本）"}
+{"dup_of": null, "id": "math_linalg_norm_euclidean", "rationale": "函数记号族规则：norm 量纲随宗量（向量分量同量纲时 norm 同该量纲），不预设 1；值审归 M1 之后，不豁免", "reviewed": "2026-11-12", "subdomain": "linear_algebra", "tier": "rule_defined", "title_zh": "欧氏范数"}
+{"dup_of": "math_linalg_norm_euclidean", "id": "math_linalg_norm_euclidean_dup2", "rationale": "同主条；dup2 副本随主条同档", "reviewed": "2026-11-12", "subdomain": "linear_algebra", "tier": "rule_defined", "title_zh": "欧氏范数（池内重复条目副本）"}
+{"dup_of": null, "id": "math_complex_modulus", "rationale": "函数记号族规则：mod 量纲随宗量（实部/虚部同量纲时模同该量纲），不预设 1；值审归 M1 之后，不豁免", "reviewed": "2026-11-12", "subdomain": "complex_analysis", "tier": "rule_defined", "title_zh": "复模长"}
+{"dup_of": "math_complex_modulus", "id": "math_complex_modulus_dup2", "rationale": "同主条；dup2 副本随主条同档", "reviewed": "2026-11-12", "subdomain": "complex_analysis", "tier": "rule_defined", "title_zh": "复模长（池内重复条目副本）"}

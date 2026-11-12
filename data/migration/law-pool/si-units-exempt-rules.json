@@ -1,8 +1,23 @@
 {
+  "criterion": "whether the formula contains symbols that commit to physical dimensions; exemption does not mean skipping review -- the review lens differs per tier",
   "notation": {
     "dimensionless": "\"1\" (engine has no \"dimensionless\" token)",
     "form": "coherent SI symbols or base-unit power products (e.g. m*s^-1)"
   },
   "reviewed": "2026-11-12",
-  "rule": "human-adjudicated SI-dimension exemptions: entries whose formulas are pure logical/quantified/set-theoretic statements carry no SI dimension semantics; they are exempted from unit review entirely (si_units intentionally left empty, no candidate derivation, check_law not applicable), recorded here and in the structural report gap counter"
+  "supersedes": "single-tier exempt list registered 2026-11-12 (3 rows, now tiered with the same ids)",
+  "tiers": {
+    "agnostic": {
+      "count": 3,
+      "rule": "abstract analysis statements: symbolic mappings are kept but no units are presupposed; any later unit assignment must leave the whole equation self-consistent (engine check_law lens: consistency-only, no dimension presupposition)"
+    },
+    "exempt": {
+      "count": 3,
+      "rule": "pure logical/quantified/set-theoretic statements carry no SI dimension semantics; exempted from unit review entirely (si_units intentionally left empty, no candidate derivation)"
+    },
+    "rule_defined": {
+      "count": 6,
+      "rule": "function-notation family rules: trigonometric functions require dimensionless arguments; norm/modulus dimensions follow their arguments and are never preset to 1; these rows stay out of unit-value review until the function-notation engine-support milestone (M1) lands, and are NOT exempt"
+    }
+  }
 }
