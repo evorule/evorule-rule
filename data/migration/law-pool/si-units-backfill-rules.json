@@ -1,0 +1,42 @@
+{
+  "notation": {
+    "dimensionless": "\"1\" (engine has no \"dimensionless\" token)",
+    "form": "coherent SI symbols or base-unit power products (e.g. m*s^-1)",
+    "prefixes": "none (SI prefixes unsupported by the unit engine)",
+    "reserved_spellings": {
+      "ohm": "ohm is the only accepted ohm spelling"
+    }
+  },
+  "reviewed": "2026-11-12",
+  "reviewed_units": {
+    "phy_cla_law_02": {
+      "F": "N",
+      "a": "m*s^-2",
+      "m": "kg"
+    },
+    "phy_elm_law_01": {
+      "F": "N",
+      "k": "N*m^2*C^-2",
+      "q1": "C",
+      "q2": "C",
+      "r": "m"
+    },
+    "phy_elm_law_02": {
+      "I": "A",
+      "R": "ohm",
+      "V": "V"
+    },
+    "phy_opt_app_03": {
+      "m": "1",
+      "u": "m",
+      "v": "m"
+    },
+    "phy_rel_app_01": {
+      "E": "J",
+      "c": "m*s^-1",
+      "m": "kg"
+    }
+  },
+  "rule": "human-reviewed units table; single source REVIEWED_SI_UNITS in bridge_law_slices.py; applied to pool and both slice deployment files (v0.2.0)",
+  "unit_engine_precheck": "consistent 5/5 (dual-run SHA256-equal harness evidence)"
+}

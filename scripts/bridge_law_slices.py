@@ -15,19 +15,26 @@ Normalization rules (fixed, applied in order):
   2. formula         : '==' -> '=' (exactly one '='), '**' -> '^'
   3. symbols         : object values {'type': 'input'} -> 'input quantity'
                        (string values pass through unchanged)
-  4. si_units        : {} placeholder (dimensional verification pending; the
-                       validator reports these entries in the explicit
-                       'unverified' third state, never as silent passes)
+  4. si_units        : human-reviewed SI units (REVIEWED_SI_UNITS below); the
+                       review table is a frozen, declared constant - every
+                       entry was unit-engine prechecked (consistent) before
+                       human approval; entries no longer sit in the
+                       'unverified' third state
   5. domains         : ['physical'] (must be a registered domain-catalog key)
   6. solvable        : [source output symbol]
   7. derivation      : [source statement text]
   8. tier            : 'full'
   9. max_version_depth: 1 (source carries no version chain)
  10. monotone_form   : true (plain equations, no negation constructs)
- 11. metadata.source : source provenance string
+ 11. form            : 'equation_identity' (four-form axis: every entry is an
+                       equation-identity law)
+ 12. intake_channel  : 'human_curated' (origin fact: reviewed migration asset,
+                       not an LLM proposal)
+ 13. metadata.source : source provenance string
 
-Slices are bucketed into two sets (empirical / approximation) with version
-0.1.0 to mark the pre-golden placeholder state.
+Slices are bucketed into two sets (empirical / approximation). Version 0.1.0
+marked the pre-golden placeholder state; version 0.2.0 carries the
+human-reviewed si_units backfill.
 """
 
 import io
@@ -44,6 +51,22 @@ PROV_DIR = os.path.join(ROOT, "data", "migration", "law-slices")
 
 LAW_SET_SCHEMA = "https://evorule.org/schemas/law_set/v1.0.json"
 REGISTERED_DOMAINS = {"physical", "engineering", "economic"}
+
+# Human-reviewed SI units (dimension pass): every value below was approved by
+# the project owner on 2026-11-12 after unit-engine precheck reported
+# `consistent` for all five laws (dual-run SHA256-equal harness evidence).
+# The table is frozen: keysets must exactly cover each law's symbol keys.
+# Notation: coherent SI symbols or base-unit power products; dimensionless
+# quantity spelled "1" (engine has no "dimensionless" token and no SI prefixes).
+REVIEWED_SI_UNITS = {
+    "phy_cla_law_02": {"F": "N", "m": "kg", "a": "m*s^-2"},
+    "phy_elm_law_01": {"F": "N", "k": "N*m^2*C^-2", "q1": "C", "q2": "C", "r": "m"},
+    "phy_elm_law_02": {"V": "V", "I": "A", "R": "ohm"},
+    "phy_opt_app_03": {"m": "1", "v": "m", "u": "m"},
+    "phy_rel_app_01": {"E": "J", "m": "kg", "c": "m*s^-1"},
+}
+REVIEWED_FORM = "equation_identity"
+REVIEWED_INTAKE_CHANNEL = "human_curated"
 
 ID_SET_RE = re.compile(r"^[a-z][a-z0-9-]*$")
 ID_LAW_RE = re.compile(r"^[a-z][a-z0-9_]*$")
@@ -125,10 +148,26 @@ def build_law(row):
         "tier": "full",
         "max_version_depth": 1,
         "monotone_form": True,
+        "form": REVIEWED_FORM,
+        "intake_channel": REVIEWED_INTAKE_CHANNEL,
         "metadata": {"source": source.strip()},
     }
+    reviewed = REVIEWED_SI_UNITS.get(law_id)
+    if reviewed is not None:
+        assert set(reviewed) == set(symbols), (
+            "reviewed si_units keyset must cover symbols exactly: %s" % law_id)
+        law["si_units"] = {k: reviewed[k] for k in sorted(reviewed)}
+        ops += [
+            "si_units: {} -> %s (human-reviewed %s; unit-engine precheck consistent)"
+            % (json.dumps(law["si_units"], sort_keys=True), law_id),
+            "form: '%s' (four-form axis)" % REVIEWED_FORM,
+            "intake_channel: '%s' (immutable origin fact)" % REVIEWED_INTAKE_CHANNEL,
+        ]
+    else:
+        ops += [
+            "si_units: {} placeholder (dimensional verification pending -> unverified third state)",
+        ]
     ops += [
-        "si_units: {} placeholder (dimensional verification pending -> unverified third state)",
         "domain/domains: 'physical' (registered domain-catalog key)",
         "tier: 'full'; max_version_depth: 1; monotone_form: true",
         "metadata.source: %s" % source.strip(),
@@ -195,19 +234,19 @@ def main():
             "$schema": LAW_SET_SCHEMA,
             "kind": "law_set",
             "id": set_id,
-            "version": "0.1.0",
+            "version": "0.2.0",
             "metadata": {
                 "title": BUCKET_TITLES[set_id],
                 "description": (
                     "Law slices migrated from the archived science asset dump; "
-                    "si_units are placeholders, so every entry sits in the "
-                    "explicit unverified (dimensional third) state until the "
-                    "dimension pass lands."
+                    "si_units are human-reviewed and backfilled (dimensional "
+                    "pass: every entry unit-engine consistent, dual-run "
+                    "SHA256-equal harness evidence)."
                 ),
                 "domain": "physical",
                 "source": "; ".join(sources),
                 "unit_system": "SI",
-                "verified": "pending: si_units placeholder (dimensional verification not yet applied)",
+                "verified": "human-reviewed 2026-11-12: si_units approved and backfilled; unit-engine precheck consistent",
             },
             "laws": laws,
         }
