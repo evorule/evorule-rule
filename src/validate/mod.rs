@@ -387,6 +387,47 @@ impl Validator {
         Ok(())
     }
 
+    /// law v1.1 intake 纪律面（发布链生产者预检，B-293 批语料吸收原则 3/7 落地面）：
+    /// 从 [`Self::validate_law_structure`]（九要素从严面）起步，额外要求
+    /// form（形态四型，闸面按形态选判据）与 intake_channel（出身通道，审计事实
+    /// 永不回写，与条目信任级正交——出身不因信任级晋升而洗白）。
+    /// schema 级权威=law_set/v1.1 域件（data/domain_schemas/law_set-v1.1.json，
+    /// SSOT=system-rules schemas/law_set/v1.1.json）；本面从严于 schema required，
+    /// 供发布链转换器在产出 v1.1 文档前逐条自检。
+    pub fn validate_law_intake_v11(payload: &serde_json::Value) -> Result<(), ValidationError> {
+        Self::validate_law_structure(payload)?;
+        let obj = payload
+            .as_object()
+            .expect("validate_law_structure 已保证载荷为对象");
+        const LAW_FORMS: [&str; 4] = ["equation_identity", "constraint", "procedure", "definition"];
+        const INTAKE_CHANNELS: [&str; 2] = ["human_curated", "llm_proposal"];
+        let form = obj.get("form").and_then(|v| v.as_str()).ok_or_else(|| {
+            ValidationError::Message(
+                "law v1.1 条目缺 form（形态四型必填：equation_identity|constraint|procedure|definition）"
+                    .into(),
+            )
+        })?;
+        if !LAW_FORMS.contains(&form) {
+            return Err(ValidationError::Message(format!(
+                "law v1.1 条目 form 非法（须形态四型枚举值）: {form}"
+            )));
+        }
+        let channel =
+            obj.get("intake_channel")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| {
+                    ValidationError::Message(
+                "law v1.1 条目缺 intake_channel（出身通道必填：human_curated|llm_proposal）".into(),
+            )
+                })?;
+        if !INTAKE_CHANNELS.contains(&channel) {
+            return Err(ValidationError::Message(format!(
+                "law v1.1 条目 intake_channel 非法（须出身通道枚举值）: {channel}"
+            )));
+        }
+        Ok(())
+    }
+
     /// law 公式等式恒真结构检查：恰好一个等式分隔符（`==`/`=` 归一后），两侧非空。
     /// 裸 `=`（分隔符缺侧）、缺分隔符、多分隔符均显式拒绝（不静默放行）。
     fn validate_law_formula(formula: &str) -> Result<(), ValidationError> {
@@ -1106,6 +1147,61 @@ mod tests {
             "max_version_depth": 1,
             "monotone_form": true
         })
+    }
+
+    // ---------- law v1.1 intake 纪律面（发布链生产者预检） ----------
+
+    fn law_payload_v11() -> serde_json::Value {
+        let mut p = law_payload();
+        let obj = p.as_object_mut().unwrap();
+        obj.insert(
+            "form".into(),
+            serde_json::Value::String("equation_identity".into()),
+        );
+        obj.insert(
+            "intake_channel".into(),
+            serde_json::Value::String("llm_proposal".into()),
+        );
+        p
+    }
+
+    #[test]
+    fn test_law_intake_v11_compliant_passes() {
+        Validator::validate_law_intake_v11(&law_payload_v11()).unwrap();
+        let mut human = law_payload_v11();
+        human["intake_channel"] = serde_json::Value::String("human_curated".into());
+        Validator::validate_law_intake_v11(&human).unwrap();
+        let mut constraint = law_payload_v11();
+        constraint["form"] = serde_json::Value::String("constraint".into());
+        Validator::validate_law_intake_v11(&constraint).unwrap();
+    }
+
+    #[test]
+    fn test_law_intake_v11_v10_shape_rejected() {
+        // v1.0 形态（无 form/intake_channel）在 v1.1 面必须拒收——纪律增量生效判据
+        let err = Validator::validate_law_intake_v11(&law_payload())
+            .expect_err("v1.0 形态缺 form/intake_channel 应拒收");
+        assert!(err.to_string().contains("form"));
+    }
+
+    #[test]
+    fn test_law_intake_v11_bad_enum_rejected() {
+        let mut bad_form = law_payload_v11();
+        bad_form["form"] = serde_json::Value::String("textbook_chapter".into());
+        assert!(Validator::validate_law_intake_v11(&bad_form).is_err());
+
+        let mut missing_channel = law_payload_v11();
+        missing_channel
+            .as_object_mut()
+            .unwrap()
+            .remove("intake_channel");
+        let err = Validator::validate_law_intake_v11(&missing_channel)
+            .expect_err("缺 intake_channel 应拒收");
+        assert!(err.to_string().contains("intake_channel"));
+
+        let mut bad_channel = law_payload_v11();
+        bad_channel["intake_channel"] = serde_json::Value::String("scraped".into());
+        assert!(Validator::validate_law_intake_v11(&bad_channel).is_err());
     }
 
     #[test]
