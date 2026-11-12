@@ -44,6 +44,18 @@
     "root_cause": "chain-splitter statement-marker table lacks the word connective; generator fix registered separately",
     "si_units_fills_applied": 8
   },
+  "formula_notation_fix": {
+    "applied": "2026-11-12",
+    "artifacts": [
+      "formula-notation-fix-log.jsonl",
+      "formula-notation-fix-rules.json"
+    ],
+    "derivation_entries": 2,
+    "entries_fixed": 18,
+    "root_cause": "stage-2 formula extractor collapses products into single tokens, embeds degree/dagger/hat marks and natural-language tails, and omits multiplication signs",
+    "si_units_touched": false,
+    "symbols_entries": 15
+  },
   "gates": {
     "machine_gate_pass": 97,
     "products": 409,
