@@ -33,6 +33,17 @@
     "count": 19,
     "declared_rule": "R13"
   },
+  "formula_and_artifact_fix": {
+    "applied": "2026-11-12",
+    "artifacts": [
+      "formula-and-artifact-fix-log.jsonl",
+      "formula-and-artifact-fix-rules.json"
+    ],
+    "entries_fixed": 14,
+    "parent_pairs": 7,
+    "root_cause": "chain-splitter statement-marker table lacks the word connective; generator fix registered separately",
+    "si_units_fills_applied": 8
+  },
   "gates": {
     "machine_gate_pass": 97,
     "products": 409,
@@ -111,7 +122,7 @@
     ],
     "domain_missing": 0,
     "si_units_empty": 228,
-    "si_units_partial": 8,
+    "si_units_partial": 0,
     "symbols_lt2": 13
   },
   "machine_gate_fail_reasons": {
