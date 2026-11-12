@@ -54,6 +54,11 @@
       "file": "law_set-constant-v1.0.json",
       "new_id": "https://evorule.org/schemas/domain/law_set/constant/v1.0.json",
       "reason": "诞生即挂 domain 命名域（law_set 段），无 old_id；同上补登"
+    },
+    {
+      "file": "law_set-v1.1.json",
+      "new_id": "https://evorule.org/schemas/domain/law_set/law/v1.1.json",
+      "reason": "诞生即挂 domain 命名域（law_set 段），无 old_id；v1.1 intake 纪律版（form 四型+intake_channel 出身通道，自愿升版 v1.0 存量零迁移），发布链产 v1.1 文档（登记以满足全量件覆盖判据）"
     }
   ]
 }
