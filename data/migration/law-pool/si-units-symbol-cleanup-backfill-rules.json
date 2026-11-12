@@ -1,6 +1,6 @@
 {
   "applied": "2026-11-12",
-  "engine_boundary": "all four rows keep check_law = Skipped (unary-minus boundary O-660 / binary +|- boundary B-320 track / untouched formula-face defects deferred to the formula-repair batch); zero mismatch, verified by the B-323 precedent probes",
+  "engine_boundary": "all four rows keep check_law = Skipped (unary-minus grammar boundary / binary additive-operator grammar boundary / untouched formula-face defects deferred to the formula-repair batch); zero mismatch, verified by the precedent probes run during the symbol-cleanup precheck",
   "entries_fixed": 4,
   "fills": {
     "chem_bio_rul_01": {

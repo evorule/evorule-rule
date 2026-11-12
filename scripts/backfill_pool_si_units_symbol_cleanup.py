@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Deterministic si_units backfill for the four symbol-face-cleaned rows.
 
-Approved 2026-11-12 (B-323 precheck rerun, all four rows approved; frozen in
-b323-approved.json, mirrored below as the single source):
+Approved 2026-11-12 (precheck rerun on the four symbol-face-cleaned rows,
+all four rows approved; frozen single source mirrored below):
 
     phy_atm_law_01   E_n=eV, n2=1
     chem_pcd_thm_03  E_anode=E_cathode=E_cell=V
@@ -11,9 +11,9 @@ b323-approved.json, mirrored below as the single source):
 
 Engine expectation (established boundaries, recorded as skipped): the four
 rows keep formula-face defects or hit engine grammar boundaries (unary minus
-O-660 / binary +|- B-320 track / untouched formula defects), so check_law =
-Skipped with zero Mismatch is the verified behavior (b323_precheck precedent
-probes).
+/ binary additive operators / untouched formula defects), so check_law =
+Skipped with zero Mismatch is the verified behavior (precedent probes run
+during the symbol-cleanup precheck).
 
 Sidecars a per-entry log + the frozen rules table, refreshes the structural
 report (si_units_empty 155 -> 151), and re-anchors the pool manifest.
@@ -53,7 +53,8 @@ LOG_NOTES = {
         "cell/cathode/anode potentials; subscript-collapse reconstruction "
         "completed in the symbol-cleanup pass"),
     "chem_bio_rul_01": (
-        "Gibbs energy per mole in B-304 notation-normalized form; the "
+        "Gibbs energy per mole in the notation-normalized form (kJ/mol -> "
+        "J*mol^-1); the kJ/mol formula literal stays with the "
         "kJ/mol formula literal stays with the formula-repair batch"),
     "chem_sto_emp_01": (
         "molar-volume law; V prior mis-hit (volt) overridden by row context; "
@@ -181,10 +182,11 @@ def main():
         "applied": "2026-11-12",
         "entries_fixed": 4,
         "engine_boundary": (
-            "all four rows keep check_law = Skipped (unary-minus boundary "
-            "O-660 / binary +|- boundary B-320 track / untouched formula-face "
-            "defects deferred to the formula-repair batch); zero mismatch, "
-            "verified by the B-323 precedent probes"),
+            "all four rows keep check_law = Skipped (unary-minus grammar "
+            "boundary / binary additive-operator grammar boundary / "
+            "untouched formula-face defects deferred to the formula-repair "
+            "batch); zero mismatch, verified by the precedent probes run "
+            "during the symbol-cleanup precheck"),
         "fills": {k: dict(sorted(v.items())) for k, v in sorted(FILLS.items())},
         "rule": "apply the approved candidate values (frozen single source) "
                 "as surgical si_units fills; candidate keyset must complete "
