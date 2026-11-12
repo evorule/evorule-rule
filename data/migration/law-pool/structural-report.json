@@ -121,7 +121,7 @@
       }
     ],
     "domain_missing": 0,
-    "si_units_empty": 155,
+    "si_units_empty": 151,
     "si_units_exempt": 3,
     "si_units_partial": 0,
     "si_units_tiered_review": 9,
@@ -191,6 +191,15 @@
     },
     "reviewed": "2026-11-12",
     "unit_engine_precheck": "consistent 20/55; skipped 35 (formula-face grammar boundary, declared); delta-n rewrite 2 expected skipped; zero mismatch (dual-run SHA256-equal harness evidence)"
+  },
+  "si_units_backfill_symbol_cleanup": {
+    "applied": "2026-11-12",
+    "artifacts": [
+      "si-units-symbol-cleanup-backfill-log.jsonl",
+      "si-units-symbol-cleanup-backfill-rules.json"
+    ],
+    "entries_fixed": 4,
+    "source": "approved 2026-11-12 precheck rerun (frozen single source)"
   },
   "si_units_empty_backfill": {
     "artifacts": [
