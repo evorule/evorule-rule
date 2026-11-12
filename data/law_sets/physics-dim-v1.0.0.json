@@ -1,0 +1,1084 @@
+{
+  "$schema": "https://evorule.org/schemas/law_set/v1.1.json",
+  "id": "physics-dim",
+  "kind": "law_set",
+  "laws": [
+    {
+      "derivation": [
+        "Impulse of a constant force over a time interval; seed excerpt section 2"
+      ],
+      "domain": "physical",
+      "form": "equation_identity",
+      "formula": "J_imp = F * delta_t",
+      "id": "impulse_force_time_cand",
+      "intake_channel": "llm_proposal",
+      "max_version_depth": 1,
+      "metadata": {
+        "source": "seed-excerpt.md s2",
+        "verified": "machine gate candidate; pending manual spot-check"
+      },
+      "monotone_form": true,
+      "si_units": {
+        "F": "N",
+        "J_imp": "N*s",
+        "delta_t": "s"
+      },
+      "solvable": [
+        "J_imp",
+        "F",
+        "delta_t"
+      ],
+      "symbols": {
+        "F": "constant net force",
+        "J_imp": "impulse delivered by the force",
+        "delta_t": "time interval over which the force acts"
+      },
+      "tier": "full"
+    },
+    {
+      "derivation": [
+        "Work of a constant force along its displacement; seed excerpt section 2"
+      ],
+      "domain": "physical",
+      "form": "equation_identity",
+      "formula": "W_work = F * d_disp",
+      "id": "work_force_disp_cand",
+      "intake_channel": "llm_proposal",
+      "max_version_depth": 1,
+      "metadata": {
+        "source": "seed-excerpt.md s2",
+        "verified": "machine gate candidate; pending manual spot-check"
+      },
+      "monotone_form": true,
+      "si_units": {
+        "F": "N",
+        "W_work": "J",
+        "d_disp": "m"
+      },
+      "solvable": [
+        "W_work",
+        "F",
+        "d_disp"
+      ],
+      "symbols": {
+        "F": "constant force along the displacement",
+        "W_work": "work done by the force",
+        "d_disp": "displacement along the force direction"
+      },
+      "tier": "full"
+    },
+    {
+      "derivation": [
+        "Power as work per unit time; seed excerpt section 2"
+      ],
+      "domain": "physical",
+      "form": "equation_identity",
+      "formula": "P_mech = W_work / t_dur",
+      "id": "power_definition_cand",
+      "intake_channel": "llm_proposal",
+      "max_version_depth": 1,
+      "metadata": {
+        "source": "seed-excerpt.md s2",
+        "verified": "machine gate candidate; pending manual spot-check"
+      },
+      "monotone_form": true,
+      "si_units": {
+        "P_mech": "W",
+        "W_work": "J",
+        "t_dur": "s"
+      },
+      "solvable": [
+        "P_mech",
+        "W_work",
+        "t_dur"
+      ],
+      "symbols": {
+        "P_mech": "mechanical power delivered",
+        "W_work": "work done",
+        "t_dur": "time duration"
+      },
+      "tier": "full"
+    },
+    {
+      "derivation": [
+        "Instantaneous power of a force acting on a moving body; algebraic form of power definition"
+      ],
+      "domain": "physical",
+      "form": "equation_identity",
+      "formula": "P_mech = F * v_inst",
+      "id": "power_force_velocity_cand",
+      "intake_channel": "llm_proposal",
+      "max_version_depth": 1,
+      "metadata": {
+        "source": "seed-excerpt.md s2",
+        "verified": "machine gate candidate; pending manual spot-check"
+      },
+      "monotone_form": true,
+      "si_units": {
+        "F": "N",
+        "P_mech": "W",
+        "v_inst": "m/s"
+      },
+      "solvable": [
+        "P_mech",
+        "F",
+        "v_inst"
+      ],
+      "symbols": {
+        "F": "force along the motion",
+        "P_mech": "mechanical power delivered",
+        "v_inst": "instantaneous speed along the force direction"
+      },
+      "tier": "light"
+    },
+    {
+      "derivation": [
+        "Near-surface gravitational potential energy; seed excerpt section 2"
+      ],
+      "domain": "physical",
+      "form": "equation_identity",
+      "formula": "E_pot = m * g * h_height",
+      "id": "grav_potential_energy_cand",
+      "intake_channel": "llm_proposal",
+      "max_version_depth": 1,
+      "metadata": {
+        "source": "seed-excerpt.md s2",
+        "verified": "machine gate candidate; pending manual spot-check"
+      },
+      "monotone_form": true,
+      "si_units": {
+        "E_pot": "J",
+        "g": "m/s^2",
+        "h_height": "m",
+        "m": "kg"
+      },
+      "solvable": [
+        "E_pot",
+        "m",
+        "h_height"
+      ],
+      "symbols": {
+        "E_pot": "gravitational potential energy near the surface",
+        "g": "local gravitational acceleration",
+        "h_height": "height above the reference level",
+        "m": "mass of the body"
+      },
+      "tier": "full"
+    },
+    {
+      "derivation": [
+        "Newton's law of universal gravitation; seed excerpt section 2"
+      ],
+      "domain": "physical",
+      "form": "equation_identity",
+      "formula": "F_grav = G_const * m1 * m2 / r_dist^2",
+      "id": "grav_force_law_cand",
+      "intake_channel": "llm_proposal",
+      "max_version_depth": 1,
+      "metadata": {
+        "source": "seed-excerpt.md s2",
+        "verified": "machine gate candidate; pending manual spot-check"
+      },
+      "monotone_form": true,
+      "si_units": {
+        "F_grav": "N",
+        "G_const": "m^3/(kg*s^2)",
+        "m1": "kg",
+        "m2": "kg",
+        "r_dist": "m"
+      },
+      "solvable": [
+        "F_grav",
+        "r_dist"
+      ],
+      "symbols": {
+        "F_grav": "gravitational attractive force magnitude",
+        "G_const": "gravitational constant",
+        "m1": "mass of the first body",
+        "m2": "mass of the second body",
+        "r_dist": "distance between the body centers"
+      },
+      "tier": "full"
+    },
+    {
+      "derivation": [
+        "Mass-energy equivalence; seed excerpt section 2"
+      ],
+      "domain": "physical",
+      "form": "equation_identity",
+      "formula": "E_mc2 = m_rest * c_light^2",
+      "id": "mass_energy_cand",
+      "intake_channel": "llm_proposal",
+      "max_version_depth": 1,
+      "metadata": {
+        "source": "seed-excerpt.md s2",
+        "verified": "machine gate candidate; pending manual spot-check"
+      },
+      "monotone_form": true,
+      "si_units": {
+        "E_mc2": "J",
+        "c_light": "m/s",
+        "m_rest": "kg"
+      },
+      "solvable": [
+        "E_mc2",
+        "m_rest"
+      ],
+      "symbols": {
+        "E_mc2": "rest energy of a body",
+        "c_light": "speed of light in vacuum",
+        "m_rest": "rest mass of the body"
+      },
+      "tier": "full"
+    },
+    {
+      "derivation": [
+        "Wave speed as frequency times wavelength; seed excerpt section 2"
+      ],
+      "domain": "physical",
+      "form": "equation_identity",
+      "formula": "v_wave = f_freq * lambda_len",
+      "id": "wave_speed_cand",
+      "intake_channel": "llm_proposal",
+      "max_version_depth": 1,
+      "metadata": {
+        "source": "seed-excerpt.md s2",
+        "verified": "machine gate candidate; pending manual spot-check"
+      },
+      "monotone_form": true,
+      "si_units": {
+        "f_freq": "Hz",
+        "lambda_len": "m",
+        "v_wave": "m/s"
+      },
+      "solvable": [
+        "v_wave",
+        "f_freq",
+        "lambda_len"
+      ],
+      "symbols": {
+        "f_freq": "wave frequency",
+        "lambda_len": "wavelength",
+        "v_wave": "wave propagation speed"
+      },
+      "tier": "full"
+    },
+    {
+      "derivation": [
+        "Period as reciprocal of frequency; algebraic identity from seed excerpt section 2"
+      ],
+      "domain": "physical",
+      "form": "equation_identity",
+      "formula": "T_period = 1 / f_freq",
+      "id": "wave_period_cand",
+      "intake_channel": "llm_proposal",
+      "max_version_depth": 1,
+      "metadata": {
+        "source": "seed-excerpt.md s2",
+        "verified": "machine gate candidate; pending manual spot-check"
+      },
+      "monotone_form": true,
+      "si_units": {
+        "T_period": "s",
+        "f_freq": "Hz"
+      },
+      "solvable": [
+        "T_period",
+        "f_freq"
+      ],
+      "symbols": {
+        "T_period": "wave period",
+        "f_freq": "wave frequency"
+      },
+      "tier": "light"
+    },
+    {
+      "derivation": [
+        "Centripetal acceleration of uniform circular motion"
+      ],
+      "domain": "physical",
+      "form": "equation_identity",
+      "formula": "a_cent = v_tan^2 / r_orbit",
+      "id": "centripetal_acc_cand",
+      "intake_channel": "llm_proposal",
+      "max_version_depth": 1,
+      "metadata": {
+        "source": "seed-excerpt.md s2",
+        "verified": "machine gate candidate; pending manual spot-check"
+      },
+      "monotone_form": true,
+      "si_units": {
+        "a_cent": "m/s^2",
+        "r_orbit": "m",
+        "v_tan": "m/s"
+      },
+      "solvable": [
+        "a_cent",
+        "v_tan",
+        "r_orbit"
+      ],
+      "symbols": {
+        "a_cent": "centripetal acceleration magnitude",
+        "r_orbit": "orbit radius",
+        "v_tan": "tangential speed"
+      },
+      "tier": "light"
+    },
+    {
+      "derivation": [
+        "Tangential speed as angular velocity times radius"
+      ],
+      "domain": "physical",
+      "form": "equation_identity",
+      "formula": "v_tan = omega_ang * r_orbit",
+      "id": "angular_linear_speed_cand",
+      "intake_channel": "llm_proposal",
+      "max_version_depth": 1,
+      "metadata": {
+        "source": "seed-excerpt.md s2",
+        "verified": "machine gate candidate; pending manual spot-check"
+      },
+      "monotone_form": true,
+      "si_units": {
+        "omega_ang": "rad/s",
+        "r_orbit": "m",
+        "v_tan": "m/s"
+      },
+      "solvable": [
+        "v_tan",
+        "omega_ang",
+        "r_orbit"
+      ],
+      "symbols": {
+        "omega_ang": "angular velocity",
+        "r_orbit": "orbit radius",
+        "v_tan": "tangential speed"
+      },
+      "tier": "full"
+    },
+    {
+      "derivation": [
+        "Rotational kinetic energy of a rigid body about a fixed axis"
+      ],
+      "domain": "physical",
+      "form": "equation_identity",
+      "formula": "E_rot = 0.5 * I_moi * omega_ang^2",
+      "id": "rotational_kinetic_energy_cand",
+      "intake_channel": "llm_proposal",
+      "max_version_depth": 1,
+      "metadata": {
+        "source": "seed-excerpt.md s2",
+        "verified": "machine gate candidate; pending manual spot-check"
+      },
+      "monotone_form": true,
+      "si_units": {
+        "E_rot": "J",
+        "I_moi": "kg*m^2",
+        "omega_ang": "rad/s"
+      },
+      "solvable": [
+        "E_rot",
+        "I_moi",
+        "omega_ang"
+      ],
+      "symbols": {
+        "E_rot": "rotational kinetic energy",
+        "I_moi": "moment of inertia about the rotation axis",
+        "omega_ang": "angular velocity"
+      },
+      "tier": "full"
+    },
+    {
+      "derivation": [
+        "Torque magnitude as moment arm times tangential force"
+      ],
+      "domain": "physical",
+      "form": "equation_identity",
+      "formula": "tau_net = r_arm * F_tan",
+      "id": "torque_force_arm_cand",
+      "intake_channel": "llm_proposal",
+      "max_version_depth": 1,
+      "metadata": {
+        "source": "seed-excerpt.md s2",
+        "verified": "machine gate candidate; pending manual spot-check"
+      },
+      "monotone_form": true,
+      "si_units": {
+        "F_tan": "N",
+        "r_arm": "m",
+        "tau_net": "N*m"
+      },
+      "solvable": [
+        "tau_net",
+        "r_arm",
+        "F_tan"
+      ],
+      "symbols": {
+        "F_tan": "tangential force component",
+        "r_arm": "moment arm length",
+        "tau_net": "torque magnitude about the axis"
+      },
+      "tier": "full"
+    },
+    {
+      "derivation": [
+        "Hooke's law for an ideal linear spring"
+      ],
+      "domain": "physical",
+      "form": "equation_identity",
+      "formula": "F_spring = k_stiff * x_disp",
+      "id": "hooke_law_cand",
+      "intake_channel": "llm_proposal",
+      "max_version_depth": 1,
+      "metadata": {
+        "source": "seed-excerpt.md s2",
+        "verified": "machine gate candidate; pending manual spot-check"
+      },
+      "monotone_form": true,
+      "si_units": {
+        "F_spring": "N",
+        "k_stiff": "N/m",
+        "x_disp": "m"
+      },
+      "solvable": [
+        "F_spring",
+        "x_disp"
+      ],
+      "symbols": {
+        "F_spring": "restoring force magnitude of the spring",
+        "k_stiff": "spring stiffness constant",
+        "x_disp": "extension from natural length"
+      },
+      "tier": "full"
+    },
+    {
+      "derivation": [
+        "Elastic potential energy of an ideal linear spring"
+      ],
+      "domain": "physical",
+      "form": "equation_identity",
+      "formula": "E_spring = 0.5 * k_stiff * x_disp^2",
+      "id": "spring_potential_energy_cand",
+      "intake_channel": "llm_proposal",
+      "max_version_depth": 1,
+      "metadata": {
+        "source": "seed-excerpt.md s2",
+        "verified": "machine gate candidate; pending manual spot-check"
+      },
+      "monotone_form": true,
+      "si_units": {
+        "E_spring": "J",
+        "k_stiff": "N/m",
+        "x_disp": "m"
+      },
+      "solvable": [
+        "E_spring",
+        "x_disp"
+      ],
+      "symbols": {
+        "E_spring": "elastic potential energy stored in the spring",
+        "k_stiff": "spring stiffness constant",
+        "x_disp": "extension from natural length"
+      },
+      "tier": "light"
+    },
+    {
+      "derivation": [
+        "Pressure as normal force per unit area"
+      ],
+      "domain": "physical",
+      "form": "equation_identity",
+      "formula": "P_abs = F_norm / A_area",
+      "id": "pressure_definition_cand",
+      "intake_channel": "llm_proposal",
+      "max_version_depth": 1,
+      "metadata": {
+        "source": "seed-excerpt.md s2",
+        "verified": "machine gate candidate; pending manual spot-check"
+      },
+      "monotone_form": true,
+      "si_units": {
+        "A_area": "m^2",
+        "F_norm": "N",
+        "P_abs": "N/m^2"
+      },
+      "solvable": [
+        "P_abs",
+        "F_norm",
+        "A_area"
+      ],
+      "symbols": {
+        "A_area": "surface area",
+        "F_norm": "normal force on the surface",
+        "P_abs": "average absolute pressure on the surface"
+      },
+      "tier": "full"
+    },
+    {
+      "derivation": [
+        "Density as mass per unit volume"
+      ],
+      "domain": "physical",
+      "form": "equation_identity",
+      "formula": "rho_mass = m_body / V_vol",
+      "id": "density_definition_cand",
+      "intake_channel": "llm_proposal",
+      "max_version_depth": 1,
+      "metadata": {
+        "source": "seed-excerpt.md s2",
+        "verified": "machine gate candidate; pending manual spot-check"
+      },
+      "monotone_form": true,
+      "si_units": {
+        "V_vol": "m^3",
+        "m_body": "kg",
+        "rho_mass": "kg/m^3"
+      },
+      "solvable": [
+        "rho_mass",
+        "m_body",
+        "V_vol"
+      ],
+      "symbols": {
+        "V_vol": "volume of the body",
+        "m_body": "mass of the body",
+        "rho_mass": "average mass density"
+      },
+      "tier": "full"
+    },
+    {
+      "derivation": [
+        "Ohm's law for an ohmic resistor"
+      ],
+      "domain": "physical",
+      "form": "equation_identity",
+      "formula": "V_drop = I_cur * R_res",
+      "id": "ohm_law_cand",
+      "intake_channel": "llm_proposal",
+      "max_version_depth": 1,
+      "metadata": {
+        "source": "seed-excerpt.md s2",
+        "verified": "machine gate candidate; pending manual spot-check"
+      },
+      "monotone_form": true,
+      "si_units": {
+        "I_cur": "A",
+        "R_res": "ohm",
+        "V_drop": "V"
+      },
+      "solvable": [
+        "V_drop",
+        "I_cur",
+        "R_res"
+      ],
+      "symbols": {
+        "I_cur": "current through the resistor",
+        "R_res": "resistance",
+        "V_drop": "voltage drop across the resistor"
+      },
+      "tier": "full"
+    },
+    {
+      "derivation": [
+        "Electrical power as voltage drop times current"
+      ],
+      "domain": "physical",
+      "form": "equation_identity",
+      "formula": "P_elec = V_drop * I_cur",
+      "id": "electric_power_cand",
+      "intake_channel": "llm_proposal",
+      "max_version_depth": 1,
+      "metadata": {
+        "source": "seed-excerpt.md s2",
+        "verified": "machine gate candidate; pending manual spot-check"
+      },
+      "monotone_form": true,
+      "si_units": {
+        "I_cur": "A",
+        "P_elec": "W",
+        "V_drop": "V"
+      },
+      "solvable": [
+        "P_elec",
+        "V_drop",
+        "I_cur"
+      ],
+      "symbols": {
+        "I_cur": "current",
+        "P_elec": "electrical power dissipated",
+        "V_drop": "voltage drop"
+      },
+      "tier": "light"
+    },
+    {
+      "derivation": [
+        "Charge as current integrated over time for a constant current"
+      ],
+      "domain": "physical",
+      "form": "equation_identity",
+      "formula": "Q_charge = I_cur * t_dur",
+      "id": "charge_definition_cand",
+      "intake_channel": "llm_proposal",
+      "max_version_depth": 1,
+      "metadata": {
+        "source": "seed-excerpt.md s2",
+        "verified": "machine gate candidate; pending manual spot-check"
+      },
+      "monotone_form": true,
+      "si_units": {
+        "I_cur": "A",
+        "Q_charge": "A*s",
+        "t_dur": "s"
+      },
+      "solvable": [
+        "Q_charge",
+        "I_cur",
+        "t_dur"
+      ],
+      "symbols": {
+        "I_cur": "constant current",
+        "Q_charge": "charge transported",
+        "t_dur": "time duration"
+      },
+      "tier": "full"
+    },
+    {
+      "derivation": [
+        "Capacitance as stored charge per voltage"
+      ],
+      "domain": "physical",
+      "form": "equation_identity",
+      "formula": "C_cap = Q_charge / V_drop",
+      "id": "capacitance_definition_cand",
+      "intake_channel": "llm_proposal",
+      "max_version_depth": 1,
+      "metadata": {
+        "source": "seed-excerpt.md s2",
+        "verified": "machine gate candidate; pending manual spot-check"
+      },
+      "monotone_form": true,
+      "si_units": {
+        "C_cap": "C/V",
+        "Q_charge": "C",
+        "V_drop": "V"
+      },
+      "solvable": [
+        "C_cap",
+        "Q_charge",
+        "V_drop"
+      ],
+      "symbols": {
+        "C_cap": "capacitance",
+        "Q_charge": "charge stored on the positive plate",
+        "V_drop": "voltage between the plates"
+      },
+      "tier": "full"
+    },
+    {
+      "derivation": [
+        "Photon energy as Planck constant times frequency"
+      ],
+      "domain": "physical",
+      "form": "equation_identity",
+      "formula": "E_photon = h_planck * f_freq",
+      "id": "photon_energy_cand",
+      "intake_channel": "llm_proposal",
+      "max_version_depth": 1,
+      "metadata": {
+        "source": "seed-excerpt.md s2",
+        "verified": "machine gate candidate; pending manual spot-check"
+      },
+      "monotone_form": true,
+      "si_units": {
+        "E_photon": "J",
+        "f_freq": "Hz",
+        "h_planck": "J*s"
+      },
+      "solvable": [
+        "E_photon",
+        "f_freq"
+      ],
+      "symbols": {
+        "E_photon": "photon energy",
+        "f_freq": "photon frequency",
+        "h_planck": "Planck constant"
+      },
+      "tier": "full"
+    },
+    {
+      "derivation": [
+        "de Broglie matter-wave relation"
+      ],
+      "domain": "physical",
+      "form": "equation_identity",
+      "formula": "lambda_de = h_planck / p_mom",
+      "id": "de_broglie_wavelength_cand",
+      "intake_channel": "llm_proposal",
+      "max_version_depth": 1,
+      "metadata": {
+        "source": "seed-excerpt.md s2",
+        "verified": "machine gate candidate; pending manual spot-check"
+      },
+      "monotone_form": true,
+      "si_units": {
+        "h_planck": "J*s",
+        "lambda_de": "m",
+        "p_mom": "kg*m/s"
+      },
+      "solvable": [
+        "lambda_de",
+        "p_mom"
+      ],
+      "symbols": {
+        "h_planck": "Planck constant",
+        "lambda_de": "de Broglie wavelength of the particle",
+        "p_mom": "momentum of the particle"
+      },
+      "tier": "full"
+    },
+    {
+      "derivation": [
+        "Magnetic part of the Lorentz force, magnitude form for velocity perpendicular to the field"
+      ],
+      "domain": "physical",
+      "form": "equation_identity",
+      "formula": "F_mag = q_ch * v_inst * B_field",
+      "id": "lorentz_force_mag_cand",
+      "intake_channel": "llm_proposal",
+      "max_version_depth": 1,
+      "metadata": {
+        "source": "seed-excerpt.md s2",
+        "verified": "machine gate candidate; pending manual spot-check"
+      },
+      "monotone_form": true,
+      "si_units": {
+        "B_field": "T",
+        "F_mag": "N",
+        "q_ch": "C",
+        "v_inst": "m/s"
+      },
+      "solvable": [
+        "F_mag",
+        "q_ch",
+        "v_inst",
+        "B_field"
+      ],
+      "symbols": {
+        "B_field": "magnetic flux density",
+        "F_mag": "magnetic force magnitude on the charge",
+        "q_ch": "electric charge of the particle",
+        "v_inst": "speed of the particle"
+      },
+      "tier": "full"
+    },
+    {
+      "derivation": [
+        "Magnetic flux through a surface for a uniform normal field"
+      ],
+      "domain": "physical",
+      "form": "equation_identity",
+      "formula": "Phi_flux = B_field * A_area",
+      "id": "magnetic_flux_def_cand",
+      "intake_channel": "llm_proposal",
+      "max_version_depth": 1,
+      "metadata": {
+        "source": "seed-excerpt.md s2",
+        "verified": "machine gate candidate; pending manual spot-check"
+      },
+      "monotone_form": true,
+      "si_units": {
+        "A_area": "m^2",
+        "B_field": "T",
+        "Phi_flux": "Wb"
+      },
+      "solvable": [
+        "Phi_flux",
+        "B_field",
+        "A_area"
+      ],
+      "symbols": {
+        "A_area": "surface area",
+        "B_field": "magnetic flux density normal to the surface",
+        "Phi_flux": "magnetic flux through the surface"
+      },
+      "tier": "full"
+    },
+    {
+      "derivation": [
+        "Force on a straight current-carrying wire perpendicular to a uniform field"
+      ],
+      "domain": "physical",
+      "form": "equation_identity",
+      "formula": "F_wire = B_field * I_cur * L_len",
+      "id": "magnetic_wire_force_cand",
+      "intake_channel": "llm_proposal",
+      "max_version_depth": 1,
+      "metadata": {
+        "source": "seed-excerpt.md s2",
+        "verified": "machine gate candidate; pending manual spot-check"
+      },
+      "monotone_form": true,
+      "si_units": {
+        "B_field": "T",
+        "F_wire": "N",
+        "I_cur": "A",
+        "L_len": "m"
+      },
+      "solvable": [
+        "F_wire",
+        "I_cur",
+        "L_len"
+      ],
+      "symbols": {
+        "B_field": "magnetic flux density",
+        "F_wire": "force magnitude on the straight wire",
+        "I_cur": "current in the wire",
+        "L_len": "length of the wire in the field"
+      },
+      "tier": "light"
+    },
+    {
+      "derivation": [
+        "Heat added for a temperature change at constant specific heat"
+      ],
+      "domain": "physical",
+      "form": "equation_identity",
+      "formula": "Q_heat = c_spec * m_body * delta_T",
+      "id": "heat_capacity_relation_cand",
+      "intake_channel": "llm_proposal",
+      "max_version_depth": 1,
+      "metadata": {
+        "source": "seed-excerpt.md s2",
+        "verified": "machine gate candidate; pending manual spot-check"
+      },
+      "monotone_form": true,
+      "si_units": {
+        "Q_heat": "J",
+        "c_spec": "J/(kg*K)",
+        "delta_T": "K",
+        "m_body": "kg"
+      },
+      "solvable": [
+        "Q_heat",
+        "delta_T"
+      ],
+      "symbols": {
+        "Q_heat": "heat added to the body",
+        "c_spec": "specific heat capacity",
+        "delta_T": "temperature change",
+        "m_body": "mass of the body"
+      },
+      "tier": "full"
+    },
+    {
+      "derivation": [
+        "Stefan-Boltzmann law for a blackbody surface"
+      ],
+      "domain": "physical",
+      "form": "equation_identity",
+      "formula": "P_rad = sigma_SB * A_surf * T_abs^4",
+      "id": "blackbody_power_cand",
+      "intake_channel": "llm_proposal",
+      "max_version_depth": 1,
+      "metadata": {
+        "source": "seed-excerpt.md s2",
+        "verified": "machine gate candidate; pending manual spot-check"
+      },
+      "monotone_form": true,
+      "si_units": {
+        "A_surf": "m^2",
+        "P_rad": "W",
+        "T_abs": "K",
+        "sigma_SB": "W/(m^2*K^4)"
+      },
+      "solvable": [
+        "P_rad",
+        "T_abs"
+      ],
+      "symbols": {
+        "A_surf": "surface area",
+        "P_rad": "radiated power of a blackbody surface",
+        "T_abs": "absolute temperature",
+        "sigma_SB": "Stefan-Boltzmann constant"
+      },
+      "tier": "full"
+    },
+    {
+      "derivation": [
+        "Wien displacement law for blackbody radiation"
+      ],
+      "domain": "physical",
+      "form": "equation_identity",
+      "formula": "lambda_max * T_abs = b_wien",
+      "id": "wien_displacement_cand",
+      "intake_channel": "llm_proposal",
+      "max_version_depth": 1,
+      "metadata": {
+        "source": "seed-excerpt.md s2",
+        "verified": "machine gate candidate; pending manual spot-check"
+      },
+      "monotone_form": true,
+      "si_units": {
+        "T_abs": "K",
+        "b_wien": "m*K",
+        "lambda_max": "m"
+      },
+      "solvable": [
+        "lambda_max",
+        "T_abs"
+      ],
+      "symbols": {
+        "T_abs": "absolute temperature",
+        "b_wien": "Wien displacement constant",
+        "lambda_max": "wavelength of maximum spectral radiance"
+      },
+      "tier": "full"
+    },
+    {
+      "derivation": [
+        "Coulomb's law for point charges"
+      ],
+      "domain": "physical",
+      "form": "equation_identity",
+      "formula": "F_coul = k_elec * q1 * q2 / r_sep^2",
+      "id": "coulomb_law_cand",
+      "intake_channel": "llm_proposal",
+      "max_version_depth": 1,
+      "metadata": {
+        "source": "seed-excerpt.md s2",
+        "verified": "machine gate candidate; pending manual spot-check"
+      },
+      "monotone_form": true,
+      "si_units": {
+        "F_coul": "N",
+        "k_elec": "N*m^2/C^2",
+        "q1": "C",
+        "q2": "C",
+        "r_sep": "m"
+      },
+      "solvable": [
+        "F_coul",
+        "r_sep"
+      ],
+      "symbols": {
+        "F_coul": "electrostatic force magnitude",
+        "k_elec": "Coulomb constant",
+        "q1": "first point charge",
+        "q2": "second point charge",
+        "r_sep": "separation distance"
+      },
+      "tier": "full"
+    },
+    {
+      "derivation": [
+        "Uniform field between parallel plates"
+      ],
+      "domain": "physical",
+      "form": "equation_identity",
+      "formula": "E_field = V_drop / d_gap",
+      "id": "plate_field_cand",
+      "intake_channel": "llm_proposal",
+      "max_version_depth": 1,
+      "metadata": {
+        "source": "seed-excerpt.md s2",
+        "verified": "machine gate candidate; pending manual spot-check"
+      },
+      "monotone_form": true,
+      "si_units": {
+        "E_field": "V/m",
+        "V_drop": "V",
+        "d_gap": "m"
+      },
+      "solvable": [
+        "E_field",
+        "V_drop",
+        "d_gap"
+      ],
+      "symbols": {
+        "E_field": "electric field magnitude between the plates",
+        "V_drop": "voltage between the plates",
+        "d_gap": "plate separation"
+      },
+      "tier": "light"
+    },
+    {
+      "derivation": [
+        "Fourier heat conduction through a uniform slab"
+      ],
+      "domain": "physical",
+      "form": "equation_identity",
+      "formula": "P_cond = k_cond * A_area * delta_T / L_len",
+      "id": "heat_conduction_rate_cand",
+      "intake_channel": "llm_proposal",
+      "max_version_depth": 1,
+      "metadata": {
+        "source": "seed-excerpt.md s2",
+        "verified": "machine gate candidate; pending manual spot-check"
+      },
+      "monotone_form": true,
+      "si_units": {
+        "A_area": "m^2",
+        "L_len": "m",
+        "P_cond": "W",
+        "delta_T": "K",
+        "k_cond": "W/(m*K)"
+      },
+      "solvable": [
+        "P_cond",
+        "delta_T"
+      ],
+      "symbols": {
+        "A_area": "cross-sectional area",
+        "L_len": "slab thickness",
+        "P_cond": "conducted heat flow rate",
+        "delta_T": "temperature difference across the slab",
+        "k_cond": "thermal conductivity"
+      },
+      "tier": "full"
+    },
+    {
+      "derivation": [
+        "Free-fall speed from rest under uniform gravity"
+      ],
+      "domain": "physical",
+      "form": "equation_identity",
+      "formula": "v_free = g_local * t_fall",
+      "id": "free_fall_velocity_cand",
+      "intake_channel": "llm_proposal",
+      "max_version_depth": 1,
+      "metadata": {
+        "source": "seed-excerpt.md s2",
+        "verified": "machine gate candidate; pending manual spot-check"
+      },
+      "monotone_form": true,
+      "si_units": {
+        "g_local": "m/s^2",
+        "t_fall": "s",
+        "v_free": "m/s"
+      },
+      "solvable": [
+        "v_free",
+        "t_fall"
+      ],
+      "symbols": {
+        "g_local": "local gravitational acceleration",
+        "t_fall": "fall time",
+        "v_free": "speed gained in free fall from rest"
+      },
+      "tier": "light"
+    }
+  ],
+  "metadata": {
+    "description": "Dimensional-algebra equation identities proposed by LLM, machine-gated (structure L1 + dimensional L2 + duplicate/pollution), human spot-check 19/19 consistent; published through the law_set v1.1 intake-discipline publication chain.",
+    "intake": {
+      "candidate_count": 33,
+      "form": "equation_identity",
+      "intake_channel": "llm_proposal",
+      "provenance_note": "batch=physics-dim-v1; proposals sha256=62a494db81368275d10fb253fd6e2811fcf45dfde6d4e4553be6bb4a6bca6f32; spot-check consistency=19/19"
+    },
+    "source": "seed excerpt (physics dimensional algebra); LLM proposals under provenance.llm_model=GLM",
+    "title": "Physics dimensional-algebra laws (B-287 candidate batch)",
+    "verified": "publication chain v1.1: per-entry intake face passed (nine elements + form + intake_channel); batch all-or-nothing"
+  },
+  "version": "1.0.0"
+}

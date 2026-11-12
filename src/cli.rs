@@ -122,6 +122,42 @@ pub enum Cmd {
         #[arg(long, value_delimiter = ',')]
         args_pattern: Vec<String>,
     },
+    /// 候选批 → law_set v1.1 文档（发布链：accepted→入池；本地零网络）
+    ///
+    /// 每条候选取 law 载荷并注入批级 form/intake_channel，过 v1.1 intake
+    /// 从严面（九要素+形态四型+出身通道）；all-or-nothing：任一拒收整批
+    /// 不产文档，拒收带因逐条列出（吸收原则 3/6/7 落地）。
+    CandidatesPublish {
+        /// 候选批目录（含 accepted-candidates.jsonl）
+        dir: String,
+        /// law_set 文档 id（^[a-z][a-z0-9-]*$）
+        #[arg(long)]
+        dataset: String,
+        /// law_set 文档 semver
+        #[arg(long, default_value = "1.0.0")]
+        dataset_version: String,
+        /// 形态四型（批级注入：equation_identity|constraint|procedure|definition）
+        #[arg(long)]
+        form: String,
+        /// 出身通道（批级注入：human_curated|llm_proposal；一经发布永不回写）
+        #[arg(long)]
+        intake_channel: String,
+        /// 文档 metadata.title
+        #[arg(long)]
+        title: String,
+        /// 文档 metadata.description
+        #[arg(long)]
+        description: String,
+        /// 文档 metadata.source
+        #[arg(long)]
+        source: String,
+        /// 输出 law_set JSON 文件
+        #[arg(long)]
+        out: String,
+        /// 附带 provenance 注记（写入 metadata.intake.provenance_note）
+        #[arg(long)]
+        provenance_note: Option<String>,
+    },
 }
 
 /// CLI 错误（如实透出服务端错误体，不静默）
@@ -186,6 +222,67 @@ pub fn run(args: CliArgs) -> Result<(), CliError> {
             )?;
             require_created(status, &body)?;
             print_body(&body, json_mode);
+        }
+        Cmd::CandidatesPublish {
+            dir,
+            dataset,
+            dataset_version,
+            form,
+            intake_channel,
+            title,
+            description,
+            source,
+            out,
+            provenance_note,
+        } => {
+            let jsonl_path = Path::new(&dir).join("accepted-candidates.jsonl");
+            let raw = std::fs::read_to_string(&jsonl_path)
+                .map_err(|e| CliError(format!("读取候选批失败 ({}): {e}", jsonl_path.display())))?;
+            let mut candidates: Vec<Value> = Vec::new();
+            for (idx, line) in raw.lines().enumerate() {
+                let line = line.trim();
+                if line.is_empty() {
+                    continue;
+                }
+                let v: Value = serde_json::from_str(line)
+                    .map_err(|e| CliError(format!("候选第 {} 行 JSON 解析失败: {e}", idx + 1)))?;
+                candidates.push(v);
+            }
+            if candidates.is_empty() {
+                return Err(CliError(
+                    "候选批为空（accepted-candidates.jsonl 无有效行）".into(),
+                ));
+            }
+            let batch = crate::publish::CandidateBatch {
+                dataset_id: dataset,
+                dataset_version,
+                form,
+                intake_channel,
+                title,
+                description,
+                source,
+            };
+            let doc = crate::publish::build_law_set_document(
+                &candidates,
+                &batch,
+                provenance_note.as_deref(),
+            )
+            .map_err(|e| CliError(e.to_string()))?;
+            let out_path = Path::new(&out);
+            if let Some(parent) = out_path.parent() {
+                std::fs::create_dir_all(parent)
+                    .map_err(|e| CliError(format!("创建输出目录失败: {e}")))?;
+            }
+            let pretty = serde_json::to_string_pretty(&doc)
+                .map_err(|e| CliError(format!("文档序列化失败: {e}")))?;
+            std::fs::write(out_path, pretty.as_bytes())
+                .map_err(|e| CliError(format!("写输出失败 ({}): {e}", out_path.display())))?;
+            let law_count = doc["laws"].as_array().map(|a| a.len()).unwrap_or(0);
+            println!("published {law_count} laws -> {}", out_path.display());
+            println!(
+                "digest {}",
+                evorule_hash::prefixed(&evorule_hash::json_digest(&doc))
+            );
         }
         Cmd::EntriesBulkImport {
             dir,
