@@ -1,0 +1,15 @@
+{
+  "applied": "2026-11-12",
+  "deferred": [
+    "split requires new reviewed si keys (reviewed-value face): chem_sol_thm_02 (iCRT reviewed as one key), phy_ast_con_01 (mc2 reviewed as one key), phy_rel_app_04 (gammam0v reviewed as one key)",
+    "ambiguous collapse: phy_opt_law_03 (I0cos2theta has no unique split)",
+    "glyph-dominant rows: math_info_def_01 (summation), math_pde_def_02 (partial derivatives), phy_qm_the_01 (hbar + partials)",
+    "excluded per survey ruling: exempt/agnostic tier rows and pure abstract-math rows (index laws, commutators, measure theory, graph definitions, automata)",
+    "engine grammar boundaries stay as established: unary minus, binary additive operators, function calls, non-constant exponents (rows reach verification after the engine-notation support batch)"
+  ],
+  "derivation_entries": 2,
+  "entries_fixed": 18,
+  "notation": "collapsed product tokens are split into factors with the symbols object updated in lockstep; degree/dagger/hat marks are dropped with per-row rationale recorded in the log (established precedent); function-call notation follows pool precedents; semantics-preserving re-bracketing replaces ambiguous groupings; missing multiplication signs are inserted",
+  "si_units_touched": false,
+  "symbols_entries": 15
+}
