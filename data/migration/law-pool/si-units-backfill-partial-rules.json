@@ -1,0 +1,378 @@
+{
+  "delta_n_rewrite": {
+    "after": {
+      "Kc": "1",
+      "Kp": "1"
+    },
+    "before": {
+      "Kc": "(mol/L)^Deltan",
+      "Kp": "atm^Deltan"
+    },
+    "rationale": "equilibrium constants are dimensionless activity ratios (IUPAC convention); Kp/Kc -> \"1\"; delta_n stays \"1\""
+  },
+  "notation": {
+    "dimensionless": "\"1\" (engine has no \"dimensionless\" token)",
+    "form": "coherent SI symbols or base-unit power products (e.g. m*s^-1)",
+    "prefixes": "none (SI prefixes unsupported by the unit engine)",
+    "reserved_spellings": {
+      "ohm": "ohm is the only accepted ohm spelling"
+    }
+  },
+  "reviewed": "2026-11-12",
+  "reviewed_units": {
+    "chem_electro_nernst": {
+      "E": "V",
+      "E0": "V",
+      "F": "C/mol",
+      "Q": "1",
+      "R": "J/(mol*K)",
+      "T": "K",
+      "log": "1",
+      "n": "1"
+    },
+    "chem_electro_nernst_dup2": {
+      "E": "V",
+      "E0": "V",
+      "F": "C/mol",
+      "Q": "1",
+      "R": "J/(mol*K)",
+      "T": "K",
+      "log": "1",
+      "n": "1"
+    },
+    "chem_eq_gibbs_eq": {
+      "K": "1",
+      "R": "J/(mol*K)",
+      "T": "K",
+      "delta_G": "J/mol",
+      "log": "1"
+    },
+    "chem_eq_gibbs_eq_dup2": {
+      "K": "1",
+      "R": "J/(mol*K)",
+      "T": "K",
+      "delta_G": "J/mol",
+      "log": "1"
+    },
+    "chem_eq_vant_hoff": {
+      "K1": "1",
+      "K2": "1",
+      "R": "J/(mol*K)",
+      "T1": "K",
+      "T2": "K",
+      "delta_H": "J/mol",
+      "log": "1"
+    },
+    "chem_eq_vant_hoff_dup2": {
+      "K1": "1",
+      "K2": "1",
+      "R": "J/(mol*K)",
+      "T1": "K",
+      "T2": "K",
+      "delta_H": "J/mol",
+      "log": "1"
+    },
+    "chem_kinetics_arrhenius": {
+      "A": "s^-1",
+      "E_a": "J/mol",
+      "R": "J/(mol*K)",
+      "T": "K",
+      "exp": "1",
+      "k": "s^-1"
+    },
+    "chem_kinetics_arrhenius_dup2": {
+      "A": "s^-1",
+      "E_a": "J/mol",
+      "R": "J/(mol*K)",
+      "T": "K",
+      "exp": "1",
+      "k": "s^-1"
+    },
+    "chem_kinetics_half_life_first": {
+      "k": "s^-1",
+      "log": "1",
+      "t_half": "s"
+    },
+    "chem_kinetics_half_life_first_dup2": {
+      "k": "s^-1",
+      "log": "1",
+      "t_half": "s"
+    },
+    "chem_sol_ph_def": {
+      "H_plus": "mol/L",
+      "log": "1",
+      "pH": "1"
+    },
+    "chem_sol_ph_def_dup2": {
+      "H_plus": "mol/L",
+      "log": "1",
+      "pH": "1"
+    },
+    "cross_astro_stefan_boltzmann_luminosity": {
+      "L": "W",
+      "R": "m",
+      "T": "K",
+      "pi": "1",
+      "sigma": "W*m^-2*K^-4"
+    },
+    "cross_bio_nernst_membrane": {
+      "C_in": "mol/L",
+      "C_out": "mol/L",
+      "E_m": "V",
+      "F": "C/mol",
+      "R": "J/(mol*K)",
+      "T": "K",
+      "log": "1",
+      "z": "1"
+    },
+    "cross_bio_nernst_membrane_dup2": {
+      "C_in": "mol/L",
+      "C_out": "mol/L",
+      "E_m": "V",
+      "F": "C/mol",
+      "R": "J/(mol*K)",
+      "T": "K",
+      "log": "1",
+      "z": "1"
+    },
+    "cross_compchem_boltzmann_factor": {
+      "E": "J",
+      "T": "K",
+      "exp": "1",
+      "k_B": "J/K",
+      "w": "1"
+    },
+    "cross_compchem_euler_angles": {
+      "R": "1",
+      "R_y": "1",
+      "R_z": "1",
+      "phi": "rad",
+      "psi": "rad",
+      "theta": "rad"
+    },
+    "cross_compchem_lennard_jones": {
+      "V": "J",
+      "epsilon": "kg*m^2*s^-2",
+      "sigma_over_r": "1"
+    },
+    "cross_earth_barometric": {
+      "H": "m",
+      "P": "Pa",
+      "P0": "Pa",
+      "exp": "1",
+      "h": "m"
+    },
+    "cross_geo_barometric_height": {
+      "H": "m",
+      "P": "Pa",
+      "P_0": "Pa",
+      "exp": "1",
+      "z": "m"
+    },
+    "cross_info_channel_capacity": {
+      "B": "Hz",
+      "C": "s^-1",
+      "S_over_N": "1",
+      "log2": "1"
+    },
+    "cross_info_channel_capacity_dup2": {
+      "B": "Hz",
+      "C": "s^-1",
+      "S_N": "1",
+      "log": "1"
+    },
+    "cross_info_kullback_leibler": {
+      "D_KL": "1",
+      "log": "1",
+      "p": "1",
+      "q": "1"
+    },
+    "cross_info_shannon_entropy": {
+      "H": "1",
+      "P": "1",
+      "log2": "1",
+      "sum": "1"
+    },
+    "cross_info_shannon_entropy_dup2": {
+      "H": "1",
+      "log": "1",
+      "p": "1"
+    },
+    "cross_mathphys_diffusion_1d": {
+      "D": "m^2*s^-1",
+      "u_t": "s^-1",
+      "u_xx": "m^-2"
+    },
+    "cross_mathphys_schrodinger_time": {
+      "H": "J",
+      "h_bar": "J*s",
+      "i": "1",
+      "psi": "1",
+      "psi_t": "s^-1"
+    },
+    "cross_mathphys_wave_1d": {
+      "c": "m/s",
+      "u_tt": "s^-2",
+      "u_xx": "m^-2"
+    },
+    "math_geom_circle_area": {
+      "A": "m^2",
+      "pi": "1",
+      "r": "m"
+    },
+    "math_geom_circle_area_dup2": {
+      "A": "m^2",
+      "pi": "1",
+      "r": "m"
+    },
+    "math_geom_circle_circumference": {
+      "C": "m",
+      "pi": "1",
+      "r": "m"
+    },
+    "math_geom_circle_circumference_dup2": {
+      "C": "m",
+      "pi": "1",
+      "r": "m"
+    },
+    "math_geom_cone_volume": {
+      "V": "m^3",
+      "h": "m",
+      "pi": "1",
+      "r": "m"
+    },
+    "math_geom_cone_volume_dup2": {
+      "V": "m^3",
+      "h": "m",
+      "pi": "1",
+      "r": "m"
+    },
+    "math_geom_cylinder_volume": {
+      "V": "m^3",
+      "h": "m",
+      "pi": "1",
+      "r": "m"
+    },
+    "math_geom_cylinder_volume_dup2": {
+      "V": "m^3",
+      "h": "m",
+      "pi": "1",
+      "r": "m"
+    },
+    "math_geom_sphere_surface": {
+      "S": "m^2",
+      "pi": "1",
+      "r": "m"
+    },
+    "math_geom_sphere_surface_dup2": {
+      "S": "m^2",
+      "pi": "1",
+      "r": "m"
+    },
+    "math_geom_sphere_volume": {
+      "V": "m^3",
+      "pi": "1",
+      "r": "m"
+    },
+    "math_geom_sphere_volume_dup2": {
+      "V": "m^3",
+      "pi": "1",
+      "r": "m"
+    },
+    "math_trig_law_of_cosines": {
+      "C": "rad",
+      "a": "m",
+      "b": "m",
+      "c": "m",
+      "cos": "1"
+    },
+    "math_trig_law_of_cosines_dup2": {
+      "C": "rad",
+      "a": "m",
+      "b": "m",
+      "c": "m",
+      "cos": "1"
+    },
+    "phys_em_biot_savart": {
+      "I": "A",
+      "dB": "T",
+      "dl": "m",
+      "mu_0_over_4pi": "kg*m*s^-2*A^-2",
+      "r": "m"
+    },
+    "phys_quantum_schrodinger_time_indep": {
+      "E": "J",
+      "H": "kg*m^2*s^-2",
+      "psi": "1"
+    },
+    "phys_rel_length_contraction": {
+      "L": "m",
+      "L_prime": "m",
+      "gamma": "1"
+    },
+    "phys_rel_lorentz_factor": {
+      "c": "m/s",
+      "gamma": "1",
+      "sqrt": "1",
+      "v": "m/s"
+    },
+    "phys_rel_lorentz_factor_dup2": {
+      "c": "m/s",
+      "gamma": "1",
+      "sqrt": "1",
+      "v": "m/s"
+    },
+    "phys_rel_time_dilation": {
+      "delta_t": "s",
+      "delta_t_prime": "s",
+      "gamma": "1"
+    },
+    "phys_thermo_boltzmann": {
+      "S": "J/K",
+      "W": "1",
+      "k": "J/K",
+      "log": "1"
+    },
+    "phys_thermo_boltzmann_entropy": {
+      "S": "J/K",
+      "W": "1",
+      "k": "J/K",
+      "log": "1"
+    },
+    "phys_thermo_carnot_efficiency": {
+      "T_cold": "K",
+      "T_hot": "K",
+      "eta": "1"
+    },
+    "phys_wave_double_slit": {
+      "d": "m",
+      "lambda_": "m",
+      "m_order": "1",
+      "sin": "1",
+      "theta": "rad"
+    },
+    "phys_wave_snell": {
+      "n1": "1",
+      "n2": "1",
+      "sin": "1",
+      "theta1": "rad",
+      "theta2": "rad"
+    },
+    "phys_wave_snell_dup2": {
+      "n1": "1",
+      "n2": "1",
+      "sin": "1",
+      "theta1": "rad",
+      "theta2": "rad"
+    },
+    "phys_wave_young_double_slit": {
+      "d": "m",
+      "lambda_": "m",
+      "n": "1",
+      "sin": "1",
+      "theta": "rad"
+    }
+  },
+  "rule": "human-reviewed candidate fills for key-incomplete si_units plus the human-adjudicated semantic rewrite of the two symbolic-exponent equilibrium-constant entries; single source REVIEWED_PARTIAL_SI_UNITS + DELTA_N_REWRITE in scripts/backfill_pool_si_units_partial.py; partial-derivative notation under the denominator-dimension convention (u_tt=s^-2, u_xx=m^-2, u_t=s^-1)",
+  "unit_engine_precheck": "consistent 20/55; skipped 35 (formula-face grammar boundary, declared); delta-n rewrite 2 expected skipped; zero mismatch (dual-run SHA256-equal harness evidence)"
+}
