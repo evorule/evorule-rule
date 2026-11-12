@@ -5,6 +5,7 @@
     "form": "coherent SI symbols or base-unit power products (e.g. m*s^-1)"
   },
   "reviewed": "2026-11-12",
+  "sqrt_rule_added": "2026-11-12",
   "supersedes": "single-tier exempt list registered 2026-11-12 (3 rows, now tiered with the same ids)",
   "tiers": {
     "agnostic": {
@@ -17,7 +18,7 @@
     },
     "rule_defined": {
       "count": 6,
-      "rule": "function-notation family rules: trigonometric functions require dimensionless arguments; norm/modulus dimensions follow their arguments and are never preset to 1; these rows stay out of unit-value review until the function-notation engine-support milestone (M1) lands, and are NOT exempt"
+      "rule": "function-notation family rules: trigonometric functions require dimensionless arguments; norm/modulus dimensions follow their arguments and are never preset to 1; these rows stay out of unit-value review until the function-notation engine-support milestone (M1) lands, and are NOT exempt; sqrt rule (added 2026-11-12): dimensions of sqrt follow the half power of its argument, and sqrt is 1 only when its argument is dimensionless -- the function-notation family is amended together with the M1 milestone"
     }
   }
 }

@@ -1,0 +1,185 @@
+{
+  "notation": {
+    "dimensionless": "\"1\" (engine has no \"dimensionless\" token)",
+    "form": "coherent SI symbols or base-unit power products (e.g. m*s^-1)",
+    "prefixes": "none (SI prefixes unsupported by the unit engine)"
+  },
+  "reviewed": "2026-11-12",
+  "reviewed_units": {
+    "math_calc_derivative_cos": {
+      "d": "1",
+      "sin": "1",
+      "x": "1"
+    },
+    "math_calc_derivative_cos_dup2": {
+      "d": "1",
+      "sin": "1",
+      "x": "1"
+    },
+    "math_calc_derivative_exp": {
+      "d": "1",
+      "exp": "1",
+      "x": "1"
+    },
+    "math_calc_derivative_exp_dup2": {
+      "d": "1",
+      "exp": "1",
+      "x": "1"
+    },
+    "math_calc_derivative_sin": {
+      "cos": "1",
+      "d": "1",
+      "x": "1"
+    },
+    "math_calc_derivative_sin_dup2": {
+      "cos": "1",
+      "d": "1",
+      "x": "1"
+    },
+    "math_calc_taylor_exp": {
+      "exp": "1",
+      "x": "1"
+    },
+    "math_calc_taylor_exp_dup2": {
+      "exp": "1",
+      "x": "1"
+    },
+    "math_calc_taylor_sin": {
+      "sin": "1",
+      "x": "1"
+    },
+    "math_calc_taylor_sin_dup2": {
+      "sin": "1",
+      "x": "1"
+    },
+    "math_complex_euler": {
+      "cos": "1",
+      "exp_i": "1",
+      "j": "1",
+      "sin": "1",
+      "x": "1"
+    },
+    "math_complex_euler_dup2": {
+      "cos": "1",
+      "exp_i": "1",
+      "j": "1",
+      "sin": "1",
+      "x": "1"
+    },
+    "math_complex_euler_identity": {
+      "exp": "1",
+      "result": "1"
+    },
+    "math_complex_euler_identity_dup2": {
+      "exp": "1",
+      "result": "1"
+    },
+    "math_log_change_base": {
+      "a": "1",
+      "b": "1",
+      "log": "1"
+    },
+    "math_log_change_base_dup2": {
+      "a": "1",
+      "b": "1",
+      "log": "1"
+    },
+    "math_log_product": {
+      "a": "1",
+      "b": "1",
+      "log": "1"
+    },
+    "math_log_product_dup2": {
+      "a": "1",
+      "b": "1",
+      "log": "1"
+    },
+    "math_log_quotient": {
+      "a": "1",
+      "b": "1",
+      "log": "1"
+    },
+    "math_log_quotient_dup2": {
+      "a": "1",
+      "b": "1",
+      "log": "1"
+    },
+    "math_trig_angle_sum_cos": {
+      "a": "1",
+      "b": "1",
+      "cos": "1",
+      "sin": "1"
+    },
+    "math_trig_angle_sum_cos_dup2": {
+      "a": "1",
+      "b": "1",
+      "cos": "1",
+      "sin": "1"
+    },
+    "math_trig_angle_sum_sin": {
+      "a": "1",
+      "b": "1",
+      "cos": "1",
+      "sin": "1"
+    },
+    "math_trig_angle_sum_sin_dup2": {
+      "a": "1",
+      "b": "1",
+      "cos": "1",
+      "sin": "1"
+    },
+    "math_trig_cotangent_def": {
+      "cos": "1",
+      "sin": "1",
+      "tan": "1",
+      "x": "1"
+    },
+    "math_trig_cotangent_def_dup2": {
+      "cos": "1",
+      "sin": "1",
+      "tan": "1",
+      "x": "1"
+    },
+    "math_trig_double_angle_cos": {
+      "cos": "1",
+      "sin": "1",
+      "x": "1"
+    },
+    "math_trig_double_angle_cos_dup2": {
+      "cos": "1",
+      "sin": "1",
+      "x": "1"
+    },
+    "math_trig_double_angle_sin": {
+      "cos": "1",
+      "sin": "1",
+      "x": "1"
+    },
+    "math_trig_double_angle_sin_dup2": {
+      "cos": "1",
+      "sin": "1",
+      "x": "1"
+    },
+    "math_trig_tangent_def": {
+      "cos": "1",
+      "sin": "1",
+      "tan": "1",
+      "x": "1"
+    },
+    "math_trig_tangent_def_dup2": {
+      "cos": "1",
+      "sin": "1",
+      "tan": "1",
+      "x": "1"
+    },
+    "phy_rel_app_02_p2": {
+      "c": "m*s^-1",
+      "dt": "s",
+      "gamma": "1",
+      "sqrt": "1",
+      "v": "m"
+    }
+  },
+  "rule": "human-reviewed candidate fills for empty si_units entries (function-call subset, third workbook split); derivation = pool-internal reviewed-value priors + function-notation judgments anchored to approved precedents; two adjudicated overrides applied (angle-sum a,b m->1; derivative d m->1); engine check_law = Skipped by design for function-call notation (grammar boundary), the value table is the review lens",
+  "unit_engine_precheck": "33/33 skipped as designed (0 mismatch, dual-run SHA256-equal harness evidence)"
+}
