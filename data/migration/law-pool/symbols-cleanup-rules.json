@@ -1,0 +1,17 @@
+{
+  "applied": "2026-11-12",
+  "deferred_to_formula_repair_batch": [
+    "collapsed-product family: 22 rows with kBT/RT2/m0c2/rhogh/Gm1m2/N0e/V0e/iCRT/Idl/mu0I/hnu/pihnv3/pikT/HPsi/gammam0v/kDeltau/Sigma_ symbol keys and RT/lnQ/nF formula literals",
+    "chem_bio_rul_01: comma-joined two-segment formula (reaction equation + value assignment)",
+    "chem_sto_emp_01: natural-language formula sentence",
+    "degree-mark normalization (chem_app_thm_01, chem_bio_rul_01, chem_ele_thm_01; dropped in chem_pcd_thm_03 by this pass)"
+  ],
+  "entries_fixed": 4,
+  "kept_with_rationale": {
+    "math_complex_euler_identity": "result symbol kept: legitimate output-variable name with a human-reviewed si_units value (\"1\") already attached; renaming would churn the reviewed value face",
+    "single-letter-quantity collisions": "M/L/psi/I0/K1/H0/P0-style keys are legitimate subscripted or domain-standard quantity symbols, several with reviewed si_units in the pool; not contamination"
+  },
+  "keys_added": 3,
+  "keys_removed": 13,
+  "rule": "symbol face carries physical-quantity symbols only: unit tokens and chemical species are removed (their semantics stay in the formula text; unit values belong to the si_units review track); preposition residue keys are removed; subscript-collapsed quantity names are reconstructed and the formula reference updated in lockstep; embedded numeric constants are kept, aligned with the phys_quantum_energy_level precedent"
+}
