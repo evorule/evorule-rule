@@ -111,6 +111,7 @@
     ],
     "domain_missing": 0,
     "si_units_empty": 228,
+    "si_units_partial": 8,
     "symbols_lt2": 13
   },
   "machine_gate_fail_reasons": {
@@ -148,6 +149,35 @@
     "reviewed": "2026-11-12",
     "slices_version": "0.2.0",
     "unit_engine_precheck": "consistent 5/5 (dual-run SHA256-equal harness evidence)"
+  },
+  "si_units_backfill_partial": {
+    "artifacts": [
+      "si-units-backfill-partial-log.jsonl",
+      "si-units-backfill-partial-rules.json"
+    ],
+    "delta_n_rewrite": {
+      "after": {
+        "Kc": "1",
+        "Kp": "1"
+      },
+      "before": {
+        "Kc": "(mol/L)^Deltan",
+        "Kp": "atm^Deltan"
+      },
+      "rationale": "equilibrium constants are dimensionless activity ratios (IUPAC convention); Kp/Kc -> \"1\"; delta_n stays \"1\""
+    },
+    "entries_backfilled": 55,
+    "entries_semantic_rewrite": 2,
+    "notation": {
+      "dimensionless": "\"1\" (engine has no \"dimensionless\" token)",
+      "form": "coherent SI symbols or base-unit power products (e.g. m*s^-1)",
+      "prefixes": "none (SI prefixes unsupported by the unit engine)",
+      "reserved_spellings": {
+        "ohm": "ohm is the only accepted ohm spelling"
+      }
+    },
+    "reviewed": "2026-11-12",
+    "unit_engine_precheck": "consistent 20/55; skipped 35 (formula-face grammar boundary, declared); delta-n rewrite 2 expected skipped; zero mismatch (dual-run SHA256-equal harness evidence)"
   },
   "si_units_notation_normalize": {
     "applied": "2026-11-12",
