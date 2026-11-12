@@ -1,0 +1,66 @@
+{
+  "notation": {
+    "dimensionless": "\"1\" (engine has no \"dimensionless\" token)",
+    "form": "coherent SI symbols or base-unit power products (e.g. m*s^-1)",
+    "prefixes": "none (SI prefixes unsupported by the unit engine)"
+  },
+  "reviewed": "2026-11-12",
+  "reviewed_units": {
+    "chem_thr_thm_03": {
+      "DeltaU": "J",
+      "Q": "J",
+      "W": "J"
+    },
+    "cross_mathphys_poisson": {
+      "rho": "m^-2",
+      "u_xx": "m^-2",
+      "u_yy": "m^-2"
+    },
+    "cross_mathphys_poisson_dup2": {
+      "rho": "m^-2",
+      "u_xx": "m^-2",
+      "u_yy": "m^-2"
+    },
+    "math_arith_add_assoc": {
+      "a": "1",
+      "b": "1",
+      "c": "1"
+    },
+    "math_arith_add_identity": {
+      "a": "1"
+    },
+    "math_arith_add_identity_dup2": {
+      "a": "1"
+    },
+    "math_prob_complement": {
+      "P_A": "1",
+      "P_not_A": "1"
+    },
+    "math_prob_complement_dup2": {
+      "P_A": "1",
+      "P_not_A": "1"
+    },
+    "phy_elm_prin_02": {
+      "dPhi": "kg*m^2*s^-2*A^-1",
+      "dt": "s",
+      "epsilon": "kg*m^2*s^-3*A^-1"
+    },
+    "phy_opt_app_02": {
+      "f": "m",
+      "u": "m",
+      "v": "m"
+    },
+    "phy_thr_con_01": {
+      "DeltaU": "J",
+      "Q": "J",
+      "W": "J"
+    },
+    "phy_thr_prin_01": {
+      "Q": "J",
+      "W": "J",
+      "dU": "J"
+    }
+  },
+  "rule": "human-reviewed candidate fills for empty si_units entries (addition/subtraction subset, fourth workbook split); self-corrections ratified in the same adjudication: DeltaU = Q - W family -> J (phys_thermo_first_law precedent; the W judgment entry is a Boltzmann-counting rule and does not fire in thermodynamic-work context), lens-equation f -> focal length m (frequency prior was a symbol-context ambiguity)",
+  "unit_engine_precheck": "12/12 skipped as designed (0 mismatch, dual-run SHA256-equal harness evidence)"
+}
