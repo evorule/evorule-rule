@@ -22,6 +22,15 @@
     "gate_pass_before": 13
   },
   "accounting": "pool_in (419) - non_identity_excluded + extra_split_products = products",
+  "collapsed_split_review": {
+    "applied": "2026-11-13",
+    "artifacts": [
+      "collapsed-split-review-log.jsonl",
+      "collapsed-split-review-rules.json"
+    ],
+    "entries_fixed": 4,
+    "source": "approved 2026-11-13 (review request 75)"
+  },
   "excluded_k_side": 209,
   "excluded_non_identity_forms": {
     "by_tag": {
