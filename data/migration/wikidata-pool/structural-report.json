@@ -4,25 +4,25 @@
   "unique_qids": 112616,
   "d0_dup_qid": 10,
   "layers": {
-    "D1": {
+    "shape": {
       "no_p2534": 13,
       "multi_p2534": 278,
       "empty_formula": 4,
       "subtotal": 295
     },
-    "D2": {
+    "noise": {
       "prime_p31": 105296,
       "prime_label": 34,
       "prime_desc": 844,
       "subtotal": 106174
     },
-    "D3": {
+    "equation_shape": {
       "not_equation": 1192,
       "multi_equals": 1076,
       "special_chars": 395,
       "subtotal": 2663
     },
-    "D4": {
+    "notation_mapping": {
       "reject": 1605,
       "by_code": {
         "accent_parse": 46,
@@ -36,12 +36,12 @@
       },
       "subtotal": 1605
     },
-    "D5": {
+    "structural_replay": {
       "parse_fail": 635,
       "subtotal": 635,
       "dimensional_verdicts": "pending_dimensions (require per-symbol dimension declarations; deferred to the human-review batch)"
     },
-    "D6": {
+    "pool_duplicates": {
       "dup_pool_text": 1,
       "dup_pool_mapped": 1,
       "unique": 1242,

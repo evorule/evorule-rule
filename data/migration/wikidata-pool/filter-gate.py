@@ -1,28 +1,28 @@
 #!/usr/bin/env python3
 """Deterministic filter gate for the Wikidata P2534 (formula) entity dump.
 
-Implements the filter-gate criteria stack from the approved design doc
-(knowledge repo 7-Expert/design/design-100):
+Implements the filter-gate criteria stack from the approved filter-gate
+design document (knowledge repo, filter-gate design, section 1-2):
 
-  D0  QID dedup (first occurrence kept, duplicates logged)
-  D1  P2534 shape (exactly one claim, mainsnak=value, datavalue type=string,
+  dedup stage       QID dedup (first occurrence kept, duplicates logged)
+  shape stage       P2534 shape (exactly one claim, mainsnak=value, string,
       non-empty)
-  D2  prime-noise exclusion (P31 contains Q49008, or label/description
-      contains the substring "prime", case-insensitive)
-  D3  equation shape (exactly one "=") + base character-set check
-  D4  mechanical LaTeX-subset mapping via a token whitelist (fail-closed:
-      any token outside the whitelist is rejected, nothing is guessed).
+  noise stage       prime-noise exclusion (P31 contains Q49008, or
+      label/description contains the substring "prime", case-insensitive)
+  equation stage    equation shape (exactly one "=") + base charset check
+  mapping stage     mechanical LaTeX-subset mapping via a token whitelist
+                    (fail-closed: tokens outside the whitelist are rejected)
       Deviation from the design table, recorded here: \\over (infix division)
       is rejected (token:over) because infix operand boundaries are not
       mechanically well-defined; the design table had placed it under
       bracketed division.
-  D5  structural replay: recursive-descent AST check on the mapped formula.
-      Dimensional verdicts require per-symbol dimension declarations, which
-      candidates do not carry yet; the verdict field is therefore
-      pending_dimensions until the human-review + dimension-wiring batch.
-  D6  pool duplicate check (text-level and mapped-level keys against the
-      law pool and the knowledge bundle; hits are logged as dup_of and are
-      NOT rejected).
+  replay stage      structural replay: recursive-descent AST check on the
+                    mapped formula. Dimensional verdicts require per-symbol
+                    dimension declarations, which candidates do not carry
+                    yet; verdict stays pending_dimensions until the
+  poolcheck stage   pool duplicate check (text-level and mapped-level keys
+                    against the law pool and knowledge bundle; hits are
+                    logged as dup_of and are NOT rejected).
 
 Determinism contract: no randomness, no timestamps, no locale dependence in
 any output; entities are processed in input-file order and trace rows are
@@ -54,8 +54,8 @@ import re
 from collections import Counter, OrderedDict
 
 # ---------------------------------------------------------------------------
-# D4 token whitelist (design doc section 2). Anything not listed here is
-# rejected with reason code token:<name>.
+# token whitelist (mapping stage; design document section 2). Anything not
+# listed here is rejected with reason code token:<name>.
 # ---------------------------------------------------------------------------
 
 SPACING = {"quad", "qquad", ",", "!", ";", ":", " "}
@@ -278,7 +278,7 @@ def map_tokens(tokens, depth=0):
 
 
 # ---------------------------------------------------------------------------
-# D5a structural replay: recursive-descent AST check.
+# structural replay stage: recursive-descent AST check.
 # equality := expr '=' expr ; expr := term (('+'|'-') term)* ;
 # term := unary (('*'|'/') unary)* ; unary := '-' unary | power ;
 # power := atom ('^' exponent)? ; atom := number | ident | func '(' args ')'
@@ -503,7 +503,7 @@ def main():
         qid = e.get("id")
         claims = e.get("claims", {})
 
-        # D0 dedup
+        # dedup stage
         if qid in seen_qid:
             c["d0_dup_qid"] += 1
             trace_rows.append({"qid": qid, "decision": "reject",
@@ -511,7 +511,7 @@ def main():
             continue
         seen_qid.add(qid)
 
-        # D1 shape
+        # shape stage
         c2534 = claims.get("P2534", [])
         if len(c2534) == 0:
             c["d1_no_p2534"] += 1
@@ -533,7 +533,7 @@ def main():
             continue
         formula = dv["value"]
 
-        # D2 prime noise
+        # prime-noise stage
         p31_ids = []
         for st in claims.get("P31", []):
             v = st.get("mainsnak", {}).get("datavalue", {}).get("value")
@@ -557,7 +557,7 @@ def main():
                                "reason_code": "prime_desc", "formula": formula})
             continue
 
-        # D3 equation shape + base charset
+        # equation-shape stage
         if formula.count("=") != 1:
             code = "not_equation" if formula.count("=") == 0 else "multi_equals"
             c["d3_" + code] += 1
@@ -572,7 +572,7 @@ def main():
                                "formula": formula})
             continue
 
-        # D4 mechanical mapping
+        # mechanical mapping stage
         mapped, reason = map_tokens(tokenize(formula))
         if mapped is None:
             c["d4_reject"] += 1
@@ -588,7 +588,7 @@ def main():
                                "formula": formula})
             continue
 
-        # D5a structural replay
+        # structural replay stage
         ok, perr = parse_check(mapped)
         if not ok:
             c["d5_parse_fail"] += 1
@@ -597,7 +597,7 @@ def main():
                                "mapped": mapped})
             continue
 
-        # D6 pool duplicate check (log-only)
+        # pool duplicate stage (log-only)
         dup = ""
         if norm_text(formula) in pool_keys:
             dup = "pool_text"
@@ -636,8 +636,8 @@ def main():
             cf.write(row(rec))
 
     # accounting identity:
-    #   unique_qids == D1 rejections + D2 rejections + D3 rejections
-    #                 + D4 rejects + D5 parse-fails + candidates
+    #   unique_qids == shape-stage rejections + noise-stage rejections
+    #                 + mapping-stage rejects + replay parse-fails + candidates
     d1 = c["d1_no_p2534"] + c["d1_multi_p2534"] + c["d1_empty_formula"]
     d2 = c["d2_prime_p31"] + c["d2_prime_label"] + c["d2_prime_desc"]
     d3 = c["d3_not_equation"] + c["d3_multi_equals"] + c["d3_special_chars"]
@@ -652,27 +652,27 @@ def main():
     report["unique_qids"] = len(seen_qid)
     report["d0_dup_qid"] = c["d0_dup_qid"]
     report["layers"] = OrderedDict()
-    report["layers"]["D1"] = OrderedDict(
+    report["layers"]["shape"] = OrderedDict(
         [("no_p2534", c["d1_no_p2534"]), ("multi_p2534", c["d1_multi_p2534"]),
          ("empty_formula", c["d1_empty_formula"]), ("subtotal", d1)])
-    report["layers"]["D2"] = OrderedDict(
+    report["layers"]["noise"] = OrderedDict(
         [("prime_p31", c["d2_prime_p31"]), ("prime_label", c["d2_prime_label"]),
          ("prime_desc", c["d2_prime_desc"]), ("subtotal", d2)])
-    report["layers"]["D3"] = OrderedDict(
+    report["layers"]["equation_shape"] = OrderedDict(
         [("not_equation", c["d3_not_equation"]),
          ("multi_equals", c["d3_multi_equals"]),
          ("special_chars", c["d3_special_chars"]), ("subtotal", d3)])
-    report["layers"]["D4"] = OrderedDict(
+    report["layers"]["notation_mapping"] = OrderedDict(
         [("reject", c["d4_reject"]),
          ("by_code", OrderedDict(sorted((k[3:], v) for k, v in c.items()
                                         if k.startswith("d4_")
                                         and k != "d4_reject"))),
          ("subtotal", d4)])
-    report["layers"]["D5"] = OrderedDict(
+    report["layers"]["structural_replay"] = OrderedDict(
         [("parse_fail", c["d5_parse_fail"]), ("subtotal", d5),
          ("dimensional_verdicts", "pending_dimensions (require per-symbol "
           "dimension declarations; deferred to the human-review batch)")])
-    report["layers"]["D6"] = OrderedDict(
+    report["layers"]["pool_duplicates"] = OrderedDict(
         [("dup_pool_text", c["d6_dup_pool_text"]),
          ("dup_pool_mapped", c["d6_dup_pool_mapped"]),
          ("unique", c["d6_dup_none"]), ("note", "log-only, not rejected")])
