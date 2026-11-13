@@ -411,12 +411,17 @@
     "applied": "2026-11-13",
     "artifacts": [
       "source-verification-log.jsonl",
+      "source-verification-log-physical.jsonl",
       "source-exempt-entries.jsonl"
     ],
-    "entries_backfilled": 67,
+    "entries_backfilled": 110,
+    "entries_backfilled_by_volume": {
+      "math": 67,
+      "physical": 43
+    },
     "entries_exempt_registered": 32,
     "policy": "evidence chain per entry: url + retrieval date + verbatim quote; unresolved rows stay pending, never fabricated",
-    "scope": "math-domain v4-face rows with pending-citation placeholder in metadata.source; C-face math abstract rows exempt-registered per precheck census 2026-11-13"
+    "scope": "v4-face rows with pending-citation placeholder in metadata.source, per-domain volumes; C-face math abstract rows exempt-registered per precheck census 2026-11-13"
   },
   "split_products": 18,
   "structural_failures": [],
