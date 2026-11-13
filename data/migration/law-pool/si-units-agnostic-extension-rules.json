@@ -1,0 +1,13 @@
+{
+  "applied": "2026-11-13",
+  "criterion": "pure-math identities (arithmetic laws, derivative-rule collapsed-notation family, probability, linear algebra, geometry/graph identities): dimension-arbitrary but self-consistent as whole expressions; no physical unit semantics committed; symbolic mappings kept, units not presupposed, any later unit assignment must leave the whole equation self-consistent",
+  "entries_added": 46,
+  "notation": {
+    "dimensionless": "\"1\" (engine has no \"dimensionless\" token)",
+    "form": "coherent SI symbols or base-unit power products (e.g. m*s^-1)"
+  },
+  "reviewed": "2026-11-13",
+  "source": "approved 2026-11-13 (review request 77 ruling 4; per-row evidence: research memo 79 section 5)",
+  "supersedes": "none (extends the tiered register in place)",
+  "tier": "agnostic"
+}
