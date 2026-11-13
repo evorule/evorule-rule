@@ -9,7 +9,8 @@
   "supersedes": "single-tier exempt list registered 2026-11-12 (3 rows, now tiered with the same ids)",
   "tiers": {
     "agnostic": {
-      "count": 3,
+      "count": 49,
+      "extension": "extended 2026-11-13 by 46 math-domain rows (si-units-agnostic-extension-log.jsonl / -rules.json)",
       "rule": "abstract analysis statements: symbolic mappings are kept but no units are presupposed; any later unit assignment must leave the whole equation self-consistent (engine check_law lens: consistency-only, no dimension presupposition)"
     },
     "exempt": {
