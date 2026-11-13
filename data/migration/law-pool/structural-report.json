@@ -155,6 +155,15 @@
     "symbols must have >= 2 entries": 13,
     "tier missing or not light|full": 0
   },
+  "notation_rewrite_2": {
+    "applied": "2026-11-13",
+    "artifacts": [
+      "notation-rewrite-2-log.jsonl",
+      "notation-rewrite-2-rules.json"
+    ],
+    "entries_fixed": 14,
+    "source": "approved 2026-11-13 (review request 77 ruling 3)"
+  },
   "pool_in": 419,
   "pool_in_by_tag": {
     "A": 135,

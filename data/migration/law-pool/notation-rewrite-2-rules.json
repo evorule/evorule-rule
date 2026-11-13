@@ -1,0 +1,19 @@
+{
+  "applied": "2026-11-13",
+  "approval": "review request 77 ruling 3 (user directive 2026-11-13: T4 rewrite batch first)",
+  "entries_fixed": 14,
+  "excluded": [
+    "chem_eqb_rul_02",
+    "chem_eqb_thm_01"
+  ],
+  "exclusion_reason": "symbolic exponents (^m/^c) remain after bracket rewrite; permanently rejected by the M1c ruling; recorded as-is with the out-of-grammar face",
+  "fixes": {
+    "brackets": "concentration brackets -> bare symbols (chem_acb_rul_01, chem_pcd_kin_02)",
+    "collapsed-constants": "piG -> pi*G, c4 -> c^4, c2 -> c^2, kT -> k*T (phy_rel_the_02, phy_gra_app_02, phy_sta_prin_03, phy_sta_prin_04)",
+    "collapsed-trig": "costheta -> cos(theta) (phy_ast_law_01, phy_qm_law_03)",
+    "function-notation": "r(theta) -> r_orb, f(E) -> f_E (phy_ast_law_01, phy_sta_prin_03, phy_sta_prin_04)",
+    "implicit-mul": "R(...)/eta(...)/-k(...) -> explicit forms (phy_atm_law_02, phy_flu_law_01, phy_thr_law_03)",
+    "misc": "#eg -> n_eg, #t2g -> n_t2g (chem_cft_prin_01); E ^ -> e^ mis-recording (chem_rxn_kin_01, symbol E removed)",
+    "summation": "SigmaDeltaH_X -> sum(DeltaH_X) (chem_thr_thm_01)"
+  }
+}
