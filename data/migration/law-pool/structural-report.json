@@ -407,6 +407,17 @@
     "entries_fixed": 48,
     "source": "approved 2026-11-13: review request 79 section 6 items 1-4; same-day candidate confirmation"
   },
+  "source_verification": {
+    "applied": "2026-11-13",
+    "artifacts": [
+      "source-verification-log.jsonl",
+      "source-exempt-entries.jsonl"
+    ],
+    "entries_backfilled": 67,
+    "entries_exempt_registered": 32,
+    "policy": "evidence chain per entry: url + retrieval date + verbatim quote; unresolved rows stay pending, never fabricated",
+    "scope": "math-domain v4-face rows with pending-citation placeholder in metadata.source; C-face math abstract rows exempt-registered per precheck census 2026-11-13"
+  },
   "split_products": 18,
   "structural_failures": [],
   "symbols_cleanup": {
