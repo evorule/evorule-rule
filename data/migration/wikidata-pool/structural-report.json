@@ -1,0 +1,58 @@
+{
+  "declared_count": 112626,
+  "entities_read": 112626,
+  "unique_qids": 112616,
+  "d0_dup_qid": 10,
+  "layers": {
+    "D1": {
+      "no_p2534": 13,
+      "multi_p2534": 278,
+      "empty_formula": 4,
+      "subtotal": 295
+    },
+    "D2": {
+      "prime_p31": 105296,
+      "prime_label": 34,
+      "prime_desc": 844,
+      "subtotal": 106174
+    },
+    "D3": {
+      "not_equation": 1192,
+      "multi_equals": 1076,
+      "special_chars": 395,
+      "subtotal": 2663
+    },
+    "D4": {
+      "reject": 1605,
+      "by_code": {
+        "accent_parse": 46,
+        "accent_target": 4,
+        "frac_parse": 138,
+        "func_power": 10,
+        "mapped_charset": 48,
+        "shell_parse": 160,
+        "sqrt_parse": 7,
+        "token": 1192
+      },
+      "subtotal": 1605
+    },
+    "D5": {
+      "parse_fail": 635,
+      "subtotal": 635,
+      "dimensional_verdicts": "pending_dimensions (require per-symbol dimension declarations; deferred to the human-review batch)"
+    },
+    "D6": {
+      "dup_pool_text": 1,
+      "dup_pool_mapped": 1,
+      "unique": 1242,
+      "note": "log-only, not rejected"
+    }
+  },
+  "accounting_identity": {
+    "unique_qids": 112616,
+    "outflow_sum": 112616,
+    "identity_holds": true,
+    "candidates": 1244
+  },
+  "trace_sha256": "790ed1c78cd75b4ab099a5e4cad3beee76a5c44ab4b18104f1758f745f556b53"
+}
