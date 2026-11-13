@@ -142,7 +142,7 @@
       }
     ],
     "domain_missing": 0,
-    "si_units_empty": 105,
+    "si_units_empty": 57,
     "si_units_exempt": 3,
     "si_units_partial": 0,
     "si_units_tiered_review": 55,
@@ -397,6 +397,15 @@
     ],
     "values_deferred": 4,
     "values_rewritten": 156
+  },
+  "si_units_review_backfill": {
+    "applied": "2026-11-13",
+    "artifacts": [
+      "si-units-review-backfill-log.jsonl",
+      "si-units-review-backfill-rules.json"
+    ],
+    "entries_fixed": 48,
+    "source": "approved 2026-11-13: review request 79 section 6 items 1-4; same-day candidate confirmation"
   },
   "split_products": 18,
   "structural_failures": [],
