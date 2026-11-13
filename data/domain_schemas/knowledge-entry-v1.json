@@ -1,0 +1,92 @@
+{
+  "$id": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "version": "1.0",
+  "owner": "Mr. Damu Zheng",
+  "reviewed_by": "Mr. Damu Zheng",
+  "consumer": "science knowledge pool governance chain (DatasetKind::Knowledge entries: bundle import gate + execution-side retrieval data plane)",
+  "title": "Evorule science knowledge entry (knowledge dataset payload)",
+  "description": "Statement-type science knowledge entries: propositions, definitions, axioms, theorems and prose statements. Zero-rewrite contract: statement, notation_zh and conditions carry source corpus text verbatim (selection only, no paraphrase); entries are never rewritten into equation form — equation-identity semantics belong to law_set entries. classification records the notation-face class from the pool census (X2 = formal statement without an equals sign; X1 = notation mixed with prose; X0 = prose only, no notation). dispute_mark carries disputed-axiom adjudication context verbatim (status, reason, accept/reject camps, full dispute detail); its presence marks a dual-state entry that must stay retrievable alongside mainstream content.",
+  "type": "object",
+  "required": ["rule_id", "name_zh", "rule_type", "domain", "classification", "statement"],
+  "properties": {
+    "rule_id": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9]*(-[A-Z0-9]+)*-[0-9]{2}$",
+      "description": "Stable identifier from the science rules corpus (e.g. MATH-LOGIC-AX-01); doubles as the bundle entry_id."
+    },
+    "name_zh": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Chinese name or short statement, verbatim."
+    },
+    "name_en": {
+      "type": "string",
+      "minLength": 1,
+      "description": "English name, verbatim; omitted when the corpus has none."
+    },
+    "rule_type": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Corpus rule type (axiom / definition / formula / theorem / ...), verbatim."
+    },
+    "domain": {
+      "enum": ["mathematics", "physics", "chemistry", "computer_science"]
+    },
+    "subdomain": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Corpus subdomain, verbatim; omitted when absent."
+    },
+    "classification": {
+      "enum": ["X2", "X1", "X0"],
+      "description": "Notation-face class from the pool census (see x-classification-map.jsonl)."
+    },
+    "notation_zh": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Formal notation, verbatim; omitted for X0 entries (prose only)."
+    },
+    "statement": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Knowledge statement: corpus desc_zh when present, otherwise name_zh — verbatim selection, never rewritten."
+    },
+    "conditions": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "description": "Applicability conditions, verbatim; omitted when the corpus has none."
+    },
+    "source_ref": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Citation from the corpus, verbatim; omitted when absent."
+    },
+    "dispute_mark": {
+      "type": "object",
+      "required": ["status", "dispute_reason", "detail"],
+      "properties": {
+        "status": { "const": "disputed" },
+        "dispute_reason": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Dispute reason, verbatim."
+        },
+        "accepted_by": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "rejected_by": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "detail": {
+          "type": "object",
+          "description": "Full dispute record carried over verbatim (superset of the extracted fields, including alternatives and note)."
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

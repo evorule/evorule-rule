@@ -1,0 +1,6211 @@
+{
+  "bundle_schema_version": "1.0",
+  "bundle_id": "bundle-science-knowledge-v1",
+  "dataset": {
+    "dataset_id": "science-knowledge",
+    "name": "Evorule science knowledge pool (statement-type entries)",
+    "tenant_id": "default",
+    "instance_id": "evorule-rule-local",
+    "dataset_kind": "knowledge",
+    "versioning": {
+      "current": "v1",
+      "chain": [
+        "v1"
+      ]
+    },
+    "version_selection": {
+      "mode": "pinned",
+      "pinned_version": "v1"
+    }
+  },
+  "entries": [
+    {
+      "domain": "mathematics",
+      "entry_id": "MATH-LOGIC-AX-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "fact",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X2",
+        "domain": "mathematics",
+        "name_zh": "一个命题不能同时为真又为假",
+        "notation_zh": "¬(P ∧ ¬P)",
+        "rule_id": "MATH-LOGIC-AX-01",
+        "rule_type": "axiom",
+        "statement": "一个命题不能同时为真又为假",
+        "subdomain": "logic"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "math",
+        "foundations",
+        "logic"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "mathematics",
+      "entry_id": "MATH-LOGIC-AX-02",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "fact",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X2",
+        "dispute_mark": {
+          "accepted_by": [
+            "经典数学家",
+            "主流数学界",
+            "实分析学家",
+            "代数学家"
+          ],
+          "detail": {
+            "accepted_by": [
+              "经典数学家",
+              "主流数学界",
+              "实分析学家",
+              "代数学家"
+            ],
+            "alternatives": [
+              "直觉主义逻辑（不接受排中律）",
+              "构造主义数学"
+            ],
+            "community_vote": null,
+            "dispute_reason": "直觉主义逻辑不接受此公理，但主流数学使用",
+            "note": "这是经典逻辑三大公理之一，但在某些数学哲学立场下不被接受",
+            "rejected_by": [
+              "直觉主义数学家",
+              "构造主义数学家",
+              "L.E.J. Brouwer",
+              "Arend Heyting"
+            ],
+            "source": {
+              "reference": "Aristotle, Prior Analytics",
+              "type": "book",
+              "year": "约公元前350年"
+            },
+            "status": "disputed",
+            "verification_date": "2026-05-07",
+            "verified_by": "EvoRule Team"
+          },
+          "dispute_reason": "直觉主义逻辑不接受此公理，但主流数学使用",
+          "rejected_by": [
+            "直觉主义数学家",
+            "构造主义数学家",
+            "L.E.J. Brouwer",
+            "Arend Heyting"
+          ],
+          "status": "disputed"
+        },
+        "domain": "mathematics",
+        "name_zh": "任意命题P，P为真或P为假，二者必居其一",
+        "notation_zh": "P ∨ ¬P",
+        "rule_id": "MATH-LOGIC-AX-02",
+        "rule_type": "axiom",
+        "statement": "任意命题P，P为真或P为假，二者必居其一",
+        "subdomain": "logic"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "math",
+        "foundations",
+        "logic"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "mathematics",
+      "entry_id": "MATH-LOGIC-AX-03",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "fact",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X2",
+        "domain": "mathematics",
+        "name_zh": "任意命题P蕴含P本身",
+        "notation_zh": "P → P",
+        "rule_id": "MATH-LOGIC-AX-03",
+        "rule_type": "axiom",
+        "statement": "任意命题P蕴含P本身",
+        "subdomain": "logic"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "math",
+        "foundations",
+        "logic"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "mathematics",
+      "entry_id": "MATH-SET-AX-02",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "fact",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X2",
+        "domain": "mathematics",
+        "name_zh": "存在一个不含任何元素的集合",
+        "notation_zh": "∃∅∀x(x∉∅)",
+        "rule_id": "MATH-SET-AX-02",
+        "rule_type": "axiom",
+        "statement": "存在一个不含任何元素的集合",
+        "subdomain": "set_theory"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "math",
+        "foundations",
+        "set_theory"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "mathematics",
+      "entry_id": "MATH-SET-AX-04",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "fact",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X2",
+        "domain": "mathematics",
+        "name_zh": "对任意集合族，存在一个集合，其元素恰好是这些集合的所有元素",
+        "notation_zh": "∀A∃B∀x(x∈B ↔ ∃Y(Y∈A ∧ x∈Y))",
+        "rule_id": "MATH-SET-AX-04",
+        "rule_type": "axiom",
+        "statement": "对任意集合族，存在一个集合，其元素恰好是这些集合的所有元素",
+        "subdomain": "set_theory"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "math",
+        "foundations",
+        "set_theory"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "mathematics",
+      "entry_id": "MATH-SET-AX-05",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "fact",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X2",
+        "domain": "mathematics",
+        "name_zh": "对任意集合x，存在一个集合y，其元素恰好是x的所有子集",
+        "notation_zh": "∀x∃y∀z(z∈y ↔ z⊆x)",
+        "rule_id": "MATH-SET-AX-05",
+        "rule_type": "axiom",
+        "statement": "对任意集合x，存在一个集合y，其元素恰好是x的所有子集",
+        "subdomain": "set_theory"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "math",
+        "foundations",
+        "set_theory"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "mathematics",
+      "entry_id": "MATH-SET-AX-06",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "fact",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X2",
+        "domain": "mathematics",
+        "name_zh": "存在一个包含0且对后继运算封闭的集合",
+        "notation_zh": "∃S(∅∈S ∧ ∀x(x∈S → x∪{x}∈S))",
+        "rule_id": "MATH-SET-AX-06",
+        "rule_type": "axiom",
+        "statement": "存在一个包含0且对后继运算封闭的集合",
+        "subdomain": "set_theory"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "math",
+        "foundations",
+        "set_theory"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "mathematics",
+      "entry_id": "MATH-SET-AX-07",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "fact",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X2",
+        "domain": "mathematics",
+        "name_zh": "对一个公式F，如果对每个x有唯一的y使F(x,y)成立，则对任意集合A，存在集合B使得对每个a∈A有唯一的b使F(a,b)成立",
+        "notation_zh": "∀A∀x∈A∃!yF(x,y) → ∃B∀y(y∈B ↔ ∃x∈AF(x,y))",
+        "rule_id": "MATH-SET-AX-07",
+        "rule_type": "axiom",
+        "statement": "对一个公式F，如果对每个x有唯一的y使F(x,y)成立，则对任意集合A，存在集合B使得对每个a∈A有唯一的b使F(a,b)成立",
+        "subdomain": "set_theory"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "math",
+        "foundations",
+        "set_theory"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "mathematics",
+      "entry_id": "MATH-SET-AX-09",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "fact",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X2",
+        "dispute_mark": {
+          "accepted_by": [
+            "大多数数学家",
+            "主流数学界",
+            "实分析学家",
+            "测度论学家",
+            "拓扑学家"
+          ],
+          "detail": {
+            "accepted_by": [
+              "大多数数学家",
+              "主流数学界",
+              "实分析学家",
+              "测度论学家",
+              "拓扑学家"
+            ],
+            "alternatives": [
+              "可构成数学（Countable Choice, CC）",
+              "有限主义数学",
+              "直觉主义集合论"
+            ],
+            "community_vote": null,
+            "dispute_reason": "独立于ZF，部分数学家不接受（构造主义者、直觉主义者）",
+            "note": "选择公理在大多数现代数学中被接受和使用，但其在集合论基础中的独立性已被证明",
+            "rejected_by": [
+              "构造主义数学家",
+              "直觉主义数学家",
+              "部分集合论学家",
+              "有限主义数学家"
+            ],
+            "source": {
+              "reference": "Zermelo, 1904",
+              "title": "Beweis, dass jede Menge wohlgeordnet werden kann",
+              "type": "paper",
+              "year": "1904"
+            },
+            "status": "disputed",
+            "verification_date": "2026-05-07",
+            "verified_by": "EvoRule Team"
+          },
+          "dispute_reason": "独立于ZF，部分数学家不接受（构造主义者、直觉主义者）",
+          "rejected_by": [
+            "构造主义数学家",
+            "直觉主义数学家",
+            "部分集合论学家",
+            "有限主义数学家"
+          ],
+          "status": "disputed"
+        },
+        "domain": "mathematics",
+        "name_zh": "对任意非空集合的集合族，存在一个选择函数",
+        "notation_zh": "∀A(A≠∅ → ∃f:A→∪A∀B∈A(B≠∅ → f(B)∈B))",
+        "rule_id": "MATH-SET-AX-09",
+        "rule_type": "axiom",
+        "statement": "对任意非空集合的集合族，存在一个选择函数",
+        "subdomain": "set_theory"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "math",
+        "foundations",
+        "set_theory"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "mathematics",
+      "entry_id": "MATH-ALG-DEF-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "domain": "mathematics",
+        "name_zh": "群是一个集合G及其上的二元运算∘构成的代数结构",
+        "notation_zh": "(G,∘)是群 ⟺ ∀a,b,c∈G: (a∘b)∘c=a∘(b∘c) ∧ ∃e∀a: e∘a=a ∧ ∀a∃a⁻¹: a∘a⁻¹=e",
+        "rule_id": "MATH-ALG-DEF-01",
+        "rule_type": "definition",
+        "statement": "群是一个集合G及其上的二元运算∘构成的代数结构",
+        "subdomain": "algebra_abstract"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "math",
+        "algebra",
+        "abstract"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "mathematics",
+      "entry_id": "MATH-ALG-DEF-02",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "domain": "mathematics",
+        "name_zh": "阿贝尔群是满足交换律的群",
+        "notation_zh": "(G,∘)是阿贝尔群 ⟺ (G,∘)是群 ∧ ∀a,b∈G: a∘b=b∘a",
+        "rule_id": "MATH-ALG-DEF-02",
+        "rule_type": "definition",
+        "statement": "阿贝尔群是满足交换律的群",
+        "subdomain": "algebra_abstract"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "math",
+        "algebra",
+        "abstract"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "mathematics",
+      "entry_id": "MATH-ALG-DEF-03",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "domain": "mathematics",
+        "name_zh": "环是一个集合R及其上的两种运算",
+        "notation_zh": "(R,+,×)是环 ⟺ (R,+)是阿贝尔群 ∧ (R,×)是半群 ∧ ∀a,b,c∈R: a×(b+c)=a×b+a×c",
+        "rule_id": "MATH-ALG-DEF-03",
+        "rule_type": "definition",
+        "statement": "环是一个集合R及其上的两种运算",
+        "subdomain": "algebra_abstract"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "math",
+        "algebra",
+        "abstract"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "mathematics",
+      "entry_id": "MATH-ANA-DEF-02",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "domain": "mathematics",
+        "name_zh": "函数f在点x₀连续，当且仅当对任意ε>0，存在δ>0",
+        "notation_zh": "f在x₀连续 ⟺ ∀ε>0∃δ>0∀x: |x-x₀|<δ → |f(x)-f(x₀)|<ε",
+        "rule_id": "MATH-ANA-DEF-02",
+        "rule_type": "definition",
+        "statement": "函数f在点x₀连续，当且仅当对任意ε>0，存在δ>0",
+        "subdomain": "analysis_real"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "math",
+        "analysis",
+        "real"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "mathematics",
+      "entry_id": "MATH-GEO-DEF-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "domain": "mathematics",
+        "name_zh": "n维欧几里得空间ℝⁿ是赋予标准内积的n维实向量空间",
+        "notation_zh": "ℝⁿ = {(x₁,x₂,...,xₙ) | xᵢ∈ℝ}，内积⟨x,y⟩ = Σxᵢyᵢ",
+        "rule_id": "MATH-GEO-DEF-01",
+        "rule_type": "definition",
+        "statement": "n维欧几里得空间ℝⁿ是赋予标准内积的n维实向量空间",
+        "subdomain": "geometry_euclidean"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "math",
+        "geometry",
+        "euclidean"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "mathematics",
+      "entry_id": "MATH-GEO-AX-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "domain": "mathematics",
+        "name_zh": "给定一条直线和不在直线上的一点，过该点恰好存在一条与给定直线平行的直线",
+        "rule_id": "MATH-GEO-AX-01",
+        "rule_type": "axiom",
+        "statement": "给定一条直线和不在直线上的一点，过该点恰好存在一条与给定直线平行的直线",
+        "subdomain": "geometry_euclidean"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "math",
+        "geometry",
+        "euclidean"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "mathematics",
+      "entry_id": "MATH-GEO-THM-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "conditions": [
+          "三角形是直角三角形"
+        ],
+        "domain": "mathematics",
+        "name_zh": "在直角三角形中，直角边的平方和等于斜边的平方",
+        "notation_zh": "a² + b² = c²，其中c是直角对边",
+        "rule_id": "MATH-GEO-THM-01",
+        "rule_type": "theorem",
+        "statement": "在直角三角形中，直角边的平方和等于斜边的平方",
+        "subdomain": "geometry_euclidean"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "math",
+        "geometry",
+        "euclidean"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "mathematics",
+      "entry_id": "MATH-TOPO-DEF-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "domain": "mathematics",
+        "name_zh": "拓扑空间是一个集合X及其上满足以下条件的拓扑T组成：(1)空集和X在T中；(2)任意多个T中集合的并仍在T中；(3)有限多个T中集合的交仍在T中",
+        "notation_zh": "(X,T)是拓扑空间 ⟺ ∅,X∈T, 任意并∈T, 有限交∈T",
+        "rule_id": "MATH-TOPO-DEF-01",
+        "rule_type": "definition",
+        "statement": "拓扑空间是一个集合X及其上满足以下条件的拓扑T组成：(1)空集和X在T中；(2)任意多个T中集合的并仍在T中；(3)有限多个T中集合的交仍在T中",
+        "subdomain": "topology"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "math",
+        "topology",
+        "general"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "mathematics",
+      "entry_id": "MATH-TOPO-DEF-02",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "domain": "mathematics",
+        "name_zh": "设(X,T)和(Y,U)是拓扑空间，映射f:X→Y是连续的，当且仅当Y中每个开集的的原像在X中是开集",
+        "notation_zh": "f连续 ⟺ ∀U∈U: f^{-1}(U)∈T",
+        "rule_id": "MATH-TOPO-DEF-02",
+        "rule_type": "definition",
+        "statement": "设(X,T)和(Y,U)是拓扑空间，映射f:X→Y是连续的，当且仅当Y中每个开集的的原像在X中是开集",
+        "subdomain": "topology"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "math",
+        "topology",
+        "general"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "mathematics",
+      "entry_id": "MATH-TOPO-DEF-03",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "domain": "mathematics",
+        "name_zh": "拓扑空间X是豪斯多夫空间，当且仅当X中任意两个不同点都有不相交的开邻域",
+        "notation_zh": "X是T2空间 ⟺ ∀x≠y∈X, ∃U,V开: x∈U,y∈V,U∩V=∅",
+        "rule_id": "MATH-TOPO-DEF-03",
+        "rule_type": "definition",
+        "statement": "拓扑空间X是豪斯多夫空间，当且仅当X中任意两个不同点都有不相交的开邻域",
+        "subdomain": "topology"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "math",
+        "topology",
+        "general"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "mathematics",
+      "entry_id": "MATH-TOPO-THM-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "conditions": [
+          "X是豪斯多夫空间",
+          "序列{x_n}收敛"
+        ],
+        "domain": "mathematics",
+        "name_zh": "在豪斯多夫空间中，如果序列收敛，则其极限唯一",
+        "notation_zh": "x_n→x 且 x_n→y ⇒ x=y",
+        "rule_id": "MATH-TOPO-THM-01",
+        "rule_type": "theorem",
+        "statement": "在豪斯多夫空间中，如果序列收敛，则其极限唯一",
+        "subdomain": "topology"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "math",
+        "topology",
+        "general"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "mathematics",
+      "entry_id": "MATH-NT-DEF-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "domain": "mathematics",
+        "name_zh": "大于1的自然数p，如果只有1和p为其因子，则称p为素数",
+        "notation_zh": "p是素数 ⟺ p>1 ∧ ∀a,b: p=ab ⇒ a=1 或 b=1",
+        "rule_id": "MATH-NT-DEF-01",
+        "rule_type": "definition",
+        "statement": "大于1的自然数p，如果只有1和p为其因子，则称p为素数",
+        "subdomain": "number_theory"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "math",
+        "number_theory"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "mathematics",
+      "entry_id": "MATH-NT-THM-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "domain": "mathematics",
+        "name_zh": "素数的个数是无限的",
+        "notation_zh": "|{p : p是素数}| = ∞",
+        "rule_id": "MATH-NT-THM-01",
+        "rule_type": "theorem",
+        "statement": "素数的个数是无限的",
+        "subdomain": "number_theory"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "math",
+        "number_theory"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "mathematics",
+      "entry_id": "MATH-NT-THM-02",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "fact",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X2",
+        "conditions": [
+          "p是素数",
+          "a不是p的倍数"
+        ],
+        "domain": "mathematics",
+        "name_zh": "如果p是素数且a不是p的倍数，则a^(p-1) ≡ 1 (mod p)",
+        "notation_zh": "a^{p-1} ≡ 1 (mod p)",
+        "rule_id": "MATH-NT-THM-02",
+        "rule_type": "theorem",
+        "statement": "如果p是素数且a不是p的倍数，则a^(p-1) ≡ 1 (mod p)",
+        "subdomain": "number_theory"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "math",
+        "number_theory"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "mathematics",
+      "entry_id": "MATH-NT-THM-03",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "fact",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X2",
+        "conditions": [
+          "gcd(a,n)=1"
+        ],
+        "domain": "mathematics",
+        "name_zh": "如果a和n互素，则a^φ(n) ≡ 1 (mod n)，其中φ(n)是欧拉函数",
+        "notation_zh": "a^{φ(n)} ≡ 1 (mod n)",
+        "rule_id": "MATH-NT-THM-03",
+        "rule_type": "theorem",
+        "statement": "如果a和n互素，则a^φ(n) ≡ 1 (mod n)，其中φ(n)是欧拉函数",
+        "subdomain": "number_theory"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "math",
+        "number_theory"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "mathematics",
+      "entry_id": "MATH-LA-DEF-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "domain": "mathematics",
+        "name_zh": "线性空间是域F上的向量空间V，配备加法和标量乘法，满足加法交换群和标量乘法结合律等公理",
+        "notation_zh": "V是域F上的线性空间 ⟺ (V,+)是阿贝尔群 ∧ ∀a∈F,∀v∈V: a·v∈V",
+        "rule_id": "MATH-LA-DEF-01",
+        "rule_type": "definition",
+        "statement": "线性空间是域F上的向量空间V，配备加法和标量乘法，满足加法交换群和标量乘法结合律等公理",
+        "subdomain": "linear_algebra"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "math",
+        "linear_algebra"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "mathematics",
+      "entry_id": "MATH-LA-THM-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "conditions": [
+          "V是有限维线性空间"
+        ],
+        "domain": "mathematics",
+        "name_zh": "如果V是有限维线性空间，则V的所有基有相同的基数",
+        "notation_zh": "| BASIS(V) | = 常数",
+        "rule_id": "MATH-LA-THM-01",
+        "rule_type": "theorem",
+        "statement": "如果V是有限维线性空间，则V的所有基有相同的基数",
+        "subdomain": "linear_algebra"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "math",
+        "linear_algebra"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "mathematics",
+      "entry_id": "MATH-LA-THM-02",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "conditions": [
+          "A是n×n矩阵"
+        ],
+        "domain": "mathematics",
+        "name_zh": "行列式函数det是从n×n矩阵到数的多重线性映射，满足：det(I)=1，且两行相等则det=0",
+        "notation_zh": "det是多重线性alternating映射，det(I)=1",
+        "rule_id": "MATH-LA-THM-02",
+        "rule_type": "theorem",
+        "statement": "行列式函数det是从n×n矩阵到数的多重线性映射，满足：det(I)=1，且两行相等则det=0",
+        "subdomain": "linear_algebra"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "math",
+        "linear_algebra"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "mathematics",
+      "entry_id": "MATH-PROB-DEF-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "domain": "mathematics",
+        "name_zh": "概率空间由样本空间Ω、事件σ-代数F、概率测度P组成，满足P(Ω)=1，非负性，可列可加性",
+        "notation_zh": "(Ω,F,P)是概率空间 ⟺ P(Ω)=1, P(A)≥0, P(∪A_n)=ΣP(A_n)",
+        "rule_id": "MATH-PROB-DEF-01",
+        "rule_type": "definition",
+        "statement": "概率空间由样本空间Ω、事件σ-代数F、概率测度P组成，满足P(Ω)=1，非负性，可列可加性",
+        "subdomain": "probability"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "math",
+        "probability"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "mathematics",
+      "entry_id": "MATH-PROB-THM-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "conditions": [
+          "ΣP(A_n) < ∞"
+        ],
+        "domain": "mathematics",
+        "name_zh": "如果事件A_n满足ΣP(A_n)<∞，则这些事件只发生有限次的概率为1",
+        "notation_zh": "P(A_n i.o.) = 0 当 ΣP(A_n) < ∞",
+        "rule_id": "MATH-PROB-THM-01",
+        "rule_type": "theorem",
+        "statement": "如果事件A_n满足ΣP(A_n)<∞，则这些事件只发生有限次的概率为1",
+        "subdomain": "probability"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "math",
+        "probability"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "mathematics",
+      "entry_id": "MATH-PROB-THM-02",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "conditions": [
+          "X_i独立同分布",
+          "E[X_i]=μ",
+          "Var(X_i)<∞"
+        ],
+        "domain": "mathematics",
+        "name_zh": "如果X_1,X_2,...是独立同分布的随机变量，E[X_i]=μ，则样本均值依概率收敛到μ",
+        "notation_zh": "X̄_n → μ 依概率",
+        "rule_id": "MATH-PROB-THM-02",
+        "rule_type": "theorem",
+        "statement": "如果X_1,X_2,...是独立同分布的随机变量，E[X_i]=μ，则样本均值依概率收敛到μ",
+        "subdomain": "probability"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "math",
+        "probability"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "mathematics",
+      "entry_id": "MATH-CAT-DEF-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "domain": "mathematics",
+        "name_zh": "范畴C由对象类Ob(C)和态射类Hom(C)组成，配有结合的恒等态射",
+        "notation_zh": "范畴C = (Ob, Hom, ∘, id) 满足结合律和恒等律",
+        "rule_id": "MATH-CAT-DEF-01",
+        "rule_type": "definition",
+        "statement": "范畴C由对象类Ob(C)和态射类Hom(C)组成，配有结合的恒等态射",
+        "subdomain": "category_theory"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "math",
+        "category_theory"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "mathematics",
+      "entry_id": "MATH-CAT-DEF-02",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "domain": "mathematics",
+        "name_zh": "从范畴C到范畴D的函子F由对象映射F:Ob(C)→Ob(D)和态射映射F:Hom_C(A,B)→Hom_D(F(A),F(B))组成，保持恒等态射和复合",
+        "notation_zh": "F: C→D 满足 F(id_A)=id_{F(A)}, F(g∘f)=F(g)∘F(f)",
+        "rule_id": "MATH-CAT-DEF-02",
+        "rule_type": "definition",
+        "statement": "从范畴C到范畴D的函子F由对象映射F:Ob(C)→Ob(D)和态射映射F:Hom_C(A,B)→Hom_D(F(A),F(B))组成，保持恒等态射和复合",
+        "subdomain": "category_theory"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "math",
+        "category_theory"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "mathematics",
+      "entry_id": "MATH-CAT-THM-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "conditions": [
+          "C是小范畴"
+        ],
+        "domain": "mathematics",
+        "name_zh": "对于小范畴C，函子范畴[C^{op},Set]同构于C上的预层范畴",
+        "notation_zh": "y:C → [C^{op},Set] 是完全忠实的",
+        "rule_id": "MATH-CAT-THM-01",
+        "rule_type": "theorem",
+        "statement": "对于小范畴C，函子范畴[C^{op},Set]同构于C上的预层范畴",
+        "subdomain": "category_theory"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "math",
+        "category_theory"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "mathematics",
+      "entry_id": "MATH-MOL-THM-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "conditions": [
+          "T是一阶理论"
+        ],
+        "domain": "mathematics",
+        "name_zh": "如果一阶理论的每个有限子集都有模型，则整个理论有模型",
+        "notation_zh": "T的每个有限子集可满足 ⇒ T可满足",
+        "rule_id": "MATH-MOL-THM-01",
+        "rule_type": "theorem",
+        "statement": "如果一阶理论的每个有限子集都有模型，则整个理论有模型",
+        "subdomain": "logic"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "math",
+        "mathematical_logic"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "mathematics",
+      "entry_id": "MATH-MOL-THM-02",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "fact",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X2",
+        "conditions": [
+          "Γ是一阶公式集"
+        ],
+        "domain": "mathematics",
+        "name_zh": "一个一阶公式集是可满足的，当且仅当它是语法可证的（即能从空前提证明）",
+        "notation_zh": "Γ ⊢ φ ⟺ Γ ⊨ φ",
+        "rule_id": "MATH-MOL-THM-02",
+        "rule_type": "theorem",
+        "statement": "一个一阶公式集是可满足的，当且仅当它是语法可证的（即能从空前提证明）",
+        "subdomain": "logic"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "math",
+        "mathematical_logic"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "mathematics",
+      "entry_id": "MATH-MOL-THM-03",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "fact",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X2",
+        "conditions": [
+          "T是递归可枚举的一致理论",
+          "T足够强（包含皮亚诺算术）"
+        ],
+        "domain": "mathematics",
+        "name_zh": "任何足够强的递归可枚举的一致理论都是不完全的，即存在既不能证明也不能否定的命题",
+        "notation_zh": "∃φ: T ⊬ φ ∧ T ⊬ ¬φ",
+        "rule_id": "MATH-MOL-THM-03",
+        "rule_type": "theorem",
+        "statement": "任何足够强的递归可枚举的一致理论都是不完全的，即存在既不能证明也不能否定的命题",
+        "subdomain": "logic"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "math",
+        "mathematical_logic"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "mathematics",
+      "entry_id": "MATH-MEA-DEF-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "domain": "mathematics",
+        "name_zh": "集合X上的σ-代数Σ是X的子集族，满足：X∈Σ；对余封闭；对可数并封闭",
+        "notation_zh": "Σ是σ-代数 ⟺ X∈Σ, A∈Σ ⇒ A^c∈Σ, A_i∈Σ ⇒ ∪A_i∈Σ",
+        "rule_id": "MATH-MEA-DEF-01",
+        "rule_type": "definition",
+        "statement": "集合X上的σ-代数Σ是X的子集族，满足：X∈Σ；对余封闭；对可数并封闭",
+        "subdomain": "measure_theory"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "math",
+        "measure_theory"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "mathematics",
+      "entry_id": "MATH-MEA-THM-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "fact",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X2",
+        "conditions": [
+          "f_n → f 点点",
+          "|f_n| ≤ g, g可积"
+        ],
+        "domain": "mathematics",
+        "name_zh": "如果函数序列f_n点点收敛到f，且存在可积函数g使得|f_n|≤g，则f_n和f可积且∫f_n → ∫f",
+        "notation_zh": "∫|f_n - f| → 0",
+        "rule_id": "MATH-MEA-THM-01",
+        "rule_type": "theorem",
+        "statement": "如果函数序列f_n点点收敛到f，且存在可积函数g使得|f_n|≤g，则f_n和f可积且∫f_n → ∫f",
+        "subdomain": "measure_theory"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "math",
+        "measure_theory"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "mathematics",
+      "entry_id": "MATH-FUNC-DEF-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "domain": "mathematics",
+        "name_zh": "巴拿赫空间是装备范数的完备线性空间",
+        "notation_zh": "X是巴拿赫空间 ⟺ X是线性空间 ∧ ||·||是范数 ∧ X关于||·||完备",
+        "rule_id": "MATH-FUNC-DEF-01",
+        "rule_type": "definition",
+        "statement": "巴拿赫空间是装备范数的完备线性空间",
+        "subdomain": "functional_analysis"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "math",
+        "functional_analysis"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "mathematics",
+      "entry_id": "MATH-FUNC-DEF-02",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "domain": "mathematics",
+        "name_zh": "希尔伯特空间是装备内积的完备线性空间，且内积诱导的范数满足平行四边形恒等式",
+        "notation_zh": "H是希尔伯特空间 ⟺ H装备⟨·,·⟩, ⟨x,x⟩=||x||^2, H完备",
+        "rule_id": "MATH-FUNC-DEF-02",
+        "rule_type": "definition",
+        "statement": "希尔伯特空间是装备内积的完备线性空间，且内积诱导的范数满足平行四边形恒等式",
+        "subdomain": "functional_analysis"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "math",
+        "functional_analysis"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "mathematics",
+      "entry_id": "MATH-FUNC-THM-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "fact",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X2",
+        "conditions": [
+          "H是可分希尔伯特空间"
+        ],
+        "domain": "mathematics",
+        "name_zh": "每个希尔伯特空间同构于ℓ²(ℕ)（可分情况）",
+        "notation_zh": "H ≅ ℓ²(ℕ)",
+        "rule_id": "MATH-FUNC-THM-01",
+        "rule_type": "theorem",
+        "statement": "每个希尔伯特空间同构于ℓ²(ℕ)（可分情况）",
+        "subdomain": "functional_analysis"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "math",
+        "functional_analysis"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "mathematics",
+      "entry_id": "MATH-GRAPH-THM-02",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "conditions": [
+          "G是平面图"
+        ],
+        "domain": "mathematics",
+        "name_zh": "每个平面图都可以用不超过四种颜色着色，使得相邻的顶点颜色不同",
+        "notation_zh": "χ(G) ≤ 4 对所有平面图G",
+        "rule_id": "MATH-GRAPH-THM-02",
+        "rule_type": "theorem",
+        "statement": "每个平面图都可以用不超过四种颜色着色，使得相邻的顶点颜色不同",
+        "subdomain": "graph_theory"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "math",
+        "graph_theory"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "mathematics",
+      "entry_id": "MATH-STAT-DEF-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "fact",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X2",
+        "domain": "mathematics",
+        "name_zh": "对于未知参数θ，置信水平为1-α的置信区间是一个随机区间[T1,T2]，满足P(T1≤θ≤T2)≥1-α",
+        "notation_zh": "P(T1(X) ≤ θ ≤ T2(X)) ≥ 1-α",
+        "rule_id": "MATH-STAT-DEF-01",
+        "rule_type": "definition",
+        "statement": "对于未知参数θ，置信水平为1-α的置信区间是一个随机区间[T1,T2]，满足P(T1≤θ≤T2)≥1-α",
+        "subdomain": "statistics"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "math",
+        "statistics"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "mathematics",
+      "entry_id": "MATH-STAT-THM-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "fact",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X2",
+        "conditions": [
+          "X_i i.i.d.",
+          "E[X_i]=μ",
+          "Var(X_i)=σ^2<∞"
+        ],
+        "domain": "mathematics",
+        "name_zh": "如果X_1,...,X_n是独立同分布的随机变量，E[X_i]=μ, Var(X_i)=σ^2<∞，则样本均值X̄的标准化分布渐近正态分布N(0,1)",
+        "notation_zh": "(X̄_n - μ)/(σ/√n) → N(0,1)",
+        "rule_id": "MATH-STAT-THM-01",
+        "rule_type": "theorem",
+        "statement": "如果X_1,...,X_n是独立同分布的随机变量，E[X_i]=μ, Var(X_i)=σ^2<∞，则样本均值X̄的标准化分布渐近正态分布N(0,1)",
+        "subdomain": "statistics"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "math",
+        "statistics"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "computer_science",
+      "entry_id": "MATH-CX-DEF-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "domain": "computer_science",
+        "name_zh": "P是在确定性图灵机上多项式时间内可判定的语言类",
+        "notation_zh": "L ∈ P ⟺ ∃M: M在DTM上O(n^k)时间内判定L",
+        "rule_id": "MATH-CX-DEF-01",
+        "rule_type": "definition",
+        "statement": "P是在确定性图灵机上多项式时间内可判定的语言类",
+        "subdomain": "complexity"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "computer_science",
+        "complexity"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "computer_science",
+      "entry_id": "MATH-CX-DEF-02",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "domain": "computer_science",
+        "name_zh": "NP是非确定性图灵机上多项式时间内可判定的语言类，或在确定性图灵机上多项式时间可验证的语言类",
+        "notation_zh": "L ∈ NP ⟺ ∃V: V在DTM上O(n^k)时间内验证π",
+        "rule_id": "MATH-CX-DEF-02",
+        "rule_type": "definition",
+        "statement": "NP是非确定性图灵机上多项式时间内可判定的语言类，或在确定性图灵机上多项式时间可验证的语言类",
+        "subdomain": "complexity"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "computer_science",
+        "complexity"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "computer_science",
+      "entry_id": "MATH-COMP-DEF-02",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "domain": "computer_science",
+        "name_zh": "函数f:ℕ^k → ℕ是图灵可计算的，当且仅当存在通用图灵机可以计算f",
+        "notation_zh": "f可计算 ⟺ ∃M: M计算f",
+        "rule_id": "MATH-COMP-DEF-02",
+        "rule_type": "definition",
+        "statement": "函数f:ℕ^k → ℕ是图灵可计算的，当且仅当存在通用图灵机可以计算f",
+        "subdomain": "computability"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "computer_science",
+        "computability"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "computer_science",
+      "entry_id": "MATH-CX-THM-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "domain": "computer_science",
+        "name_zh": "是否P=NP是计算机科学中最重要的开放问题之一",
+        "notation_zh": "P = NP ? 未解决",
+        "rule_id": "MATH-CX-THM-01",
+        "rule_type": "theorem",
+        "statement": "是否P=NP是计算机科学中最重要的开放问题之一",
+        "subdomain": "complexity"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "computer_science",
+        "complexity"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "computer_science",
+      "entry_id": "MATH-CX-THM-02",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "conditions": [
+          "SAT ∈ NP",
+          "所有NP问题可归约到SAT"
+        ],
+        "domain": "computer_science",
+        "name_zh": "布尔可满足性(SAT)问题是NP完全的",
+        "notation_zh": "SAT是NP完全的",
+        "rule_id": "MATH-CX-THM-02",
+        "rule_type": "theorem",
+        "statement": "布尔可满足性(SAT)问题是NP完全的",
+        "subdomain": "complexity"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "computer_science",
+        "complexity"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "computer_science",
+      "entry_id": "MATH-COMP-THM-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "domain": "computer_science",
+        "name_zh": "所有合理的计算模型都等价于图灵机，即一个函数是直觉可计算的，当且仅当它是图灵可计算的",
+        "notation_zh": "直觉可计算 ⟺ 图灵可计算",
+        "rule_id": "MATH-COMP-THM-01",
+        "rule_type": "theorem",
+        "statement": "所有合理的计算模型都等价于图灵机，即一个函数是直觉可计算的，当且仅当它是图灵可计算的",
+        "subdomain": "computability"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "computer_science",
+        "computability"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "computer_science",
+      "entry_id": "MATH-COMP-THM-02",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "domain": "computer_science",
+        "name_zh": "不存在可以判定任意图灵机是否停机的图灵机",
+        "notation_zh": "HALT不存在",
+        "rule_id": "MATH-COMP-THM-02",
+        "rule_type": "theorem",
+        "statement": "不存在可以判定任意图灵机是否停机的图灵机",
+        "subdomain": "computability"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "computer_science",
+        "computability"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "computer_science",
+      "entry_id": "MATH-INFO-THM-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "domain": "computer_science",
+        "name_zh": "对于离散无记忆信道，存在一个可达的传输速率C（信道容量），使得任意小于C的速率都可以渐近无错传输",
+        "notation_zh": "R < C ⇒ ∃编码: 误码率 → 0",
+        "rule_id": "MATH-INFO-THM-01",
+        "rule_type": "theorem",
+        "statement": "对于离散无记忆信道，存在一个可达的传输速率C（信道容量），使得任意小于C的速率都可以渐近无错传输",
+        "subdomain": "information_theory"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "computer_science",
+        "information_theory"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "mathematics",
+      "entry_id": "MATH-CS-LINK-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "conditions": [
+          "直觉主义逻辑与递归函数论"
+        ],
+        "domain": "mathematics",
+        "name_zh": "直觉可计算函数等价于图灵可计算函数，建立了数理逻辑与可计算理论的桥梁",
+        "notation_zh": "直觉可计算 ⟺ 图灵可计算",
+        "rule_id": "MATH-CS-LINK-01",
+        "rule_type": "theorem",
+        "statement": "直觉可计算函数等价于图灵可计算函数，建立了数理逻辑与可计算理论的桥梁",
+        "subdomain": "cross_domain"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "math",
+        "links",
+        "interdisciplinary"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "mathematics",
+      "entry_id": "MATH-CS-LINK-02",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "conditions": [
+          "直觉主义逻辑",
+          "类型理论"
+        ],
+        "domain": "mathematics",
+        "name_zh": "数理逻辑中的命题与类型理论中的类型等价，建立了逻辑与编程语言的桥梁",
+        "notation_zh": "命题 ≡ 类型, 证明 ≡ 程序",
+        "rule_id": "MATH-CS-LINK-02",
+        "rule_type": "theorem",
+        "statement": "数理逻辑中的命题与类型理论中的类型等价，建立了逻辑与编程语言的桥梁",
+        "subdomain": "cross_domain"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "math",
+        "links",
+        "interdisciplinary"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "computer_science",
+      "entry_id": "CS-LINK-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "conditions": [
+          "确定性图灵机模型"
+        ],
+        "domain": "computer_science",
+        "name_zh": "时间复杂度存在严格的层级结构",
+        "notation_zh": "TIME(t(n)) ⊂ TIME(t(n)^2) 当 t(n) ≥ n",
+        "rule_id": "CS-LINK-01",
+        "rule_type": "theorem",
+        "statement": "时间复杂度存在严格的层级结构",
+        "subdomain": "cross_domain"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "computer_science",
+        "links",
+        "interdisciplinary"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "computer_science",
+      "entry_id": "CS-LINK-02",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "conditions": [
+          "约束条件",
+          "熵最大化"
+        ],
+        "domain": "computer_science",
+        "name_zh": "在给定约束下，熵最大的概率分布是最佳选择",
+        "notation_zh": "最大化 H(X) 在约束条件下",
+        "rule_id": "CS-LINK-02",
+        "rule_type": "theorem",
+        "statement": "在给定约束下，熵最大的概率分布是最佳选择",
+        "subdomain": "cross_domain"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "computer_science",
+        "links",
+        "interdisciplinary"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "mathematics",
+      "entry_id": "MATH-DE-THM-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "conditions": [
+          "f连续",
+          "f关于y满足Lipschitz条件"
+        ],
+        "domain": "mathematics",
+        "name_zh": "如果f(x,y)在矩形区域上连续且关于y满足Lipschitz条件，则初值问题y'=f(x,y), y(x0)=y0有唯一解",
+        "notation_zh": "初值问题存在唯一解",
+        "rule_id": "MATH-DE-THM-01",
+        "rule_type": "theorem",
+        "statement": "如果f(x,y)在矩形区域上连续且关于y满足Lipschitz条件，则初值问题y'=f(x,y), y(x0)=y0有唯一解",
+        "subdomain": "differential_equations"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "math",
+        "differential_equations"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "mathematics",
+      "entry_id": "MATH-AT-DEF-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "domain": "mathematics",
+        "name_zh": "两个连续映射f,g:X→Y同伦，当存在连续映射F:X×[0,1]→Y使得F(x,0)=f(x), F(x,1)=g(x)",
+        "notation_zh": "f ≃ g ⟺ ∃F: f → g 连续同伦",
+        "rule_id": "MATH-AT-DEF-01",
+        "rule_type": "definition",
+        "statement": "两个连续映射f,g:X→Y同伦，当存在连续映射F:X×[0,1]→Y使得F(x,0)=f(x), F(x,1)=g(x)",
+        "subdomain": "algebraic_topology"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "math",
+        "algebraic_topology"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "mathematics",
+      "entry_id": "MATH-AT-DEF-02",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "domain": "mathematics",
+        "name_zh": "道路连通空间X的基本群π1(X,x0)由X中以x0为基点的闭路的同伦类组成",
+        "notation_zh": "π1(X,x0) = {[γ] : γ是基点为x0的闭路}",
+        "rule_id": "MATH-AT-DEF-02",
+        "rule_type": "definition",
+        "statement": "道路连通空间X的基本群π1(X,x0)由X中以x0为基点的闭路的同伦类组成",
+        "subdomain": "algebraic_topology"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "math",
+        "algebraic_topology"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "mathematics",
+      "entry_id": "MATH-AT-THM-02",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "conditions": [
+          "γ是连续简单闭曲线"
+        ],
+        "domain": "mathematics",
+        "name_zh": "平面或球面上任何连续简单闭曲线将平面或球面分成内外两部分",
+        "notation_zh": "R^2 \\ γ 有两个连通分支",
+        "rule_id": "MATH-AT-THM-02",
+        "rule_type": "theorem",
+        "statement": "平面或球面上任何连续简单闭曲线将平面或球面分成内外两部分",
+        "subdomain": "algebraic_topology"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "math",
+        "algebraic_topology"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "mathematics",
+      "entry_id": "MATH-RG-DEF-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "domain": "mathematics",
+        "name_zh": "黎曼流形是装备黎曼度量g的流形M，g在每点给出切空间的对称、正定双线性型",
+        "notation_zh": "(M,g)是黎曼流形 ⟺ g_p是T_pM上的正定对称双线性型",
+        "rule_id": "MATH-RG-DEF-01",
+        "rule_type": "definition",
+        "statement": "黎曼流形是装备黎曼度量g的流形M，g在每点给出切空间的对称、正定双线性型",
+        "subdomain": "geometry_riemannian"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "math",
+        "riemannian_geometry"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "mathematics",
+      "entry_id": "MATH-COMB-THM-02",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "domain": "mathematics",
+        "name_zh": "如果将n+1个物体放入n个盒子，则至少有一个盒子包含至少两个物体",
+        "notation_zh": "n+1物体 → n盒子 ⇒ ∃盒子: ≥2物体",
+        "rule_id": "MATH-COMB-THM-02",
+        "rule_type": "theorem",
+        "statement": "如果将n+1个物体放入n个盒子，则至少有一个盒子包含至少两个物体",
+        "subdomain": "combinatorics"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "math",
+        "combinatorics"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "mathematics",
+      "entry_id": "MATH-OPT-DEF-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "domain": "mathematics",
+        "name_zh": "函数f是凸的，当且仅当对任意x,y和λ∈[0,1]，有f(λx+(1-λ)y) ≤ λf(x)+(1-λ)f(y)",
+        "notation_zh": "f凸 ⟺ ∀x,y,λ∈[0,1]: f(λx+(1-λ)y) ≤ λf(x)+(1-λ)f(y)",
+        "rule_id": "MATH-OPT-DEF-01",
+        "rule_type": "definition",
+        "statement": "函数f是凸的，当且仅当对任意x,y和λ∈[0,1]，有f(λx+(1-λ)y) ≤ λf(x)+(1-λ)f(y)",
+        "subdomain": "optimization"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "math",
+        "optimization"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "mathematics",
+      "entry_id": "MATH-AG-THM-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "conditions": [
+          "k是域",
+          "I是k[x1,...,xn]的理想"
+        ],
+        "domain": "mathematics",
+        "name_zh": "每个域上的多项式理想都是有限生成的",
+        "notation_zh": "每个理想I ⊂ k[x1,...,xn]有有限生成元",
+        "rule_id": "MATH-AG-THM-01",
+        "rule_type": "theorem",
+        "statement": "每个域上的多项式理想都是有限生成的",
+        "subdomain": "algebraic_geometry"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "math",
+        "algebraic_geometry"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "mathematics",
+      "entry_id": "MATH-DYN-DEF-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "domain": "mathematics",
+        "name_zh": "混沌系统是对初始条件敏感、拓扑传递、有稠密轨道的确定性系统",
+        "notation_zh": "混沌 = 敏感依赖 + 拓扑传递 + 稠密轨道",
+        "rule_id": "MATH-DYN-DEF-01",
+        "rule_type": "definition",
+        "statement": "混沌系统是对初始条件敏感、拓扑传递、有稠密轨道的确定性系统",
+        "subdomain": "dynamical_systems"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "math",
+        "dynamical_systems"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "mathematics",
+      "entry_id": "MATH-DYN-THM-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "conditions": [
+          "f:I→I连续",
+          "f有3周期点"
+        ],
+        "domain": "mathematics",
+        "name_zh": "区间I上连续映射f如果有3周期点，则f是混沌的",
+        "notation_zh": "周期3 ⇒ 混沌",
+        "rule_id": "MATH-DYN-THM-01",
+        "rule_type": "theorem",
+        "statement": "区间I上连续映射f如果有3周期点，则f是混沌的",
+        "subdomain": "dynamical_systems"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "math",
+        "dynamical_systems"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "physics",
+      "entry_id": "PHY-THR-PRIN-02",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "fact",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X2",
+        "conditions": [
+          "实际热力学过程"
+        ],
+        "domain": "physics",
+        "name_zh": "热量不能自发地从低温物体传递到高温物体",
+        "notation_zh": "ΔS ≥ 0",
+        "rule_id": "PHY-THR-PRIN-02",
+        "rule_type": "formula",
+        "source_ref": "Clausius, 1850; Kelvin, 1851",
+        "statement": "热量不能自发地从低温物体传递到高温物体",
+        "subdomain": "foundations"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "physics",
+        "foundations",
+        "thermodynamics",
+        "所有热力学过程"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "physics",
+      "entry_id": "PHY-THR-PRIN-03",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "fact",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X2",
+        "domain": "physics",
+        "name_zh": "绝对零度不可达到",
+        "notation_zh": "S → 0 as T → 0",
+        "rule_id": "PHY-THR-PRIN-03",
+        "rule_type": "formula",
+        "source_ref": "Nernst, 1906",
+        "statement": "绝对零度不可达到",
+        "subdomain": "foundations"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "physics",
+        "foundations",
+        "thermodynamics",
+        "所有物质"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "physics",
+      "entry_id": "PHY-QM-PRIN-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "fact",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X2",
+        "conditions": [
+          "量子系统"
+        ],
+        "domain": "physics",
+        "name_zh": "粒子的位置和动量不能同时被精确测定，不确定性乘积有下限",
+        "notation_zh": "ΔxΔp ≥ ℏ/2",
+        "rule_id": "PHY-QM-PRIN-01",
+        "rule_type": "formula",
+        "source_ref": "Heisenberg, 1927",
+        "statement": "粒子的位置和动量不能同时被精确测定，不确定性乘积有下限",
+        "subdomain": "foundations"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "physics",
+        "foundations",
+        "quantum_mechanics",
+        "量子尺度"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "physics",
+      "entry_id": "PHY-REL-THE-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "惯性参考系"
+        ],
+        "domain": "physics",
+        "name_zh": "所有惯性参考系中物理定律形式相同；光速在所有惯性参考系中相同",
+        "rule_id": "PHY-REL-THE-01",
+        "rule_type": "formula",
+        "source_ref": "Einstein, 1905",
+        "statement": "所有惯性参考系中物理定律形式相同；光速在所有惯性参考系中相同",
+        "subdomain": "theory"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "physics",
+        "theory",
+        "special_relativity",
+        "高速 (v → c)"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "physics",
+      "entry_id": "PHY-STA-PRIN-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "fact",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X2",
+        "conditions": [
+          "经典统计",
+          "平衡态"
+        ],
+        "domain": "physics",
+        "name_zh": "在平衡态下，系统处于各能级的概率正比于exp(-E/kT)",
+        "notation_zh": "P(E) ∝ e^(-E/kT)",
+        "rule_id": "PHY-STA-PRIN-01",
+        "rule_type": "formula",
+        "source_ref": "Boltzmann, 1877",
+        "statement": "在平衡态下，系统处于各能级的概率正比于exp(-E/kT)",
+        "subdomain": "foundations"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "physics",
+        "foundations",
+        "statistical_physics",
+        "经典系统"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "physics",
+      "entry_id": "PHY-STA-CON-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "fact",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X2",
+        "conditions": [
+          "孤立系统",
+          "平衡态"
+        ],
+        "domain": "physics",
+        "name_zh": "孤立系统的熵只能增加或保持不变，绝不会减少",
+        "notation_zh": "ΔS ≥ 0",
+        "rule_id": "PHY-STA-CON-01",
+        "rule_type": "formula",
+        "source_ref": "Clausius, 1865",
+        "statement": "孤立系统的熵只能增加或保持不变，绝不会减少",
+        "subdomain": "foundations"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "physics",
+        "foundations",
+        "statistical_physics",
+        "所有系统"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "physics",
+      "entry_id": "PHY-NUC-CON-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "核反应"
+        ],
+        "domain": "physics",
+        "name_zh": "在核反应中，核子总数（质子数+中子数）保持守恒",
+        "rule_id": "PHY-NUC-CON-01",
+        "rule_type": "formula",
+        "source_ref": "Nuclear Physics",
+        "statement": "在核反应中，核子总数（质子数+中子数）保持守恒",
+        "subdomain": "foundations"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "physics",
+        "foundations",
+        "nuclear_physics"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "physics",
+      "entry_id": "PHY-PAR-SYM-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "fact",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X2",
+        "conditions": [
+          "电磁力和强相互作用"
+        ],
+        "domain": "physics",
+        "name_zh": "物理定律在粒子-反粒子变换下保持不变",
+        "notation_zh": "C: particle ↔ antiparticle",
+        "rule_id": "PHY-PAR-SYM-01",
+        "rule_type": "formula",
+        "source_ref": "Particle Physics",
+        "statement": "物理定律在粒子-反粒子变换下保持不变",
+        "subdomain": "foundations"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "physics",
+        "foundations",
+        "particle_physics"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "physics",
+      "entry_id": "PHY-PAR-SYM-02",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "fact",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X2",
+        "conditions": [
+          "强相互作用和电磁相互作用"
+        ],
+        "domain": "physics",
+        "name_zh": "在弱相互作用被发现之前，物理定律在空间反演下保持不变",
+        "notation_zh": "P: (x,y,z) → (-x,-y,-z)",
+        "rule_id": "PHY-PAR-SYM-02",
+        "rule_type": "formula",
+        "source_ref": "Lee & Yang, 1956",
+        "statement": "在弱相互作用被发现之前，物理定律在空间反演下保持不变",
+        "subdomain": "foundations"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "physics",
+        "foundations",
+        "particle_physics"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "physics",
+      "entry_id": "PHY-WAV-PRIN-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "所有波动现象"
+        ],
+        "domain": "physics",
+        "name_zh": "波前上的每一点都可以看作新的波源，发出子波，这些子波的包络形成新的波前",
+        "rule_id": "PHY-WAV-PRIN-01",
+        "rule_type": "formula",
+        "source_ref": "Huygens, 1678",
+        "statement": "波前上的每一点都可以看作新的波源，发出子波，这些子波的包络形成新的波前",
+        "subdomain": "foundations"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "physics",
+        "foundations",
+        "wave_physics"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "physics",
+      "entry_id": "PHY-SOL-PRIN-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "conditions": [
+          "晶体固体"
+        ],
+        "domain": "physics",
+        "name_zh": "固体中电子的能级形成允许带和禁止带，电子填充遵循泡利不相容原理",
+        "notation_zh": "E(k) = 允许带/禁止带",
+        "rule_id": "PHY-SOL-PRIN-01",
+        "rule_type": "formula",
+        "source_ref": "Bloch, 1928",
+        "statement": "固体中电子的能级形成允许带和禁止带，电子填充遵循泡利不相容原理",
+        "subdomain": "foundations"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "physics",
+        "foundations",
+        "solid_state",
+        "固体尺度"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "physics",
+      "entry_id": "PHY-SOL-APP-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "fact",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X2",
+        "conditions": [
+          "低温极限"
+        ],
+        "domain": "physics",
+        "name_zh": "固体比热容在低温下与温度的三次方成正比",
+        "notation_zh": "C ∝ T³ (T << θ_D)",
+        "rule_id": "PHY-SOL-APP-01",
+        "rule_type": "formula",
+        "source_ref": "Debye, 1912",
+        "statement": "固体比热容在低温下与温度的三次方成正比",
+        "subdomain": "approximation"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "physics",
+        "approximation",
+        "solid_state",
+        "经典/量子"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "physics",
+      "entry_id": "PHY-AST-LAW-02",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "fact",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X2",
+        "conditions": [
+          "太阳系行星"
+        ],
+        "domain": "physics",
+        "name_zh": "行星轨道周期的平方与轨道半长轴的立方成正比",
+        "notation_zh": "T² ∝ a³",
+        "rule_id": "PHY-AST-LAW-02",
+        "rule_type": "empirical_law",
+        "source_ref": "Kepler, 1619",
+        "statement": "行星轨道周期的平方与轨道半长轴的立方成正比",
+        "subdomain": "empirical"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "physics",
+        "empirical",
+        "celestial_mechanics"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "physics",
+      "entry_id": "PHY-AST-THE-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "大尺度宇宙"
+        ],
+        "domain": "physics",
+        "name_zh": "在大尺度上，宇宙是均匀且各向同性的",
+        "rule_id": "PHY-AST-THE-01",
+        "rule_type": "formula",
+        "source_ref": "Cosmology",
+        "statement": "在大尺度上，宇宙是均匀且各向同性的",
+        "subdomain": "theory"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "physics",
+        "theory",
+        "cosmology",
+        "宇宙尺度"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "physics",
+      "entry_id": "PHY-PLS-PRIN-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "等离子体"
+        ],
+        "domain": "physics",
+        "name_zh": "等离子体中正负电荷密度近似相等，存在极小的不平衡会产生强大的电场",
+        "rule_id": "PHY-PLS-PRIN-01",
+        "rule_type": "formula",
+        "source_ref": "Plasma Physics",
+        "statement": "等离子体中正负电荷密度近似相等，存在极小的不平衡会产生强大的电场",
+        "subdomain": "foundations"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "physics",
+        "foundations",
+        "plasma_physics"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "physics",
+      "entry_id": "PHY-CON-PRIN-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "常规超导体"
+        ],
+        "domain": "physics",
+        "name_zh": "电子通过声子交换形成库珀对，导致超导现象",
+        "rule_id": "PHY-CON-PRIN-01",
+        "rule_type": "formula",
+        "source_ref": "Bardeen, Cooper, Schrieffer, 1957",
+        "statement": "电子通过声子交换形成库珀对，导致超导现象",
+        "subdomain": "foundations"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "physics",
+        "foundations",
+        "condensed_matter",
+        "低温"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "physics",
+      "entry_id": "PHY-ATM-PRIN-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "量子系统"
+        ],
+        "domain": "physics",
+        "name_zh": "量子理论在大量子数极限下趋近于经典理论",
+        "rule_id": "PHY-ATM-PRIN-01",
+        "rule_type": "formula",
+        "source_ref": "Bohr, 1918",
+        "statement": "量子理论在大量子数极限下趋近于经典理论",
+        "subdomain": "foundations"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "physics",
+        "foundations",
+        "atomic_physics",
+        "量子到经典的过渡"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "physics",
+      "entry_id": "PHY-MOL-PRIN-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "双原子分子"
+        ],
+        "domain": "physics",
+        "name_zh": "原子轨道线性组合形成分子轨道，电子填充遵循能量最低原理",
+        "rule_id": "PHY-MOL-PRIN-01",
+        "rule_type": "formula",
+        "source_ref": "MO Theory, 1930s",
+        "statement": "原子轨道线性组合形成分子轨道，电子填充遵循能量最低原理",
+        "subdomain": "foundations"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "physics",
+        "foundations",
+        "molecular_physics"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "physics",
+      "entry_id": "PHY-OPT-PRIN-03",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "conditions": [
+          "所有波动"
+        ],
+        "domain": "physics",
+        "name_zh": "光波遇到障碍物时，会偏离直线传播，产生衍射现象",
+        "notation_zh": "单缝衍射: a sinθ = mλ",
+        "rule_id": "PHY-OPT-PRIN-03",
+        "rule_type": "formula",
+        "source_ref": "Fresnel, 1815",
+        "statement": "光波遇到障碍物时，会偏离直线传播，产生衍射现象",
+        "subdomain": "foundations"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "physics",
+        "foundations",
+        "optics"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "physics",
+      "entry_id": "PHY-OPT-APP-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "fact",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X2",
+        "conditions": [
+          "近轴光线"
+        ],
+        "domain": "physics",
+        "name_zh": "在近轴条件下，光线的传播可以用简化的近似公式描述",
+        "notation_zh": "sinθ ≈ θ, cosθ ≈ 1",
+        "rule_id": "PHY-OPT-APP-01",
+        "rule_type": "formula",
+        "source_ref": "Geometric Optics",
+        "statement": "在近轴条件下，光线的传播可以用简化的近似公式描述",
+        "subdomain": "approximation"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "physics",
+        "approximation",
+        "optics",
+        "光学系统设计"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "physics",
+      "entry_id": "PHY-QM-PRIN-04",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "conditions": [
+          "量子测量"
+        ],
+        "domain": "physics",
+        "name_zh": "测量物理量时，测量值只能是算符的本征值，测量后波函数坍缩到对应的本征态",
+        "notation_zh": "测量值 = ⟨ψ|A|ψ⟩",
+        "rule_id": "PHY-QM-PRIN-04",
+        "rule_type": "formula",
+        "source_ref": "Quantum Mechanics",
+        "statement": "测量物理量时，测量值只能是算符的本征值，测量后波函数坍缩到对应的本征态",
+        "subdomain": "foundations"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "physics",
+        "foundations",
+        "quantum_mechanics"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "physics",
+      "entry_id": "PHY-QM-APP-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "弱场近似"
+        ],
+        "domain": "physics",
+        "name_zh": "在弱场情况下，量子系统的行为可以用半经典近似描述",
+        "rule_id": "PHY-QM-APP-01",
+        "rule_type": "formula",
+        "source_ref": "Quantum Mechanics",
+        "statement": "在弱场情况下，量子系统的行为可以用半经典近似描述",
+        "subdomain": "approximation"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "physics",
+        "approximation",
+        "quantum_mechanics"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "physics",
+      "entry_id": "PHY-STA-APP-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "fact",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X2",
+        "conditions": [
+          "经典极限",
+          "低频"
+        ],
+        "domain": "physics",
+        "name_zh": "经典统计力学中，黑体辐射能量密度与频率的平方成正比",
+        "notation_zh": "ρ(ν,T) ∝ ν²T",
+        "rule_id": "PHY-STA-APP-01",
+        "rule_type": "formula",
+        "source_ref": "Rayleigh, 1900; Jeans, 1905",
+        "statement": "经典统计力学中，黑体辐射能量密度与频率的平方成正比",
+        "subdomain": "approximation"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "physics",
+        "approximation",
+        "statistical_physics",
+        "经典"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "physics",
+      "entry_id": "PHY-CLA-APP-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "fact",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X2",
+        "conditions": [
+          "小角度极限"
+        ],
+        "domain": "physics",
+        "name_zh": "当角度很小时，sinθ ≈ θ, cosθ ≈ 1, tanθ ≈ θ",
+        "notation_zh": "sinθ ≈ θ",
+        "rule_id": "PHY-CLA-APP-01",
+        "rule_type": "formula",
+        "source_ref": "Mechanics",
+        "statement": "当角度很小时，sinθ ≈ θ, cosθ ≈ 1, tanθ ≈ θ",
+        "subdomain": "approximation"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "physics",
+        "approximation",
+        "classical_mechanics"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "physics",
+      "entry_id": "PHY-NUC-LAW-02",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "fact",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X2",
+        "conditions": [
+          "稳定原子核"
+        ],
+        "domain": "physics",
+        "name_zh": "原子核的结合能与核子数近似成正比",
+        "notation_zh": "E_B ≈ aA - bA^(2/3) - cZ²/A^(1/3)",
+        "rule_id": "PHY-NUC-LAW-02",
+        "rule_type": "empirical_law",
+        "source_ref": "Nuclear Physics",
+        "statement": "原子核的结合能与核子数近似成正比",
+        "subdomain": "empirical"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "physics",
+        "empirical",
+        "nuclear_physics"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "physics",
+      "entry_id": "PHY-NUC-CON-02",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "核反应"
+        ],
+        "domain": "physics",
+        "name_zh": "在核反应中，总电荷数保持守恒",
+        "rule_id": "PHY-NUC-CON-02",
+        "rule_type": "formula",
+        "source_ref": "Nuclear Physics",
+        "statement": "在核反应中，总电荷数保持守恒",
+        "subdomain": "foundations"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "physics",
+        "foundations",
+        "nuclear_physics"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "physics",
+      "entry_id": "PHY-PAR-SYM-03",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "fact",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X2",
+        "conditions": [
+          "强相互作用和电磁相互作用"
+        ],
+        "domain": "physics",
+        "name_zh": "在某些条件下，物理定律在电荷共轭和空间反演联合变换下保持不变",
+        "notation_zh": "CP: particle ↔ antiparticle + P",
+        "rule_id": "PHY-PAR-SYM-03",
+        "rule_type": "formula",
+        "source_ref": "Lee & Steinberger, 1956",
+        "statement": "在某些条件下，物理定律在电荷共轭和空间反演联合变换下保持不变",
+        "subdomain": "foundations"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "physics",
+        "foundations",
+        "particle_physics"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "physics",
+      "entry_id": "PHY-PAR-PRIN-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "domain": "physics",
+        "name_zh": "强子由夸克和反夸克组成，夸克有六种味",
+        "rule_id": "PHY-PAR-PRIN-01",
+        "rule_type": "formula",
+        "source_ref": "Gell-Mann, 1964",
+        "statement": "强子由夸克和反夸克组成，夸克有六种味",
+        "subdomain": "foundations"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "physics",
+        "foundations",
+        "particle_physics"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "physics",
+      "entry_id": "PHY-WAV-PRIN-02",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "线性介质"
+        ],
+        "domain": "physics",
+        "name_zh": "当两个或多个波在空间某点相遇时，该点的合位移是各个波单独引起位移的矢量和",
+        "rule_id": "PHY-WAV-PRIN-02",
+        "rule_type": "formula",
+        "source_ref": "Wave Mechanics",
+        "statement": "当两个或多个波在空间某点相遇时，该点的合位移是各个波单独引起位移的矢量和",
+        "subdomain": "foundations"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "physics",
+        "foundations",
+        "wave_physics"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "physics",
+      "entry_id": "PHY-SND-LAW-02",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "conditions": [
+          "各种介质"
+        ],
+        "domain": "physics",
+        "name_zh": "声波在介质中的传播速度与介质的弹性模量和密度有关",
+        "notation_zh": "v = √(E/ρ) (固体); v = √(γP/ρ) (气体)",
+        "rule_id": "PHY-SND-LAW-02",
+        "rule_type": "empirical_law",
+        "source_ref": "Acoustics",
+        "statement": "声波在介质中的传播速度与介质的弹性模量和密度有关",
+        "subdomain": "empirical"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "physics",
+        "empirical",
+        "acoustics"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "physics",
+      "entry_id": "PHY-SND-LAW-03",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "fact",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X2",
+        "conditions": [
+          "点声源",
+          "球面波"
+        ],
+        "domain": "physics",
+        "name_zh": "点声源发出的声波，声强与距离平方成反比",
+        "notation_zh": "I ∝ 1/r²",
+        "rule_id": "PHY-SND-LAW-03",
+        "rule_type": "empirical_law",
+        "source_ref": "Acoustics",
+        "statement": "点声源发出的声波，声强与距离平方成反比",
+        "subdomain": "empirical"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "physics",
+        "empirical",
+        "acoustics"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "physics",
+      "entry_id": "PHY-QFT-CON-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "domain": "physics",
+        "name_zh": "在量子场论中，能量-动量张量守恒对应时空平移对称性",
+        "rule_id": "PHY-QFT-CON-01",
+        "rule_type": "formula",
+        "source_ref": "QFT textbooks",
+        "statement": "在量子场论中，能量-动量张量守恒对应时空平移对称性",
+        "subdomain": "foundations"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "physics",
+        "foundations",
+        "quantum_field_theory"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "physics",
+      "entry_id": "PHY-SEM-LAW-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "半导体材料"
+        ],
+        "domain": "physics",
+        "name_zh": "半导体中载流子浓度随温度升高而增加",
+        "rule_id": "PHY-SEM-LAW-01",
+        "rule_type": "empirical_law",
+        "source_ref": "Semiconductor Physics",
+        "statement": "半导体中载流子浓度随温度升高而增加",
+        "subdomain": "empirical"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "physics",
+        "empirical",
+        "semiconductors"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "physics",
+      "entry_id": "PHY-SEM-PRIN-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "PN结"
+        ],
+        "domain": "physics",
+        "name_zh": "PN结具有单向导电性，正向偏置时导通，反向偏置时截止",
+        "rule_id": "PHY-SEM-PRIN-01",
+        "rule_type": "formula",
+        "source_ref": "Semiconductor Physics",
+        "statement": "PN结具有单向导电性，正向偏置时导通，反向偏置时截止",
+        "subdomain": "foundations"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "physics",
+        "foundations",
+        "semiconductors"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-GEN-LAW-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "主族元素"
+        ],
+        "domain": "chemistry",
+        "name_zh": "元素的性质随原子序数（核电荷数）呈周期性变化",
+        "rule_id": "CHEM-GEN-LAW-01",
+        "rule_type": "law",
+        "source_ref": "Mendeleev, 1869",
+        "statement": "元素的性质随原子序数（核电荷数）呈周期性变化",
+        "subdomain": "general"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "general",
+        "periodic_properties",
+        "所有元素",
+        "原子半径、电负性、化合价"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-GEN-PRIN-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "fact",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X2",
+        "conditions": [
+          "多电子原子",
+          "基态"
+        ],
+        "domain": "chemistry",
+        "name_zh": "电子在原子轨道中填充时，总是先占据能量最低的轨道",
+        "notation_zh": "Aufbau principle",
+        "rule_id": "CHEM-GEN-PRIN-01",
+        "rule_type": "formula",
+        "source_ref": "Quantum Chemistry",
+        "statement": "电子在原子轨道中填充时，总是先占据能量最低的轨道",
+        "subdomain": "foundations"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "foundations",
+        "atomic_structure",
+        "所有元素"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-GEN-STR-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "第二周期元素最典型",
+          "共价键形成时"
+        ],
+        "domain": "chemistry",
+        "name_zh": "原子在形成分子时倾向于使每个原子周围有8个价电子（氢为2个）",
+        "rule_id": "CHEM-GEN-STR-01",
+        "rule_type": "formula",
+        "source_ref": "Lewis, 1916",
+        "statement": "原子在形成分子时倾向于使每个原子周围有8个价电子（氢为2个）",
+        "subdomain": "structural"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "structural",
+        "chemical_bonding"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-GEN-LAW-02",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "等价轨道",
+          "基态"
+        ],
+        "domain": "chemistry",
+        "name_zh": "在等价轨道上排布电子时，电子尽可能分占不同的轨道，且自旋平行",
+        "rule_id": "CHEM-GEN-LAW-02",
+        "rule_type": "law",
+        "source_ref": "Hund, 1925",
+        "statement": "在等价轨道上排布电子时，电子尽可能分占不同的轨道，且自旋平行",
+        "subdomain": "general"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "general",
+        "atomic_structure",
+        "所有原子"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-GEN-PRIN-02",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "fact",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X2",
+        "conditions": [
+          "任何多电子原子"
+        ],
+        "domain": "chemistry",
+        "name_zh": "同一个原子中不存在四个量子数完全相同的电子",
+        "notation_zh": "No two electrons can have the same set of four quantum numbers",
+        "rule_id": "CHEM-GEN-PRIN-02",
+        "rule_type": "formula",
+        "source_ref": "Pauli, 1925",
+        "statement": "同一个原子中不存在四个量子数完全相同的电子",
+        "subdomain": "foundations"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "foundations",
+        "atomic_structure",
+        "所有元素"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-BND-STR-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "fact",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X2",
+        "conditions": [
+          "电负性差 > 1.7",
+          "元素为金属与非金属"
+        ],
+        "domain": "chemistry",
+        "name_zh": "当原子间电负性差大于1.7时倾向于形成离子键",
+        "notation_zh": "ΔEN > 1.7 → ionic bond",
+        "rule_id": "CHEM-BND-STR-01",
+        "rule_type": "formula",
+        "source_ref": "Inorganic Chemistry",
+        "statement": "当原子间电负性差大于1.7时倾向于形成离子键",
+        "subdomain": "structural"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "structural",
+        "ionic_bonding"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-BND-STR-02",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "电负性差 ≤ 1.7",
+          "非金属元素之间"
+        ],
+        "domain": "chemistry",
+        "name_zh": "原子通过共享电子对形成共价键，达到稳定电子构型",
+        "rule_id": "CHEM-BND-STR-02",
+        "rule_type": "formula",
+        "source_ref": "Lewis Structure",
+        "statement": "原子通过共享电子对形成共价键，达到稳定电子构型",
+        "subdomain": "structural"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "structural",
+        "covalent_bonding"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-BND-PRIN-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "所有化合物"
+        ],
+        "domain": "chemistry",
+        "name_zh": "元素的电负性越大，吸引电子的能力越强",
+        "rule_id": "CHEM-BND-PRIN-01",
+        "rule_type": "formula",
+        "source_ref": "Pauling, 1932",
+        "statement": "元素的电负性越大，吸引电子的能力越强",
+        "subdomain": "foundations"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "foundations",
+        "electronegativity",
+        "鲍林标度"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-BND-STR-03",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "主族元素化合物"
+        ],
+        "domain": "chemistry",
+        "name_zh": "价层电子对互斥理论：中心原子的价层电子对相互排斥，分子采取让排斥力最小的几何构型",
+        "rule_id": "CHEM-BND-STR-03",
+        "rule_type": "formula",
+        "source_ref": "Gillespie, 1957",
+        "statement": "价层电子对互斥理论：中心原子的价层电子对相互排斥，分子采取让排斥力最小的几何构型",
+        "subdomain": "structural"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "structural",
+        "molecular_geometry"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-BND-STR-04",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "conditions": [
+          "中心原子"
+        ],
+        "domain": "chemistry",
+        "name_zh": "同一原子中能量相近的不同类型原子轨道可以线性组合成新的轨道",
+        "notation_zh": "sp^n: s轨道与n个p轨道杂化",
+        "rule_id": "CHEM-BND-STR-04",
+        "rule_type": "formula",
+        "source_ref": "Pauling, 1931",
+        "statement": "同一原子中能量相近的不同类型原子轨道可以线性组合成新的轨道",
+        "subdomain": "structural"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "structural",
+        "orbital_hybridization"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-RXN-RUL-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "封闭系统",
+          "平衡状态",
+          "单一变量变化"
+        ],
+        "domain": "chemistry",
+        "name_zh": "如果对一个处于平衡状态的系统施加外界影响，平衡将向减弱这个影响的方向移动",
+        "rule_id": "CHEM-RXN-RUL-01",
+        "rule_type": "formula",
+        "source_ref": "Le Chatelier, 1884",
+        "statement": "如果对一个处于平衡状态的系统施加外界影响，平衡将向减弱这个影响的方向移动",
+        "subdomain": "physical"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "physical",
+        "chemical_equilibrium"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-RXN-THM-02",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "conditions": [
+          "恒温恒压",
+          "封闭系统"
+        ],
+        "domain": "chemistry",
+        "name_zh": "在恒温恒压条件下，化学反应自发进行的方向是ΔG < 0的方向",
+        "notation_zh": "ΔG = ΔH - TΔS; ΔG < 0 自发",
+        "rule_id": "CHEM-RXN-THM-02",
+        "rule_type": "formula",
+        "source_ref": "Gibbs, 1875",
+        "statement": "在恒温恒压条件下，化学反应自发进行的方向是ΔG < 0的方向",
+        "subdomain": "physical"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "physical",
+        "chemical_thermodynamics",
+        "298K"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-RXN-PRIN-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "所有化学反应"
+        ],
+        "domain": "chemistry",
+        "name_zh": "在化学反应中能量既不会凭空产生也不会凭空消失",
+        "rule_id": "CHEM-RXN-PRIN-01",
+        "rule_type": "formula",
+        "source_ref": "Lavoisier, 1789",
+        "statement": "在化学反应中能量既不会凭空产生也不会凭空消失",
+        "subdomain": "foundations"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "foundations",
+        "energy_conservation",
+        "所有化学反应"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-ACB-PRIN-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "水溶液",
+          "质子转移反应"
+        ],
+        "domain": "chemistry",
+        "name_zh": "酸是质子（H+）的给予体，碱是质子的接受体",
+        "rule_id": "CHEM-ACB-PRIN-01",
+        "rule_type": "formula",
+        "source_ref": "Bronsted, 1923",
+        "statement": "酸是质子（H+）的给予体，碱是质子的接受体",
+        "subdomain": "foundations"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "foundations",
+        "acid_base",
+        "水溶液和非水溶剂"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-ACB-PRIN-02",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "电子对转移反应"
+        ],
+        "domain": "chemistry",
+        "name_zh": "酸是电子对的接受体，碱是电子对的给予体",
+        "rule_id": "CHEM-ACB-PRIN-02",
+        "rule_type": "formula",
+        "source_ref": "Lewis, 1923",
+        "statement": "酸是电子对的接受体，碱是电子对的给予体",
+        "subdomain": "foundations"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "foundations",
+        "acid_base",
+        "所有化合物"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-ACB-KIN-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "存在共轭酸碱对",
+          "浓度适当"
+        ],
+        "domain": "chemistry",
+        "name_zh": "缓冲溶液能抵抗外来少量酸或碱的冲击，保持pH相对稳定",
+        "rule_id": "CHEM-ACB-KIN-01",
+        "rule_type": "formula",
+        "source_ref": "Chemistry textbooks",
+        "statement": "缓冲溶液能抵抗外来少量酸或碱的冲击，保持pH相对稳定",
+        "subdomain": "physical"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "physical",
+        "acid_base"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-OXD-RUL-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "氧化还原反应"
+        ],
+        "domain": "chemistry",
+        "name_zh": "氧化数的升降与电子的转移相对应",
+        "rule_id": "CHEM-OXD-RUL-01",
+        "rule_type": "formula",
+        "source_ref": "General Chemistry",
+        "statement": "氧化数的升降与电子的转移相对应",
+        "subdomain": "physical"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "physical",
+        "oxidation_reduction"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-OXD-PRIN-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "所有化合物"
+        ],
+        "domain": "chemistry",
+        "name_zh": "元素的电负性决定其在化合物中的氧化态",
+        "rule_id": "CHEM-OXD-PRIN-01",
+        "rule_type": "formula",
+        "source_ref": "Inorganic Chemistry",
+        "statement": "元素的电负性决定其在化合物中的氧化态",
+        "subdomain": "foundations"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "foundations",
+        "oxidation_reduction"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-THR-THM-02",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "fact",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X2",
+        "conditions": [
+          "气相反应近似"
+        ],
+        "domain": "chemistry",
+        "name_zh": "反应的热效应近似等于断裂键的总键能减去形成键的总键能",
+        "notation_zh": "ΔH ≈ ΣD(broken) - ΣD(formed)",
+        "rule_id": "CHEM-THR-THM-02",
+        "rule_type": "formula",
+        "source_ref": "Chemistry textbooks",
+        "statement": "反应的热效应近似等于断裂键的总键能减去形成键的总键能",
+        "subdomain": "physical"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "physical",
+        "thermochemistry"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-KIN-KIN-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "基元反应和多步反应"
+        ],
+        "domain": "chemistry",
+        "name_zh": "反应级数由反应机理决定，可以是0、1、2或分数",
+        "rule_id": "CHEM-KIN-KIN-01",
+        "rule_type": "formula",
+        "source_ref": "Chemical Kinetics",
+        "statement": "反应级数由反应机理决定，可以是0、1、2或分数",
+        "subdomain": "physical"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "physical",
+        "reaction_mechanism"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-KIN-KIN-02",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "conditions": [
+          "催化剂存在"
+        ],
+        "domain": "chemistry",
+        "name_zh": "催化剂提供替代反应途径，降低活化能，但不改变化学平衡",
+        "notation_zh": "催化剂: ΔG不变，只影响速率",
+        "rule_id": "CHEM-KIN-KIN-02",
+        "rule_type": "formula",
+        "source_ref": "Chemical Kinetics",
+        "statement": "催化剂提供替代反应途径，降低活化能，但不改变化学平衡",
+        "subdomain": "physical"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "physical",
+        "catalysis"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-KIN-RUL-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "多步反应"
+        ],
+        "domain": "chemistry",
+        "name_zh": "复杂反应的速率由最慢的一步（速控步）决定",
+        "rule_id": "CHEM-KIN-RUL-01",
+        "rule_type": "formula",
+        "source_ref": "Chemical Kinetics",
+        "statement": "复杂反应的速率由最慢的一步（速控步）决定",
+        "subdomain": "physical"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "physical",
+        "reaction_mechanism"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-SOL-EMP-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "常温常压",
+          "非反应性混合物"
+        ],
+        "domain": "chemistry",
+        "name_zh": "结构相似的物质相互溶解",
+        "rule_id": "CHEM-SOL-EMP-01",
+        "rule_type": "formula",
+        "source_ref": "Chemistry textbooks",
+        "statement": "结构相似的物质相互溶解",
+        "subdomain": "empirical"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "empirical",
+        "solubility"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-ELE-RUL-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "电解过程"
+        ],
+        "domain": "chemistry",
+        "name_zh": "电解时，在阳极发生氧化反应，在阴极发生还原反应",
+        "rule_id": "CHEM-ELE-RUL-01",
+        "rule_type": "formula",
+        "source_ref": "Electrochemistry",
+        "statement": "电解时，在阳极发生氧化反应，在阴极发生还原反应",
+        "subdomain": "physical"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "physical",
+        "electrolysis"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-ORG-STR-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "有机化合物"
+        ],
+        "domain": "chemistry",
+        "name_zh": "有机物的化学性质主要由其官能团决定",
+        "rule_id": "CHEM-ORG-STR-01",
+        "rule_type": "formula",
+        "source_ref": "Organic Chemistry",
+        "statement": "有机物的化学性质主要由其官能团决定",
+        "subdomain": "structural"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "structural",
+        "functional_groups"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-ORG-RUL-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "芳香族化合物"
+        ],
+        "domain": "chemistry",
+        "name_zh": "苯环上取代基的定位效应：邻对位定位基使新取代基进入邻对位，间位定位基使新取代基进入间位",
+        "rule_id": "CHEM-ORG-RUL-01",
+        "rule_type": "formula",
+        "source_ref": "Organic Chemistry",
+        "statement": "苯环上取代基的定位效应：邻对位定位基使新取代基进入邻对位，间位定位基使新取代基进入间位",
+        "subdomain": "physical"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "physical",
+        "electrophilic_substitution"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-ORG-RUL-02",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "饱和碳原子",
+          "亲核试剂"
+        ],
+        "domain": "chemistry",
+        "name_zh": "饱和碳原子上的亲核取代反应，SN1和SN2机理取决于底物结构和溶剂性质",
+        "rule_id": "CHEM-ORG-RUL-02",
+        "rule_type": "formula",
+        "source_ref": "Organic Chemistry",
+        "statement": "饱和碳原子上的亲核取代反应，SN1和SN2机理取决于底物结构和溶剂性质",
+        "subdomain": "physical"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "physical",
+        "nucleophilic_substitution"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-ORG-STR-02",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "共轭体系"
+        ],
+        "domain": "chemistry",
+        "name_zh": "共轭体系中的电子离域使分子更稳定",
+        "rule_id": "CHEM-ORG-STR-02",
+        "rule_type": "formula",
+        "source_ref": "Organic Chemistry",
+        "statement": "共轭体系中的电子离域使分子更稳定",
+        "subdomain": "structural"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "structural",
+        "conjugation"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-ORG-RUL-03",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "conditions": [
+          "卤代烷",
+          "醇"
+        ],
+        "domain": "chemistry",
+        "name_zh": "消除反应（E1/E2）发生在相邻碳上，遵循扎伊采夫规则：优先消除含氢较少的碳上的氢",
+        "notation_zh": "扎伊采夫规则：消除含氢少的β-H",
+        "rule_id": "CHEM-ORG-RUL-03",
+        "rule_type": "formula",
+        "source_ref": "Organic Chemistry",
+        "statement": "消除反应（E1/E2）发生在相邻碳上，遵循扎伊采夫规则：优先消除含氢较少的碳上的氢",
+        "subdomain": "physical"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "physical",
+        "elimination"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-COM-STR-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "配合物"
+        ],
+        "domain": "chemistry",
+        "name_zh": "中心金属离子的配位数取决于其离子半径和电子构型",
+        "rule_id": "CHEM-COM-STR-01",
+        "rule_type": "formula",
+        "source_ref": "Coordination Chemistry",
+        "statement": "中心金属离子的配位数取决于其离子半径和电子构型",
+        "subdomain": "structural"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "structural",
+        "coordination"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-COM-PRIN-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "过渡金属配合物"
+        ],
+        "domain": "chemistry",
+        "name_zh": "过渡金属配合物的性质由d轨道在配体电场中的分裂决定",
+        "rule_id": "CHEM-COM-PRIN-01",
+        "rule_type": "formula",
+        "source_ref": "Crystal Field Theory, 1930s",
+        "statement": "过渡金属配合物的性质由d轨道在配体电场中的分裂决定",
+        "subdomain": "foundations"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "foundations",
+        "crystal_field_theory",
+        "所有过渡金属配合物"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-COM-STR-02",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "d电子构型非均匀的配合物"
+        ],
+        "domain": "chemistry",
+        "name_zh": "非线性分子中电子态的简并会导致几何畸变",
+        "rule_id": "CHEM-COM-STR-02",
+        "rule_type": "formula",
+        "source_ref": "Jahn & Teller, 1937",
+        "statement": "非线性分子中电子态的简并会导致几何畸变",
+        "subdomain": "structural"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "structural",
+        "jahn_teller"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-CRY-STR-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "conditions": [
+          "离子化合物"
+        ],
+        "domain": "chemistry",
+        "name_zh": "离子晶体的结构类型与阴阳离子半径比有关",
+        "notation_zh": "配位多面体取决于 r+/r-",
+        "rule_id": "CHEM-CRY-STR-01",
+        "rule_type": "formula",
+        "source_ref": "Pauling, 1929",
+        "statement": "离子晶体的结构类型与阴阳离子半径比有关",
+        "subdomain": "structural"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "structural",
+        "crystal_structure"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-CRY-PRIN-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "金属晶体",
+          "离子晶体"
+        ],
+        "domain": "chemistry",
+        "name_zh": "在形成晶体时，粒子倾向于采取最密集的堆积方式以降低能量",
+        "rule_id": "CHEM-CRY-PRIN-01",
+        "rule_type": "formula",
+        "source_ref": "Solid State Chemistry",
+        "statement": "在形成晶体时，粒子倾向于采取最密集的堆积方式以降低能量",
+        "subdomain": "foundations"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "foundations",
+        "crystal_structure"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-EQB-RUL-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "conditions": [
+          "平衡系统",
+          "温度变化"
+        ],
+        "domain": "chemistry",
+        "name_zh": "温度升高使吸热方向平衡常数增大，降低使放热方向平衡常数增大",
+        "notation_zh": "范特霍夫方程: d(lnK)/dT = ΔH/RT^2",
+        "rule_id": "CHEM-EQB-RUL-01",
+        "rule_type": "formula",
+        "source_ref": "van't Hoff, 1884",
+        "statement": "温度升高使吸热方向平衡常数增大，降低使放热方向平衡常数增大",
+        "subdomain": "physical"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "physical",
+        "chemical_equilibrium"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-SUR-PRIN-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "液体表面"
+        ],
+        "domain": "chemistry",
+        "name_zh": "液体表面张力随温度升高而降低",
+        "rule_id": "CHEM-SUR-PRIN-01",
+        "rule_type": "formula",
+        "source_ref": "Surface Chemistry",
+        "statement": "液体表面张力随温度升高而降低",
+        "subdomain": "foundations"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "foundations",
+        "surface_chemistry",
+        "反比关系"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-SUR-RUL-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "conditions": [
+          "物理吸附"
+        ],
+        "domain": "chemistry",
+        "name_zh": "气体在固体表面上的吸附量随压力增加而增加，随温度升高而减少",
+        "notation_zh": "吸附等温线",
+        "rule_id": "CHEM-SUR-RUL-01",
+        "rule_type": "formula",
+        "source_ref": "Langmuir, 1916",
+        "statement": "气体在固体表面上的吸附量随压力增加而增加，随温度升高而减少",
+        "subdomain": "physical"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "physical",
+        "adsorption"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-STO-LAW-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "纯净化合物"
+        ],
+        "domain": "chemistry",
+        "name_zh": "每一种化合物都有固定的组成",
+        "rule_id": "CHEM-STO-LAW-01",
+        "rule_type": "law",
+        "source_ref": "Proust, 1799",
+        "statement": "每一种化合物都有固定的组成",
+        "subdomain": "general"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "general",
+        "chemical_stoichiometry"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-STO-LAW-02",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "两种元素形成的多种化合物"
+        ],
+        "domain": "chemistry",
+        "name_zh": "当两种元素相互形成多种化合物时，其中一种元素的质量与另一元素质量之比为简单整数比",
+        "rule_id": "CHEM-STO-LAW-02",
+        "rule_type": "law",
+        "source_ref": "Dalton, 1803",
+        "statement": "当两种元素相互形成多种化合物时，其中一种元素的质量与另一元素质量之比为简单整数比",
+        "subdomain": "general"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "general",
+        "chemical_stoichiometry"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-STO-LAW-03",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "所有化学反应"
+        ],
+        "domain": "chemistry",
+        "name_zh": "化学反应中，反应物的总质量等于生成物的总质量",
+        "rule_id": "CHEM-STO-LAW-03",
+        "rule_type": "law",
+        "source_ref": "Lavoisier, 1789",
+        "statement": "化学反应中，反应物的总质量等于生成物的总质量",
+        "subdomain": "general"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "general",
+        "chemical_stoichiometry",
+        "所有化学反应"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-BND-STR-05",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "金属元素"
+        ],
+        "domain": "chemistry",
+        "name_zh": "金属原子通过自由电子气形成金属键，使金属具有良好的导电性和延展性",
+        "rule_id": "CHEM-BND-STR-05",
+        "rule_type": "formula",
+        "source_ref": "Solid State Chemistry",
+        "statement": "金属原子通过自由电子气形成金属键，使金属具有良好的导电性和延展性",
+        "subdomain": "structural"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "structural",
+        "metallic_bonding"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-BND-STR-07",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "所有分子"
+        ],
+        "domain": "chemistry",
+        "name_zh": "分子间存在瞬时偶极产生的弱相互作用，其强度随分子量增大而增强",
+        "rule_id": "CHEM-BND-STR-07",
+        "rule_type": "formula",
+        "source_ref": "van der Waals, 1873",
+        "statement": "分子间存在瞬时偶极产生的弱相互作用，其强度随分子量增大而增强",
+        "subdomain": "structural"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "structural",
+        "van_der_waals"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-BND-STR-08",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "双原子分子和多原子分子"
+        ],
+        "domain": "chemistry",
+        "name_zh": "原子轨道线性组合成分子轨道，电子填充遵循能量最低原理和泡利不相容原理",
+        "rule_id": "CHEM-BND-STR-08",
+        "rule_type": "formula",
+        "source_ref": "MO Theory, 1930s",
+        "statement": "原子轨道线性组合成分子轨道，电子填充遵循能量最低原理和泡利不相容原理",
+        "subdomain": "structural"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "structural",
+        "molecular_orbital_theory"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-BND-STR-09",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "共轭体系"
+        ],
+        "domain": "chemistry",
+        "name_zh": "当一个分子可用两个或多个等价结构式描述时，实际结构是这些极限式的共振杂化体",
+        "rule_id": "CHEM-BND-STR-09",
+        "rule_type": "formula",
+        "source_ref": "Pauling, 1930s",
+        "statement": "当一个分子可用两个或多个等价结构式描述时，实际结构是这些极限式的共振杂化体",
+        "subdomain": "structural"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "structural",
+        "resonance"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-COM-STR-03",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "conditions": [
+          "过渡金属配合物"
+        ],
+        "domain": "chemistry",
+        "name_zh": "配合物中心金属的电子总数倾向于等于相邻的稀有气体电子数",
+        "notation_zh": "EAN = 金属价电子 + 配体提供电子",
+        "rule_id": "CHEM-COM-STR-03",
+        "rule_type": "formula",
+        "source_ref": "Coordination Chemistry",
+        "statement": "配合物中心金属的电子总数倾向于等于相邻的稀有气体电子数",
+        "subdomain": "structural"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "structural",
+        "electron_counting"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-COM-PRIN-02",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "过渡金属配合物"
+        ],
+        "domain": "chemistry",
+        "name_zh": "配体按其场强从小到大排列：I- < Br- < SCN- < Cl- < F- < OH- < H2O < NH3 < en < NO2- < CN-",
+        "rule_id": "CHEM-COM-PRIN-02",
+        "rule_type": "formula",
+        "source_ref": "Spectrochemistry",
+        "statement": "配体按其场强从小到大排列：I- < Br- < SCN- < Cl- < F- < OH- < H2O < NH3 < en < NO2- < CN-",
+        "subdomain": "foundations"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "foundations",
+        "spectrochemical_series",
+        "八面体配合物"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-ORG-RUL-04",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "烯烃、炔烃"
+        ],
+        "domain": "chemistry",
+        "name_zh": "不饱和键（双键、三键）可以发生加成反应，断开π键形成σ键",
+        "rule_id": "CHEM-ORG-RUL-04",
+        "rule_type": "formula",
+        "source_ref": "Organic Chemistry",
+        "statement": "不饱和键（双键、三键）可以发生加成反应，断开π键形成σ键",
+        "subdomain": "physical"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "physical",
+        "addition_reaction"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-ORG-RUL-05",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "conditions": [
+          "卤代烷",
+          "醇脱水"
+        ],
+        "domain": "chemistry",
+        "name_zh": "在消除反应中，优先消除生成更稳定的烯烃（双键上取代基多的）",
+        "notation_zh": "更稳定的烯烃优先形成",
+        "rule_id": "CHEM-ORG-RUL-05",
+        "rule_type": "formula",
+        "source_ref": "Organic Chemistry",
+        "statement": "在消除反应中，优先消除生成更稳定的烯烃（双键上取代基多的）",
+        "subdomain": "physical"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "physical",
+        "elimination"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-ORG-RUL-06",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "含有不饱和键或双官能团的分子"
+        ],
+        "domain": "chemistry",
+        "name_zh": "单体通过加成或缩聚反应形成聚合物",
+        "rule_id": "CHEM-ORG-RUL-06",
+        "rule_type": "formula",
+        "source_ref": "Polymer Chemistry",
+        "statement": "单体通过加成或缩聚反应形成聚合物",
+        "subdomain": "physical"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "physical",
+        "polymerization"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-ORG-STR-03",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "含手性中心的分子"
+        ],
+        "domain": "chemistry",
+        "name_zh": "有机分子的立体构型影响其化学反应性和生理活性",
+        "rule_id": "CHEM-ORG-STR-03",
+        "rule_type": "formula",
+        "source_ref": "Stereochemistry",
+        "statement": "有机分子的立体构型影响其化学反应性和生理活性",
+        "subdomain": "structural"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "structural",
+        "stereochemistry"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-ORG-STR-04",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "conditions": [
+          "饱和碳化合物"
+        ],
+        "domain": "chemistry",
+        "name_zh": "有机分子的不同构象具有不同的能量，稳定构象是能量最低的形式",
+        "notation_zh": "重叠式 → 交叉式 能量差",
+        "rule_id": "CHEM-ORG-STR-04",
+        "rule_type": "formula",
+        "source_ref": "Conformational Analysis",
+        "statement": "有机分子的不同构象具有不同的能量，稳定构象是能量最低的形式",
+        "subdomain": "structural"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "structural",
+        "conformational_analysis"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-ANA-PRIN-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "无机化合物"
+        ],
+        "domain": "chemistry",
+        "name_zh": "离子鉴定利用其特征反应（如沉淀、颜色、气体）",
+        "rule_id": "CHEM-ANA-PRIN-01",
+        "rule_type": "formula",
+        "source_ref": "Analytical Chemistry",
+        "statement": "离子鉴定利用其特征反应（如沉淀、颜色、气体）",
+        "subdomain": "foundations"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "foundations",
+        "qualitative_analysis"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-ANA-PRIN-02",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "conditions": [
+          "滴定反应"
+        ],
+        "domain": "chemistry",
+        "name_zh": "滴定分析中，标准溶液的浓度和体积决定待测物质的量",
+        "notation_zh": "n1V1 = n2V2 (当量点)",
+        "rule_id": "CHEM-ANA-PRIN-02",
+        "rule_type": "formula",
+        "source_ref": "Analytical Chemistry",
+        "statement": "滴定分析中，标准溶液的浓度和体积决定待测物质的量",
+        "subdomain": "foundations"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "foundations",
+        "quantitative_analysis"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-ENV-PRIN-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "地球大气"
+        ],
+        "domain": "chemistry",
+        "name_zh": "大气中CO2等气体吸收红外辐射，导致地球表面温度升高",
+        "rule_id": "CHEM-ENV-PRIN-01",
+        "rule_type": "formula",
+        "source_ref": "Environmental Chemistry",
+        "statement": "大气中CO2等气体吸收红外辐射，导致地球表面温度升高",
+        "subdomain": "foundations"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "foundations",
+        "atmospheric_chemistry"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-ENV-RUL-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "fact",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X2",
+        "conditions": [
+          "大气臭氧层"
+        ],
+        "domain": "chemistry",
+        "name_zh": "氯氟烃在紫外线下分解产生氯原子，催化臭氧分解",
+        "notation_zh": "Cl· + O3 → ClO· + O2; ClO· + O· → Cl· + O2",
+        "rule_id": "CHEM-ENV-RUL-01",
+        "rule_type": "formula",
+        "source_ref": "Environmental Chemistry",
+        "statement": "氯氟烃在紫外线下分解产生氯原子，催化臭氧分解",
+        "subdomain": "physical"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "physical",
+        "ozone_depletion"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-BIO-STR-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "蛋白质"
+        ],
+        "domain": "chemistry",
+        "name_zh": "蛋白质的氨基酸序列决定其三维结构和功能",
+        "rule_id": "CHEM-BIO-STR-01",
+        "rule_type": "formula",
+        "source_ref": "Biochemistry",
+        "statement": "蛋白质的氨基酸序列决定其三维结构和功能",
+        "subdomain": "structural"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "structural",
+        "protein_structure"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-BIO-PRIN-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "conditions": [
+          "生物化学反应"
+        ],
+        "domain": "chemistry",
+        "name_zh": "酶通过降低活化能加速化学反应，具有高度专一性",
+        "notation_zh": "k_cat/Km 反映催化效率",
+        "rule_id": "CHEM-BIO-PRIN-01",
+        "rule_type": "formula",
+        "source_ref": "Enzymology",
+        "statement": "酶通过降低活化能加速化学反应，具有高度专一性",
+        "subdomain": "foundations"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "foundations",
+        "enzyme_catalysis"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-BIO-STR-02",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "生物系统"
+        ],
+        "domain": "chemistry",
+        "name_zh": "生物体内pH必须维持在一个窄范围内，缓冲系统起关键作用",
+        "rule_id": "CHEM-BIO-STR-02",
+        "rule_type": "formula",
+        "source_ref": "Biochemistry",
+        "statement": "生物体内pH必须维持在一个窄范围内，缓冲系统起关键作用",
+        "subdomain": "structural"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "structural",
+        "acid_base_biology"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-MAT-STR-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "半导体材料"
+        ],
+        "domain": "chemistry",
+        "name_zh": "半导体的导电性介于导体和绝缘体之间，与温度正相关",
+        "rule_id": "CHEM-MAT-STR-01",
+        "rule_type": "formula",
+        "source_ref": "Materials Science",
+        "statement": "半导体的导电性介于导体和绝缘体之间，与温度正相关",
+        "subdomain": "structural"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "structural",
+        "semiconductors"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-MAT-PRIN-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "固体材料"
+        ],
+        "domain": "chemistry",
+        "name_zh": "固体中电子的能级形成能带，导带和价带之间的带隙决定导电性",
+        "rule_id": "CHEM-MAT-PRIN-01",
+        "rule_type": "formula",
+        "source_ref": "Solid State Physics",
+        "statement": "固体中电子的能级形成能带，导带和价带之间的带隙决定导电性",
+        "subdomain": "foundations"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "foundations",
+        "band_theory",
+        "晶体材料"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-PHO-PRIN-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "光化学反应"
+        ],
+        "domain": "chemistry",
+        "name_zh": "分子吸收光子后电子激发到高能态，可以引发化学反应",
+        "rule_id": "CHEM-PHO-PRIN-01",
+        "rule_type": "formula",
+        "source_ref": "Photochemistry",
+        "statement": "分子吸收光子后电子激发到高能态，可以引发化学反应",
+        "subdomain": "foundations"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "foundations",
+        "photochemistry"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-PHO-RUL-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "光化学反应"
+        ],
+        "domain": "chemistry",
+        "name_zh": "光敏剂吸收光能后传递给反应物，使反应发生",
+        "rule_id": "CHEM-PHO-RUL-01",
+        "rule_type": "formula",
+        "source_ref": "Photochemistry",
+        "statement": "光敏剂吸收光能后传递给反应物，使反应发生",
+        "subdomain": "physical"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "physical",
+        "photosensitization"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-INT-PRIN-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "光化学反应",
+          "燃烧反应"
+        ],
+        "domain": "chemistry",
+        "name_zh": "自由基是具有未成对电子的原子或基团，化学活性高",
+        "rule_id": "CHEM-INT-PRIN-01",
+        "rule_type": "formula",
+        "source_ref": "Free Radical Chemistry",
+        "statement": "自由基是具有未成对电子的原子或基团，化学活性高",
+        "subdomain": "foundations"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "foundations",
+        "free_radicals"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-INT-RUL-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "有机反应"
+        ],
+        "domain": "chemistry",
+        "name_zh": "碳正离子是带正电荷的碳原子，是许多有机反应的活性中间体",
+        "rule_id": "CHEM-INT-RUL-01",
+        "rule_type": "formula",
+        "source_ref": "Organic Reaction Mechanisms",
+        "statement": "碳正离子是带正电荷的碳原子，是许多有机反应的活性中间体",
+        "subdomain": "physical"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "physical",
+        "carbocations"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-INT-RUL-02",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "有机反应"
+        ],
+        "domain": "chemistry",
+        "name_zh": "碳负离子是带负电荷的碳原子，是有机反应中的重要中间体",
+        "rule_id": "CHEM-INT-RUL-02",
+        "rule_type": "formula",
+        "source_ref": "Organic Reaction Mechanisms",
+        "statement": "碳负离子是带负电荷的碳原子，是有机反应中的重要中间体",
+        "subdomain": "physical"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "physical",
+        "carbanions"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-COL-PRIN-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "胶体溶液"
+        ],
+        "domain": "chemistry",
+        "name_zh": "胶体粒子散射光线，使胶体溶液产生光路",
+        "rule_id": "CHEM-COL-PRIN-01",
+        "rule_type": "formula",
+        "source_ref": "Colloid Chemistry",
+        "statement": "胶体粒子散射光线，使胶体溶液产生光路",
+        "subdomain": "foundations"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "foundations",
+        "colloid_properties"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-COL-RUL-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "胶体体系"
+        ],
+        "domain": "chemistry",
+        "name_zh": "胶体粒子由于带电和溶剂化作用而稳定存在",
+        "rule_id": "CHEM-COL-RUL-01",
+        "rule_type": "formula",
+        "source_ref": "Colloid Chemistry",
+        "statement": "胶体粒子由于带电和溶剂化作用而稳定存在",
+        "subdomain": "physical"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "physical",
+        "colloid_stability"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-THR-THM-04",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "fact",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X2",
+        "conditions": [
+          "所有实际过程"
+        ],
+        "domain": "chemistry",
+        "name_zh": "热量不能自发地从低温物体传递到高温物体，熵总是增加",
+        "notation_zh": "ΔS_universe ≥ 0",
+        "rule_id": "CHEM-THR-THM-04",
+        "rule_type": "formula",
+        "source_ref": "Thermodynamics",
+        "statement": "热量不能自发地从低温物体传递到高温物体，熵总是增加",
+        "subdomain": "physical"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "physical",
+        "entropy",
+        "298K"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-THR-THM-05",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "fact",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X2",
+        "conditions": [
+          "孤立系统"
+        ],
+        "domain": "chemistry",
+        "name_zh": "孤立系统的熵只能增加或不变，绝不会减少",
+        "notation_zh": "dS ≥ 0",
+        "rule_id": "CHEM-THR-THM-05",
+        "rule_type": "formula",
+        "source_ref": "Thermodynamics",
+        "statement": "孤立系统的熵只能增加或不变，绝不会减少",
+        "subdomain": "physical"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "physical",
+        "entropy",
+        "298K"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-ELE-RUL-02",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "电解过程"
+        ],
+        "domain": "chemistry",
+        "name_zh": "电解时，金属离子在阴极还原为金属沉积在电极表面",
+        "rule_id": "CHEM-ELE-RUL-02",
+        "rule_type": "formula",
+        "source_ref": "Electrochemistry",
+        "statement": "电解时，金属离子在阴极还原为金属沉积在电极表面",
+        "subdomain": "physical"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "physical",
+        "electroplating"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-ELE-LAW-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "p区重元素"
+        ],
+        "domain": "chemistry",
+        "name_zh": "p区重元素倾向于保持其价层s电子，不参与成键",
+        "rule_id": "CHEM-ELE-LAW-01",
+        "rule_type": "law",
+        "source_ref": "Inorganic Chemistry",
+        "statement": "p区重元素倾向于保持其价层s电子，不参与成键",
+        "subdomain": "general"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "general",
+        "main_group_chemistry"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-ELE-PRIN-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "Li, Be, B与右下方元素"
+        ],
+        "domain": "chemistry",
+        "name_zh": "某些元素与其右下方元素性质相似（如Li与Mg, Be与Al）",
+        "rule_id": "CHEM-ELE-PRIN-01",
+        "rule_type": "formula",
+        "source_ref": "Inorganic Chemistry",
+        "statement": "某些元素与其右下方元素性质相似（如Li与Mg, Be与Al）",
+        "subdomain": "foundations"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "foundations",
+        "diagonal_relationship"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-ELE-EMP-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "VIA族元素的含氧酸"
+        ],
+        "domain": "chemistry",
+        "name_zh": "VIA族元素含氧酸的酸性随原子序数增大而增强",
+        "rule_id": "CHEM-ELE-EMP-01",
+        "rule_type": "formula",
+        "source_ref": "Inorganic Chemistry",
+        "statement": "VIA族元素含氧酸的酸性随原子序数增大而增强",
+        "subdomain": "empirical"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "empirical",
+        "oxyacid_strength"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-ELE-EMP-02",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "卤素含氧酸"
+        ],
+        "domain": "chemistry",
+        "name_zh": "同一卤素，含氧酸中氧化态越高，酸性越强",
+        "rule_id": "CHEM-ELE-EMP-02",
+        "rule_type": "formula",
+        "source_ref": "Inorganic Chemistry",
+        "statement": "同一卤素，含氧酸中氧化态越高，酸性越强",
+        "subdomain": "empirical"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "empirical",
+        "halogen_oxyacids"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-SYM-STR-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "所有分子"
+        ],
+        "domain": "chemistry",
+        "name_zh": "分子可以按照其对称元素归类为不同的点群",
+        "rule_id": "CHEM-SYM-STR-01",
+        "rule_type": "formula",
+        "source_ref": "Group Theory in Chemistry",
+        "statement": "分子可以按照其对称元素归类为不同的点群",
+        "subdomain": "structural"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "structural",
+        "molecular_symmetry"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-SYM-PRIN-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "手性分子"
+        ],
+        "domain": "chemistry",
+        "name_zh": "分子具有手性中心时具有旋光性，手性分子不能有镜像面和对称中心",
+        "rule_id": "CHEM-SYM-PRIN-01",
+        "rule_type": "formula",
+        "source_ref": "Stereochemistry",
+        "statement": "分子具有手性中心时具有旋光性，手性分子不能有镜像面和对称中心",
+        "subdomain": "foundations"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "foundations",
+        "chirality"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-RXT-RUL-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "fact",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X2",
+        "conditions": [
+          "酸和碱"
+        ],
+        "domain": "chemistry",
+        "name_zh": "酸和碱反应生成盐和水",
+        "notation_zh": "H+ + OH- → H2O",
+        "rule_id": "CHEM-RXT-RUL-01",
+        "rule_type": "formula",
+        "source_ref": "Chemistry textbooks",
+        "statement": "酸和碱反应生成盐和水",
+        "subdomain": "physical"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "physical",
+        "neutralization"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-RXT-RUL-02",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "氧化还原反应"
+        ],
+        "domain": "chemistry",
+        "name_zh": "氧化剂获得的电子数等于还原剂失去的电子数",
+        "rule_id": "CHEM-RXT-RUL-02",
+        "rule_type": "formula",
+        "source_ref": "Chemistry textbooks",
+        "statement": "氧化剂获得的电子数等于还原剂失去的电子数",
+        "subdomain": "physical"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "physical",
+        "redox_balance"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-APP-EMP-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "有机化合物"
+        ],
+        "domain": "chemistry",
+        "name_zh": "结构相似的化合物具有相似的沸点",
+        "rule_id": "CHEM-APP-EMP-01",
+        "rule_type": "formula",
+        "source_ref": "Organic Chemistry",
+        "statement": "结构相似的化合物具有相似的沸点",
+        "subdomain": "empirical"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "empirical",
+        "boiling_point_prediction"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-ORG-RUL-07",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "烯烃",
+          "亲电试剂"
+        ],
+        "domain": "chemistry",
+        "name_zh": "烯烃的亲电加成反应，遵循马氏规则：氢加在氢多的碳上",
+        "rule_id": "CHEM-ORG-RUL-07",
+        "rule_type": "formula",
+        "source_ref": "Organic Chemistry",
+        "statement": "烯烃的亲电加成反应，遵循马氏规则：氢加在氢多的碳上",
+        "subdomain": "physical"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "physical",
+        "electrophilic_addition"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-ORG-RUL-08",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "卤代烷"
+        ],
+        "domain": "chemistry",
+        "name_zh": "3°卤代烷倾向于消除反应，1°卤代烷倾向于取代反应",
+        "rule_id": "CHEM-ORG-RUL-08",
+        "rule_type": "formula",
+        "source_ref": "Organic Chemistry",
+        "statement": "3°卤代烷倾向于消除反应，1°卤代烷倾向于取代反应",
+        "subdomain": "physical"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "physical",
+        "substitution_vs_elimination"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-ORG-RUL-09",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "羧酸",
+          "醇",
+          "酸催化"
+        ],
+        "domain": "chemistry",
+        "name_zh": "羧酸与醇在酸催化下发生酯化反应，生成酯和水",
+        "rule_id": "CHEM-ORG-RUL-09",
+        "rule_type": "formula",
+        "source_ref": "Organic Chemistry",
+        "statement": "羧酸与醇在酸催化下发生酯化反应，生成酯和水",
+        "subdomain": "physical"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "physical",
+        "esterification"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-ORG-RUL-10",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "酯"
+        ],
+        "domain": "chemistry",
+        "name_zh": "酯在酸或碱催化下发生水解反应",
+        "rule_id": "CHEM-ORG-RUL-10",
+        "rule_type": "formula",
+        "source_ref": "Organic Chemistry",
+        "statement": "酯在酸或碱催化下发生水解反应",
+        "subdomain": "physical"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "physical",
+        "hydrolysis"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-ORG-RUL-11",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "有机化合物"
+        ],
+        "domain": "chemistry",
+        "name_zh": "有机物的氧化态决定其氧化产物",
+        "rule_id": "CHEM-ORG-RUL-11",
+        "rule_type": "formula",
+        "source_ref": "Organic Chemistry",
+        "statement": "有机物的氧化态决定其氧化产物",
+        "subdomain": "physical"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "physical",
+        "oxidation_reactions"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-ORG-RUL-12",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "有机化合物"
+        ],
+        "domain": "chemistry",
+        "name_zh": "有机物的还原反应通常需要还原剂",
+        "rule_id": "CHEM-ORG-RUL-12",
+        "rule_type": "formula",
+        "source_ref": "Organic Chemistry",
+        "statement": "有机物的还原反应通常需要还原剂",
+        "subdomain": "physical"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "physical",
+        "reduction_reactions"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-INR-STR-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "离子化合物"
+        ],
+        "domain": "chemistry",
+        "name_zh": "同一元素不同氧化态的离子，半径随氧化态增加而减小",
+        "rule_id": "CHEM-INR-STR-01",
+        "rule_type": "formula",
+        "source_ref": "Inorganic Chemistry",
+        "statement": "同一元素不同氧化态的离子，半径随氧化态增加而减小",
+        "subdomain": "structural"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "structural",
+        "ionic_radius"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-INR-STR-02",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "fact",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X2",
+        "conditions": [
+          "离子晶体"
+        ],
+        "domain": "chemistry",
+        "name_zh": "离子晶体的晶格能与离子电荷乘积成正比，与离子距离成反比",
+        "notation_zh": "U ∝ z+z-/r0",
+        "rule_id": "CHEM-INR-STR-02",
+        "rule_type": "formula",
+        "source_ref": "Inorganic Chemistry",
+        "statement": "离子晶体的晶格能与离子电荷乘积成正比，与离子距离成反比",
+        "subdomain": "structural"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "structural",
+        "lattice_energy"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-INR-PRIN-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "主族元素"
+        ],
+        "domain": "chemistry",
+        "name_zh": "主族元素的化合物性质呈现周期性",
+        "rule_id": "CHEM-INR-PRIN-01",
+        "rule_type": "formula",
+        "source_ref": "Inorganic Chemistry",
+        "statement": "主族元素的化合物性质呈现周期性",
+        "subdomain": "foundations"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "foundations",
+        "periodic_trends"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-INR-EMP-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "IVA族"
+        ],
+        "domain": "chemistry",
+        "name_zh": "IVA族元素（Si、Pb等）的+4氧化态稳定性从C到Pb递减，+2氧化态稳定性递增",
+        "rule_id": "CHEM-INR-EMP-01",
+        "rule_type": "formula",
+        "source_ref": "Inorganic Chemistry",
+        "statement": "IVA族元素（Si、Pb等）的+4氧化态稳定性从C到Pb递减，+2氧化态稳定性递增",
+        "subdomain": "empirical"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "empirical",
+        "main_group_chemistry"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-INR-EMP-02",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "卤素单质"
+        ],
+        "domain": "chemistry",
+        "name_zh": "卤素单质的氧化性从F到I递减，还原性递增",
+        "rule_id": "CHEM-INR-EMP-02",
+        "rule_type": "formula",
+        "source_ref": "Inorganic Chemistry",
+        "statement": "卤素单质的氧化性从F到I递减，还原性递增",
+        "subdomain": "empirical"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "empirical",
+        "halogen_chemistry"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-PCD-THM-02",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X1",
+        "conditions": [
+          "恒温恒压"
+        ],
+        "domain": "chemistry",
+        "name_zh": "在恒温恒压且不做其他功的条件下，自发反应满足ΔG < 0",
+        "notation_zh": "ΔG < 0 自发",
+        "rule_id": "CHEM-PCD-THM-02",
+        "rule_type": "formula",
+        "source_ref": "Physical Chemistry",
+        "statement": "在恒温恒压且不做其他功的条件下，自发反应满足ΔG < 0",
+        "subdomain": "physical"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "physical",
+        "gibbs_energy",
+        "298K"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-PCD-KIN-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "大多数反应"
+        ],
+        "domain": "chemistry",
+        "name_zh": "温度每升高10°C，反应速率大约增加2-3倍",
+        "rule_id": "CHEM-PCD-KIN-01",
+        "rule_type": "formula",
+        "source_ref": "Chemical Kinetics",
+        "statement": "温度每升高10°C，反应速率大约增加2-3倍",
+        "subdomain": "physical"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "physical",
+        "rate_temperature"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-PCD-KIN-03",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "光化学反应"
+        ],
+        "domain": "chemistry",
+        "name_zh": "光化学反应的速率与吸收光子速率成正比",
+        "rule_id": "CHEM-PCD-KIN-03",
+        "rule_type": "formula",
+        "source_ref": "Photochemistry",
+        "statement": "光化学反应的速率与吸收光子速率成正比",
+        "subdomain": "physical"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "physical",
+        "photochemical_rate"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-ANA-PRIN-03",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "酸碱滴定",
+          "氧化还原滴定"
+        ],
+        "domain": "chemistry",
+        "name_zh": "指示剂在化学计量点附近发生颜色变化",
+        "rule_id": "CHEM-ANA-PRIN-03",
+        "rule_type": "formula",
+        "source_ref": "Analytical Chemistry",
+        "statement": "指示剂在化学计量点附近发生颜色变化",
+        "subdomain": "foundations"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "foundations",
+        "titration_endpoint"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-ANA-EMP-02",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "混合物分离"
+        ],
+        "domain": "chemistry",
+        "name_zh": "不同物质在固定相和流动相之间的分配系数不同，导致保留时间不同",
+        "rule_id": "CHEM-ANA-EMP-02",
+        "rule_type": "formula",
+        "source_ref": "Analytical Chemistry",
+        "statement": "不同物质在固定相和流动相之间的分配系数不同，导致保留时间不同",
+        "subdomain": "empirical"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "empirical",
+        "chromatography"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-POL-STR-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "烯烃单体"
+        ],
+        "domain": "chemistry",
+        "name_zh": "烯烃单体通过加成反应形成聚合物",
+        "rule_id": "CHEM-POL-STR-01",
+        "rule_type": "formula",
+        "source_ref": "Polymer Chemistry",
+        "statement": "烯烃单体通过加成反应形成聚合物",
+        "subdomain": "structural"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "structural",
+        "addition_polymerization"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-POL-STR-02",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "双官能团单体"
+        ],
+        "domain": "chemistry",
+        "name_zh": "含有两个以上官能团的单体通过缩合反应形成聚合物，同时放出小分子",
+        "rule_id": "CHEM-POL-STR-02",
+        "rule_type": "formula",
+        "source_ref": "Polymer Chemistry",
+        "statement": "含有两个以上官能团的单体通过缩合反应形成聚合物，同时放出小分子",
+        "subdomain": "structural"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "structural",
+        "condensation_polymerization"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-POL-STR-03",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "聚合物"
+        ],
+        "domain": "chemistry",
+        "name_zh": "聚合物的分子量呈多分散性，通常用数均分子量和重均分子量表示",
+        "rule_id": "CHEM-POL-STR-03",
+        "rule_type": "formula",
+        "source_ref": "Polymer Chemistry",
+        "statement": "聚合物的分子量呈多分散性，通常用数均分子量和重均分子量表示",
+        "subdomain": "structural"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "structural",
+        "molecular_weight_distribution"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-POL-PRIN-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "非晶态聚合物"
+        ],
+        "domain": "chemistry",
+        "name_zh": "非晶态聚合物在玻璃化转变温度Tg时从玻璃态转变为高弹态",
+        "rule_id": "CHEM-POL-PRIN-01",
+        "rule_type": "formula",
+        "source_ref": "Polymer Physics",
+        "statement": "非晶态聚合物在玻璃化转变温度Tg时从玻璃态转变为高弹态",
+        "subdomain": "foundations"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "foundations",
+        "glass_transition"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-ENV-RUL-02",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "大气污染"
+        ],
+        "domain": "chemistry",
+        "name_zh": "氮氧化物和碳氢化合物在光照下发生光化学反应生成臭氧和PAN",
+        "rule_id": "CHEM-ENV-RUL-02",
+        "rule_type": "formula",
+        "source_ref": "Environmental Chemistry",
+        "statement": "氮氧化物和碳氢化合物在光照下发生光化学反应生成臭氧和PAN",
+        "subdomain": "physical"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "physical",
+        "photochemical_smog"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-ENV-RUL-03",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "大气污染"
+        ],
+        "domain": "chemistry",
+        "name_zh": "硫氧化物和氮氧化物在大气中氧化并与水反应形成酸雨",
+        "rule_id": "CHEM-ENV-RUL-03",
+        "rule_type": "formula",
+        "source_ref": "Environmental Chemistry",
+        "statement": "硫氧化物和氮氧化物在大气中氧化并与水反应形成酸雨",
+        "subdomain": "physical"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "physical",
+        "acid_rain"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-ENV-EMP-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "大气组成"
+        ],
+        "domain": "chemistry",
+        "name_zh": "CO2、CH4、N2O等温室气体吸收红外辐射导致全球变暖",
+        "rule_id": "CHEM-ENV-EMP-01",
+        "rule_type": "formula",
+        "source_ref": "Environmental Chemistry",
+        "statement": "CO2、CH4、N2O等温室气体吸收红外辐射导致全球变暖",
+        "subdomain": "empirical"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "empirical",
+        "greenhouse_effect"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-BIO-STR-03",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "DNA"
+        ],
+        "domain": "chemistry",
+        "name_zh": "DNA通过碱基配对（A-T, G-C）形成双螺旋结构",
+        "rule_id": "CHEM-BIO-STR-03",
+        "rule_type": "formula",
+        "source_ref": "Biochemistry",
+        "statement": "DNA通过碱基配对（A-T, G-C）形成双螺旋结构",
+        "subdomain": "structural"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "structural",
+        "nucleic_acid_structure"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-BIO-STR-04",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "蛋白质"
+        ],
+        "domain": "chemistry",
+        "name_zh": "加热或变性剂使蛋白质空间结构破坏，导致功能丧失",
+        "rule_id": "CHEM-BIO-STR-04",
+        "rule_type": "formula",
+        "source_ref": "Biochemistry",
+        "statement": "加热或变性剂使蛋白质空间结构破坏，导致功能丧失",
+        "subdomain": "structural"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "structural",
+        "protein_denaturation"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-BIO-PRIN-02",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "酶"
+        ],
+        "domain": "chemistry",
+        "name_zh": "酶的活性中心通常由少数关键氨基酸残基组成",
+        "rule_id": "CHEM-BIO-PRIN-02",
+        "rule_type": "formula",
+        "source_ref": "Biochemistry",
+        "statement": "酶的活性中心通常由少数关键氨基酸残基组成",
+        "subdomain": "foundations"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "foundations",
+        "enzyme_active_site"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-MAT-STR-02",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "晶体材料"
+        ],
+        "domain": "chemistry",
+        "name_zh": "晶体可以按其对称性分为7个晶系14种布拉维格子",
+        "rule_id": "CHEM-MAT-STR-02",
+        "rule_type": "formula",
+        "source_ref": "Crystallography",
+        "statement": "晶体可以按其对称性分为7个晶系14种布拉维格子",
+        "subdomain": "structural"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "structural",
+        "crystal_symmetry"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-MAT-STR-03",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "晶体材料"
+        ],
+        "domain": "chemistry",
+        "name_zh": "实际晶体存在点缺陷、线缺陷、面缺陷，影响性质",
+        "rule_id": "CHEM-MAT-STR-03",
+        "rule_type": "formula",
+        "source_ref": "Materials Science",
+        "statement": "实际晶体存在点缺陷、线缺陷、面缺陷，影响性质",
+        "subdomain": "structural"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "structural",
+        "crystal_defects"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-MAT-PRIN-02",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "半导体材料"
+        ],
+        "domain": "chemistry",
+        "name_zh": "通过组分调节半导体材料的带隙宽度",
+        "rule_id": "CHEM-MAT-PRIN-02",
+        "rule_type": "formula",
+        "source_ref": "Materials Science",
+        "statement": "通过组分调节半导体材料的带隙宽度",
+        "subdomain": "foundations"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "foundations",
+        "bandgap_engineering"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-OMT-STR-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "有机金属配合物"
+        ],
+        "domain": "chemistry",
+        "name_zh": "过渡金属有机配合物中，金属中心的价电子总数倾向于18",
+        "rule_id": "CHEM-OMT-STR-01",
+        "rule_type": "formula",
+        "source_ref": "Organometallic Chemistry",
+        "statement": "过渡金属有机配合物中，金属中心的价电子总数倾向于18",
+        "subdomain": "structural"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "structural",
+        "electron_count_rule"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-OMT-RUL-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "有机金属反应"
+        ],
+        "domain": "chemistry",
+        "name_zh": "有机金属配合物与底物发生氧化加成时，金属氧化态增加2",
+        "rule_id": "CHEM-OMT-RUL-01",
+        "rule_type": "formula",
+        "source_ref": "Organometallic Chemistry",
+        "statement": "有机金属配合物与底物发生氧化加成时，金属氧化态增加2",
+        "subdomain": "physical"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "physical",
+        "oxidative_addition"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-INF-PRIN-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "所有化合物"
+        ],
+        "domain": "chemistry",
+        "name_zh": "化学物质必须按照IUPAC规则命名",
+        "rule_id": "CHEM-INF-PRIN-01",
+        "rule_type": "formula",
+        "source_ref": "IUPAC Nomenclature",
+        "statement": "化学物质必须按照IUPAC规则命名",
+        "subdomain": "foundations"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "foundations",
+        "chemical_nomenclature"
+      ],
+      "trust_level": "human"
+    },
+    {
+      "domain": "chemistry",
+      "entry_id": "CHEM-INF-EMP-01",
+      "entry_kind": "knowledge",
+      "knowledge_kind": "narrative",
+      "provenance": {
+        "source": "evorule science rules corpus"
+      },
+      "rule_body": {
+        "classification": "X0",
+        "conditions": [
+          "有机化合物"
+        ],
+        "domain": "chemistry",
+        "name_zh": "根据元素分析和分子量可以推导分子式",
+        "rule_id": "CHEM-INF-EMP-01",
+        "rule_type": "formula",
+        "source_ref": "Analytical Chemistry",
+        "statement": "根据元素分析和分子量可以推导分子式",
+        "subdomain": "empirical"
+      },
+      "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+      "tags": [
+        "chemistry",
+        "empirical",
+        "molecular_formula"
+      ],
+      "trust_level": "human"
+    }
+  ],
+  "tests": {
+    "verdict": "fail"
+  },
+  "audit": {
+    "exported_at": "2026-11-13T00:00:00Z",
+    "exported_by": "evorule-science-knowledge-pipeline",
+    "source_version": "v1",
+    "content_hash": "blake3:c88444172fd192290d26746670774564ee700eb2e068c2b1ad16e10d95fad947",
+    "hash_algo": "blake3"
+  }
+}
