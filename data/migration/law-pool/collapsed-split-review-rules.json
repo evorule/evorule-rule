@@ -1,0 +1,11 @@
+{
+  "applied": "2026-11-13",
+  "approval": "user directive 2026-11-13 (review request 75: corrections A and B approved; shapes confirmed)",
+  "entries_fixed": 4,
+  "fixes": {
+    "chem_sol_thm_02": "pi = i * C * R * T; reviewed correction pi 1 -> kg*m^-1*s^-2 (van't Hoff, 1887: osmotic pressure, not the circle constant)",
+    "phy_ast_con_01": "E = m * c ^ 2 (subsymbol values derived algebraically from the reviewed E)",
+    "phy_opt_law_03": "I = I0 * cos(2 * theta); reviewed value I = A kept (dimensionless angle, cos whitelist)",
+    "phy_rel_app_04": "p = gamma * m0 * v (momentum dimension, algebraically consistent)"
+  }
+}
