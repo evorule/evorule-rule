@@ -1,0 +1,56 @@
+{
+  "accounting": "science corpus census 347 entries = knowledge pool 212 (X2 41 + X1 65 + X0 106) + law-pool side 135 (C1 22 + X3 10 + X4 89 + X5 14, notation-face heuristic)",
+  "bundle": {
+    "bundle_id": "bundle-science-knowledge-v1",
+    "dataset_id": "science-knowledge",
+    "dataset_kind": "knowledge",
+    "source_version": "v1",
+    "schema_ref": "https://evorule.org/schemas/domain/knowledge/knowledge-entry/v1.0.json",
+    "content_hash": "blake3:c88444172fd192290d26746670774564ee700eb2e068c2b1ad16e10d95fad947",
+    "entries": 212
+  },
+  "classification_counts": {
+    "X0": 106,
+    "X1": 65,
+    "X2": 41
+  },
+  "domain_counts": {
+    "chemistry": 112,
+    "computer_science": 10,
+    "mathematics": 56,
+    "physics": 34
+  },
+  "knowledge_kind_mapping": {
+    "rule": "X2 -> fact; X1/X0 -> narrative",
+    "counts": {
+      "fact": 41,
+      "narrative": 171
+    }
+  },
+  "disputed_entries": {
+    "count": 2,
+    "rule_ids": [
+      "MATH-LOGIC-AX-02",
+      "MATH-SET-AX-09"
+    ],
+    "handling": "carried with dispute_mark: dispute_reason verbatim carry-over + full dispute record under detail (dual-state model)"
+  },
+  "census_vs_owner_report_adjudication": {
+    "gap_rows": [
+      "CHEM-RXN-THM-02",
+      "MATH-GEO-THM-01",
+      "PHY-THR-PRIN-02"
+    ],
+    "gap_count": 3,
+    "root_cause": "classification precedence: owner-report placed rows with eval_formula first (C1 -> law_set candidate); census placed notation-face first (X1/X2). All three carry prose or engine-unconsumable notation (superscript, inequality), so law_set admission would require rewriting.",
+    "ruling": "owner ruling 2026-11-13: all three stay on the knowledge side (zero-rewrite red line); knowledge pool total 212",
+    "law_pool_side_effect": "none: the three rows are not present in normalized-law-pool.jsonl (verified)"
+  },
+  "zero_rewrite_contract": "statement/notation_zh/conditions carry corpus text verbatim (selection only); no entry rewritten into equation form; census snapshot 2026-11-13, recomputed from the current corpus (not historical reports)",
+  "verdict_note": "tests.verdict=fail (explicitly unverified): sandbox evidence must be produced at import/deployment time per the fail-closed import gate; entry payloads are statement-type and need no engine wiring",
+  "artifacts": [
+    "science-knowledge-v1.bundle.json",
+    "x-classification-map.jsonl",
+    "manifest.sha256"
+  ]
+}
