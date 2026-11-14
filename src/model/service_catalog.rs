@@ -442,6 +442,7 @@ mod tests {
             ("anatomy_ik_reachability_eval", false, "IK 可达性预检核(链段点列总长 L 与目标距 d 环形域闭式判定,内界分段闭式=单段 0/二段 L−2·Lmin/三段以上折叠定理 L−2·Lmax,平方整数比较零开方零浮点零超越函数,链外与内洞出 unreachable 规则ID+L/d 定点证据;只证不可达不证可达,数值 IK 收敛性与关节限位留引擎侧;机械域 IK 预检面;规则表参数化;确定性)"),
             ("anatomy_fk_replay_eval", false, "FK 正解复算核(链段角以 (cos,sin) 十进制有理数对入参 1e6 定点判定面,tip 整数乘加递推零超越函数,检出 b 点不污染正解链=残差二次判别面,锚帧角核对 expect 成对校验,违例出残差/角不符逐轴定点证据;角度→三角换算留引擎提取侧;机械域 FK 复算面;规则表参数化;确定性)"),
             ("video_opening_energy_eval", false, "黄金三秒起播判定核(逐帧 dBFS 字符串有理数序列→首个语音帧定位,首响毫秒≤显式上限判定,1e6 定点精确;window_frames 显式截窗;响度测量留引擎侧显式喂入;确定性)"),
+            ("video_clipping_eval", false, "削波检测判定核(过阈掩码 RLE 证据→连续段长/总占比双面判定,min_run 采样过滤+1e6 定点交叉相乘精确比较,证据一致性守卫;阈值扫描留引擎侧显式喂入;确定性)"),
             // ---- trace-audit-services ----
             ("trace_behavior_entropy", false, "run 事件流行为熵判据(ToolCall 到达序滑动窗口工具名香农熵 H=-Σp·log₂p,缺省窗宽10步长窗半;前后半程工具分布 JS 散度;熵与散度按 4 位小数定点字符串输出,确定性)"),
             ("trace_approval_density", false, "run 事件流审批密度判据(ApprovalRequired/Result 密度与结论分布、auto_rejected 计数、流级 Error 计数与消息样本,确定性)"),
