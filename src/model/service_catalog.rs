@@ -443,6 +443,7 @@ mod tests {
             ("anatomy_fk_replay_eval", false, "FK 正解复算核(链段角以 (cos,sin) 十进制有理数对入参 1e6 定点判定面,tip 整数乘加递推零超越函数,检出 b 点不污染正解链=残差二次判别面,锚帧角核对 expect 成对校验,违例出残差/角不符逐轴定点证据;角度→三角换算留引擎提取侧;机械域 FK 复算面;规则表参数化;确定性)"),
             ("video_opening_energy_eval", false, "黄金三秒起播判定核(逐帧 dBFS 字符串有理数序列→首个语音帧定位,首响毫秒≤显式上限判定,1e6 定点精确;window_frames 显式截窗;响度测量留引擎侧显式喂入;确定性)"),
             ("video_clipping_eval", false, "削波检测判定核(过阈掩码 RLE 证据→连续段长/总占比双面判定,min_run 采样过滤+1e6 定点交叉相乘精确比较,证据一致性守卫;阈值扫描留引擎侧显式喂入;确定性)"),
+            ("video_loudness_eval", false, "响度达标判定核(测量 LUFS 字符串有理数证据→目标值±容差带区间判定,1e6 定点交叉比较,原文回显审计面;响度测量 ebur128 留引擎侧显式喂入;确定性)"),
             // ---- trace-audit-services ----
             ("trace_behavior_entropy", false, "run 事件流行为熵判据(ToolCall 到达序滑动窗口工具名香农熵 H=-Σp·log₂p,缺省窗宽10步长窗半;前后半程工具分布 JS 散度;熵与散度按 4 位小数定点字符串输出,确定性)"),
             ("trace_approval_density", false, "run 事件流审批密度判据(ApprovalRequired/Result 密度与结论分布、auto_rejected 计数、流级 Error 计数与消息样本,确定性)"),
